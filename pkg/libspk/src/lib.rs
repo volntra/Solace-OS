@@ -9,6 +9,7 @@ pub mod manifest;
 pub mod package;
 pub mod recipe;
 pub mod sign;
+pub mod solve;
 pub mod version;
 
 pub use error::{Error, Result};
