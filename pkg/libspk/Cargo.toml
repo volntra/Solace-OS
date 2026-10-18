@@ -1,0 +1,29 @@
+[package]
+name = "libspk"
+version = "0.1.0"
+description = "spk package manager library: recipes, packages, signatures, solver, database"
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[dependencies]
+base64 = "0.23.1"
+ed25519-dalek = "3.0.0"
+getrandom = "0.4.3"
+glob = "0.3.4"
+hex = "0.4.3"
+libc = "0.2.191"
+resolvo = "0.12.2"
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+serde = { version = "1.0.229", features = ["derive"] }
+sha2 = "0.11.1"
+tar = "0.4.46"
+tempfile = "3.27.0"
+thiserror = "2.0.21"
+toml = "1.1.8"
+ureq = "3.4.2"
+walkdir = "2.5.0"
+zstd = "0.14.3"
+
+[lints]
+workspace = true
