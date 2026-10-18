@@ -1,0 +1,30 @@
+name = "zstd"
+version = "1.5.7"
+release = 1
+summary = "Zstandard compression tools"
+license = "BSD-3-Clause OR GPL-2.0-only"
+homepage = "https://facebook.github.io/zstd/"
+
+[[source]]
+url = "https://github.com/facebook/zstd/releases/download/v1.5.7/zstd-1.5.7.tar.gz"
+sha256 = "eb33e51f49a15e023950cd7825ca74a4a2b43db8354825ac24fc1b7ee09e6fa3"
+
+[deps]
+# The zstd tool also reads and writes .gz, .xz and .lz4.
+build = ["zlib", "liblzma", "lz4"]
+runtime = ["libzstd", "zlib", "liblzma", "lz4"]
+
+[build]
+system = "make"
+post_install = 'rm -f "$DESTDIR/usr/lib/libzstd.a"'
+
+[[split]]
+name = "libzstd"
+summary = "Zstandard compression library"
+files = [
+    "usr/lib/libzstd.so*",
+    "usr/include/zstd.h",
+    "usr/include/zstd_errors.h",
+    "usr/include/zdict.h",
+    "usr/lib/pkgconfig/libzstd.pc",
+]

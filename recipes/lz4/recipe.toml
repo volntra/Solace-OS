@@ -1,0 +1,14 @@
+name = "lz4"
+version = "1.10.0"
+release = 1
+summary = "Very fast compression library and tool"
+license = "BSD-2-Clause AND GPL-2.0-or-later"
+homepage = "https://lz4.org/"
+
+[[source]]
+url = "https://github.com/lz4/lz4/releases/download/v1.10.0/lz4-1.10.0.tar.gz"
+sha256 = "537512904744b35e232912055ccf8ec66d768639ff3abe5788d90d792ec5f48b"
+
+[build]
+system = "make"
+install_args = ["BUILD_STATIC=no"]

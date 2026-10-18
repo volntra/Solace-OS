@@ -161,7 +161,7 @@ impl Repo {
         let sig_text = fs::read_to_string(&sig_file).at(&sig_file)?;
         keyring
             .verify(Purpose::Index, &digest, &sig_text)
-            .map_err(|e| Error::Signature(format!("{location}: index: {e}")))?;
+            .map_err(|e| e.sig_context(format!("{location}: index")))?;
         // Parse the bytes that were verified (the file is private to `work`).
         let bytes = fs::read(&idx_path).at(&idx_path)?;
         if hash::sha256(&bytes) != digest {

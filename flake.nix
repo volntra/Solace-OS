@@ -32,9 +32,13 @@
           ninja
           ccache
 
-          # Package builds (Phase 1): sandbox + archive format
+          # Package builds (Phase 1): sandbox, archive format, and the build
+          # tools recipes expect besides stdenv (the sandbox sees only
+          # /nix/store, never the host's /usr/bin).
           bubblewrap
           zstd
+          perl
+          gnum4
 
           # Images and boot (Phase 2+): QEMU + UEFI firmware, ESP + btrfs tooling
           qemu

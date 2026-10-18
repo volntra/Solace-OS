@@ -1,0 +1,28 @@
+name = "libarchive"
+version = "3.8.9"
+release = 1
+summary = "Multi-format archive and compression library (bsdtar, bsdcpio)"
+license = "BSD-2-Clause"
+homepage = "https://www.libarchive.org/"
+
+[[source]]
+url = "https://github.com/libarchive/libarchive/releases/download/v3.8.9/libarchive-3.8.9.tar.xz"
+sha256 = "888c934f9d95648ecb9163dc8e23ab80a476ecb81a8f1154704a227b5b676dde"
+
+[deps]
+build = ["zlib", "libbz2", "liblzma", "lz4", "libzstd", "expat"]
+runtime = ["zlib", "libbz2", "liblzma", "lz4", "libzstd", "expat"]
+
+[build]
+system = "autotools"
+configure_args = [
+    "--disable-static",
+    "--with-expat",
+    "--without-xml2",
+    "--without-openssl",
+    "--without-nettle",
+    "--without-lzo2",
+    "--without-libb2",
+    "--without-cng",
+    "--disable-acl",
+]

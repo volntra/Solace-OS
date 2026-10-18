@@ -10,7 +10,16 @@ One line per recipe in `recipes/`, in the form ``- `name`: why it is in the
 base``. `just lint` fails if a recipe has no entry, an entry is empty, or an
 entry names a recipe that does not exist.
 
-(none yet: recipes start in Phase 1)
+- `bzip2`: bzip2 tool and libbz2; libarchive and pcre2grep read .bz2, and many upstream sources ship as .tar.bz2.
+- `expat`: XML parser required by dbus-daemon, fontconfig, Mesa, and wayland-scanner.
+- `libarchive`: archive library Flatpak requires (it unpacks OCI/bundle layers); provides bsdtar.
+- `libffi`: required by wayland-client/server and GLib (needed for the Wayland stack and Flatpak).
+- `libxcrypt`: crypt(3) with yescrypt for Linux-PAM and shadow password hashing.
+- `lz4`: fast compression for zram swap tooling, libarchive, and kernel/initramfs images.
+- `pcre2`: regular expressions for grep, GLib, and Qt.
+- `xz`: liblzma and the xz tool; kernel module/initramfs compression, libarchive, and .tar.xz sources.
+- `zlib`: deflate; required by almost everything (libpng, Qt, kernel tools, libarchive).
+- `zstd`: our package format (.solpkg is tar.zst), btrfs compression tooling, and initramfs compression.
 
 ## Log
 
@@ -89,3 +98,124 @@ entry names a recipe that does not exist.
   `nix flake check`.
 - **Why:** catches "works in my target/ dir" problems, and sets the
   pattern for later crates.
+
+### 2026-10-18: GitHub connection deferred; local repo only
+
+- **Decision:** work continues in a local git repo in the session
+  container until the human attaches a GitHub repository.
+- **Why:** no repository is attached to this session yet.
+
+### 2026-10-18: spk database location
+
+- **Decision:** the installed-package database is
+  `<root>/usr/lib/spk/db.sqlite` (SQLite, `synchronous=FULL`).
+- **Alternatives:** `/var/lib/spk` (the conventional place).
+- **Why:** `/usr` is the `@system` subvolume. Keeping the database inside it
+  means every system snapshot carries the exact record of its own files,
+  and rolling back the system rolls back the database with it. `/var` is a
+  separate subvolume that does not roll back.
+
+### 2026-10-18: spk staging lives inside the root's /usr
+
+- **Decision:** downloads, extracted payloads, and backups for a
+  transaction live in `<root>/usr/lib/spk/staging/`.
+- **Why:** they must be on the same filesystem as their destination so
+  placing a file is a `rename(2)` (atomic per file) and backing one up is a
+  hard link. `/var` is a different subvolume on the real system.
+
+### 2026-10-18: Phase 1 transactions roll back in-process only
+
+- **Decision:** a failed install/remove/upgrade restores every file and the
+  database (backup-then-rename journal, DB commit last). A run that is
+  *killed* leaves `usr/lib/spk/staging/` behind and the next run refuses to
+  start. No automatic crash recovery.
+- **Why:** CLAUDE.md 6.2 makes system updates crash-safe through btrfs
+  snapshots (Phase 3): the running system is never modified. A journal
+  replayed after a crash would duplicate that mechanism.
+
+### 2026-10-18: Signature domain separation and key format
+
+- **Decision:** the signed message is `"spk-package-v1\0" || sha256(file)`
+  or `"spk-index-v1\0" || sha256(file)`; key files are a one-line header
+  plus base64 (no PKCS#8). Secret keys refuse to load if group/other can
+  read them. `verify_strict` is used.
+- **Alternatives:** signing raw bytes; minisign/signify formats; OpenPGP.
+- **Why:** domain tags make a package signature useless as an index
+  signature and vice versa. The format is a few lines of code with
+  ed25519-dalek, no extra parser surface.
+
+### 2026-10-18: Verify-then-extract via a private copy
+
+- **Decision:** a package is copied into an unlinked temp file while being
+  hashed; the signature and index checks run on that hash; extraction reads
+  only the private copy.
+- **Why:** removes the window where a file could be swapped between being
+  verified and being unpacked.
+
+### 2026-10-18: Phase 1 host toolchain
+
+- **Decision:** until Phase 2 builds our own toolchain, `spk build` uses
+  the Nix devShell's compilers: `/nix/store` is bound read-only into the
+  sandbox and `PATH` is the devShell's `/nix/store` entries. Build
+  dependencies go into a fresh sysroot mounted at `/usr`. `LDFLAGS` adds
+  `-Wl,-rpath,/usr/lib` because the host loader does not search it.
+- **Consequence:** Phase 1 packages link against the host glibc and are
+  **not bootable**; they exercise the package pipeline only. Phase 2
+  rebuilds everything against our own glibc.
+- **Why:** spk has to exist before it can build the toolchain (CLAUDE.md
+  6.3 drives the bootstrap through spk recipes).
+
+### 2026-10-18: Build sandbox details
+
+- **Decision:** bubblewrap with `--unshare-all` (network included),
+  `--cap-drop ALL`, `--new-session`, `--die-with-parent`, a tmpfs root, and
+  `--clearenv`. When spk runs as root it first drops to uid 65534 with
+  `setpriv --clear-groups --inh-caps=-all --bounding-set=-all
+  --no-new-privs`; the build sees uid 1000 inside its own user namespace.
+  Source extraction also happens inside the sandbox. `SOURCE_DATE_EPOCH`
+  is fixed at 315532800 (1980-01-01, the earliest ZIP date).
+- **Why:** CLAUDE.md rule 7 (never run build scripts as root) and 6.2 (no
+  network after source fetch). Unpacking untrusted tarballs is also code
+  running on attacker-controlled input, so it gets the same sandbox.
+
+### 2026-10-18: Build output trust boundary
+
+- **Decision:** after the sandbox exits, spk inspects `DESTDIR` without
+  following symlinks (`O_NOFOLLOW`, no-follow walks, a check that every
+  directory component is real) before moving `etc/` or packaging anything.
+- **Why:** spk runs as root on a tree the build user controlled; a planted
+  `usr -> /` symlink must not redirect spk's own file operations.
+
+### 2026-10-18: Recipe versions follow nixpkgs where possible
+
+- **Decision:** the Phase 1 recipes use the versions nixpkgs pins in our
+  flake lock, from upstream release tarballs.
+- **Why:** an independent, reviewed sha256 for the same file. 7 of 10
+  recipes (zlib, bzip2, xz, expat, libffi, pcre2, libxcrypt) match nixpkgs
+  byte for byte; zstd matches upstream's published `.sha256`; lz4 and
+  libarchive release tarballs are pinned trust-on-first-use (nixpkgs uses
+  git archives for those). It also keeps us on
+  current security releases (expat, xz).
+
+### 2026-10-18: Seeding the source cache from Nix
+
+- **Decision:** `tools/seed-sources-from-nix.sh` (`just seed-sources`)
+  copies sources from the Nix binary cache into spk's source cache, only
+  when nixpkgs pins the identical sha256.
+- **Why:** the cloud dev container's proxy blocks some upstream hosts
+  (sourceware.org, GNU mirrors, kernel.org). spk re-verifies every cached
+  source against the recipe hash, so seeding cannot change a build.
+
+### 2026-10-18: Split-package dependency pinning
+
+- **Decision:** an unversioned runtime dependency on another package from
+  the same recipe (e.g. `xz` -> `liblzma`) is pinned to the exact
+  version-release being built.
+- **Why:** tools and their libraries from one source must move together.
+
+### 2026-10-18: Refuse `--root /` on non-Solace hosts
+
+- **Decision:** `spk install/remove/upgrade/key trust` refuse to modify `/`
+  unless `/usr/lib/os-release` says `ID=solace`.
+- **Why:** during development spk runs on NixOS and in containers, where
+  the default root would be the host itself (CLAUDE.md rule 8 spirit).

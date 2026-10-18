@@ -299,8 +299,7 @@ impl Keyring {
             paths.sort();
             for p in paths {
                 let text = fs::read_to_string(&p).at(&p)?;
-                let k = PublicKey::parse(&text)
-                    .map_err(|e| Error::Signature(format!("{}: {e}", p.display())))?;
+                let k = PublicKey::parse(&text).map_err(|e| e.sig_context(p.display()))?;
                 keys.push(k);
             }
         }
@@ -346,7 +345,7 @@ impl Keyring {
         })?;
         let (digest, _) = hash::sha256_file(path)?;
         self.verify(purpose, &digest, &sig_text)
-            .map_err(|e| Error::Signature(format!("{}: {e}", path.display())))
+            .map_err(|e| e.sig_context(path.display()))
     }
 }
 

@@ -45,6 +45,17 @@ impl Error {
     pub fn invalid(msg: impl Into<String>) -> Self {
         Error::Invalid(msg.into())
     }
+
+    /// Prefixes the message of a signature error with `ctx` (keeping the
+    /// variant), so callers can add the file name without repeating
+    /// "signature check failed".
+    #[must_use]
+    pub fn sig_context(self, ctx: impl std::fmt::Display) -> Self {
+        match self {
+            Error::Signature(m) => Error::Signature(format!("{ctx}: {m}")),
+            other => other,
+        }
+    }
 }
 
 /// Attaches a path to I/O errors.

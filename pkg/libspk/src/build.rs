@@ -287,20 +287,33 @@ fn build_stamp(recipe: &Recipe, cfg: &BuildConfig, keyring: &Keyring) -> Result<
     if !recipe.deps.build.is_empty() && cfg.repo.join(repo::INDEX).exists() {
         let tmp = tempfile::tempdir().at(std::env::temp_dir())?;
         let r = Repo::open(Location::Local(cfg.repo.clone()), keyring, tmp.path())?;
-        let mut deps: Vec<String> = r
-            .index
-            .packages
-            .iter()
-            .map(|e| format!("{} {} {}", e.name, e.pkg_version(), e.sha256))
-            .collect();
-        deps.sort();
-        // All repo packages, not just direct deps: transitive deps matter
-        // too, and the repo is small.
-        for d in deps {
+        for d in dep_closure(&r.index.packages, &recipe.deps.build) {
             let _ = writeln!(s, "dep {d}");
         }
     }
     Ok(hash::sha256_hex(s.as_bytes()))
+}
+
+/// The repo packages a set of build deps pulls in (transitively), as
+/// sorted `name version sha256` lines. Follows names (and `provides`)
+/// only: the local repo holds one version of each package.
+fn dep_closure(index: &[repo::IndexEntry], roots: &[DepSpec]) -> Vec<String> {
+    let mut todo: Vec<&str> = roots.iter().map(|d| d.name.as_str()).collect();
+    let mut seen: BTreeSet<&str> = BTreeSet::new();
+    let mut out = BTreeSet::new();
+    while let Some(name) = todo.pop() {
+        if !seen.insert(name) {
+            continue;
+        }
+        for e in index
+            .iter()
+            .filter(|e| e.name == name || e.provides.iter().any(|p| p.name == name))
+        {
+            out.insert(format!("{} {} {}", e.name, e.pkg_version(), e.sha256));
+            todo.extend(e.depends.iter().map(|d| d.name.as_str()));
+        }
+    }
+    out.into_iter().collect()
 }
 
 fn outputs_in_repo(recipe: &Recipe, cfg: &BuildConfig, keyring: &Keyring) -> Result<bool> {
@@ -528,7 +541,9 @@ fn sandbox_args(
         ("SHELL", "/bin/sh".into()),
         ("CONFIG_SHELL", "/bin/sh".into()),
         ("CPPFLAGS", "-I/usr/include".into()),
-        ("LDFLAGS", "-L/usr/lib".into()),
+        // Phase 1 host toolchain: its loader does not search /usr/lib, so
+        // test programs run by configure need an rpath to the sysroot libs.
+        ("LDFLAGS", "-L/usr/lib -Wl,-rpath,/usr/lib".into()),
         (
             "PKG_CONFIG_PATH",
             "/usr/lib/pkgconfig:/usr/share/pkgconfig".into(),
@@ -1034,6 +1049,33 @@ system = "make"
                 "usr/lib/liblzma.so.5"
             ]
         );
+    }
+
+    #[test]
+    fn stamp_closure_is_transitive_and_ignores_unrelated() {
+        let entry = |name: &str, deps: &[&str]| repo::IndexEntry {
+            name: name.into(),
+            version: crate::version::Version::parse("1").unwrap(),
+            release: 1,
+            arch: "x86_64".into(),
+            summary: String::new(),
+            depends: deps.iter().map(|d| DepSpec::parse(d).unwrap()).collect(),
+            provides: vec![],
+            conflicts: vec![],
+            replaces: vec![],
+            file: String::new(),
+            size: 0,
+            sha256: name.repeat(2),
+            installed_size: 0,
+        };
+        let idx = vec![
+            entry("a", &["b"]),
+            entry("b", &["c"]),
+            entry("c", &[]),
+            entry("unrelated", &[]),
+        ];
+        let got = dep_closure(&idx, &[DepSpec::parse("a").unwrap()]);
+        assert_eq!(got, ["a 1-1 aa", "b 1-1 bb", "c 1-1 cc"]);
     }
 
     #[test]

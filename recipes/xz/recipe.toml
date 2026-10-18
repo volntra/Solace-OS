@@ -1,0 +1,22 @@
+name = "xz"
+version = "5.8.4"
+release = 1
+summary = "XZ and LZMA compression tools"
+license = "0BSD AND GPL-2.0-or-later"
+homepage = "https://tukaani.org/xz/"
+
+[[source]]
+url = "https://github.com/tukaani-project/xz/releases/download/v5.8.4/xz-5.8.4.tar.xz"
+sha256 = "4ce24038fd4221e0d13bc1a2de7a4db56e90b92b3bf75321f6c14be73f65de4b"
+
+[deps]
+runtime = ["liblzma"]
+
+[build]
+system = "autotools"
+configure_args = ["--disable-static", "--disable-doc"]
+
+[[split]]
+name = "liblzma"
+summary = "LZMA compression library"
+files = ["usr/lib/liblzma.so*", "usr/include/lzma.h", "usr/include/lzma", "usr/lib/pkgconfig/liblzma.pc"]

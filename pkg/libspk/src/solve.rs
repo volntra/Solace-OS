@@ -246,6 +246,8 @@ impl Interner for Provider<'_> {
     }
 }
 
+// resolvo's trait is async; this provider has everything in memory.
+#[allow(unknown_lints, clippy::unused_async_trait_impl)]
 impl DependencyProvider for Provider<'_> {
     async fn filter_candidates(
         &self,

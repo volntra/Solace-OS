@@ -1,0 +1,41 @@
+name = "bzip2"
+version = "1.0.8"
+release = 1
+summary = "Block-sorting file compressor"
+license = "bzip2-1.0.6"
+homepage = "https://sourceware.org/bzip2/"
+
+[[source]]
+url = "https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz"
+sha256 = "ab5a03176ee106d3f0fa90e381da478ddae405918153cca248e682cd0c4a2269"
+
+[deps]
+runtime = ["libbz2"]
+
+[build]
+system = "custom"
+# Upstream's Makefile builds a static library and absolute symlinks; build
+# the shared library separately and make the links relative.
+prepare = """
+sed -i 's@\\(ln -s -f \\)$(PREFIX)/bin/@\\1@' Makefile
+sed -i 's@(PREFIX)/man@(PREFIX)/share/man@g' Makefile
+"""
+compile = """
+make -f Makefile-libbz2_so
+make clean
+make
+"""
+install = """
+make PREFIX="$DESTDIR/usr" install
+cp -a libbz2.so.* "$DESTDIR/usr/lib/"
+ln -sf libbz2.so.1.0.8 "$DESTDIR/usr/lib/libbz2.so"
+cp bzip2-shared "$DESTDIR/usr/bin/bzip2"
+ln -sf bzip2 "$DESTDIR/usr/bin/bunzip2"
+ln -sf bzip2 "$DESTDIR/usr/bin/bzcat"
+rm -f "$DESTDIR/usr/lib/libbz2.a"
+"""
+
+[[split]]
+name = "libbz2"
+summary = "bzip2 compression library"
+files = ["usr/lib/libbz2.so*", "usr/include/bzlib.h"]

@@ -1,0 +1,27 @@
+name = "libxcrypt"
+version = "4.5.2"
+release = 1
+summary = "Password hashing library (crypt)"
+license = "LGPL-2.1-or-later"
+homepage = "https://github.com/besser82/libxcrypt"
+
+[[source]]
+url = "https://github.com/besser82/libxcrypt/releases/download/v4.5.2/libxcrypt-4.5.2.tar.xz"
+sha256 = "71513a31c01a428bccd5367a32fd95f115d6dac50fb5b60c779d5c7942aec071"
+
+[build]
+system = "autotools"
+# Modern hashes only (yescrypt default); no legacy DES/MD5 entry points.
+# --disable-werror: upstream builds with -Werror, and glibc 2.43's
+# const-correct strchr() trips -Wdiscarded-qualifiers in two files.
+configure_args = [
+    "--disable-werror",
+    "--disable-static",
+    "--enable-hashes=strong,glibc",
+    "--enable-obsolete-api=no",
+    "--disable-failure-tokens",
+]
+
+[package]
+# PAM and shadow depend on "libcrypt", not on this implementation.
+provides = ["libcrypt=4.5.2"]

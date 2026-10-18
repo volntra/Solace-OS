@@ -258,7 +258,7 @@ impl VerifiedPackage {
         // 2. Signature over the bytes we hold.
         keyring
             .verify(Purpose::Package, &digest, &sig_text)
-            .map_err(|e| Error::Signature(format!("{}: {e}", path.display())))?;
+            .map_err(|e| e.sig_context(path.display()))?;
         let sha256 = hex::encode(digest);
 
         // 3. Index entry, if this came from a repo.

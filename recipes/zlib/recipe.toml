@@ -1,0 +1,18 @@
+name = "zlib"
+version = "1.3.2"
+release = 1
+summary = "Deflate compression library"
+license = "Zlib"
+homepage = "https://zlib.net/"
+
+[[source]]
+url = "https://github.com/madler/zlib/releases/download/v1.3.2/zlib-1.3.2.tar.gz"
+sha256 = "bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16"
+
+[build]
+system = "custom"
+# zlib's own configure script rejects autoconf options like --sysconfdir.
+configure = "./configure --prefix=/usr --libdir=/usr/lib --shared"
+compile = "make"
+install = "make DESTDIR=\"$DESTDIR\" install"
+post_install = 'rm -f "$DESTDIR/usr/lib/libz.a"'
