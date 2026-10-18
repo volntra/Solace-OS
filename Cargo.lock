@@ -1199,6 +1199,7 @@ dependencies = [
  "indicatif",
  "libspk",
  "owo-colors",
+ "tempfile",
 ]
 
 [[package]]
