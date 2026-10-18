@@ -115,5 +115,7 @@ After `install`, spk checks `DESTDIR` before packaging:
 1. `etc/` is moved to `usr/share/factory/etc/` (CLAUDE.md section 4).
 2. Libtool `.la` files and `usr/share/info/dir` are removed.
 3. Any path outside `usr/` is an error. So are device nodes, FIFOs,
-   sockets, hard links, and symlinks whose target escapes the package
-   root. setuid/setgid bits are kept and recorded in the manifest.
+   sockets, and symlinks whose target escapes the package root. Hard
+   links are packaged as independent files. setuid/setgid bits on files
+   are kept and recorded in the manifest; on directories they are an
+   error.

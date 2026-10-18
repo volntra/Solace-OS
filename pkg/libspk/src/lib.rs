@@ -5,6 +5,7 @@
 pub mod error;
 pub mod hash;
 pub mod manifest;
+pub mod package;
 pub mod recipe;
 pub mod sign;
 pub mod version;
