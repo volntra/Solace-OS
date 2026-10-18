@@ -4,10 +4,12 @@
 
 pub mod db;
 pub mod error;
+pub mod fetch;
 pub mod hash;
 pub mod manifest;
 pub mod package;
 pub mod recipe;
+pub mod repo;
 pub mod sign;
 pub mod solve;
 pub mod version;

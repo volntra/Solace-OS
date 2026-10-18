@@ -556,6 +556,7 @@ pub(crate) mod tests {
     /// Builds a small tree and packages it.
     pub fn build_pkg(fx: &Fixture, m: &PackageMeta, extra_file: &str) -> PathBuf {
         let src = fx.path(&format!("src-{}-{}", m.name, m.version));
+        let _ = fs::remove_dir_all(&src);
         fs::create_dir_all(src.join("usr/bin")).unwrap();
         fs::create_dir_all(src.join("usr/share/doc")).unwrap();
         fs::write(
