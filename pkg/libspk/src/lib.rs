@@ -6,6 +6,7 @@ pub mod error;
 pub mod hash;
 pub mod manifest;
 pub mod recipe;
+pub mod sign;
 pub mod version;
 
 pub use error::{Error, Result};
