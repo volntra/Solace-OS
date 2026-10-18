@@ -2,6 +2,7 @@
 //!
 //! Formats are specified in `docs/formats/` (recipe, package, repo).
 
+pub mod db;
 pub mod error;
 pub mod hash;
 pub mod manifest;
