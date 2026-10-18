@@ -2,76 +2,119 @@
 
 _Last updated: 2026-10-18 (session 1)_
 
-## Current phase: 0 (Scaffold): complete
+## Current phase: 1 (spk core): complete
 
 **Demo:**
 
 ```sh
 nix develop
-just check        # or: just demo
+just demo
 ```
 
-`just check` = `cargo fmt --check` + `cargo clippy -D warnings` +
-`cargo test` + `solcheck` (repo invariants). Verified green inside
-`nix develop` in the cloud dev container on 2026-10-18 (nixpkgs pinned
-to `nixos-26.11pre1093333.fe13242281a6`: rustc 1.98.1, just 1.58.0,
-QEMU 11.1.2, GRUB 2.14, OVMF 202608). `just nix-check`
-(`nix flake check`) also passes.
+Builds the 10 recipes in the sandbox (unchanged ones are skipped), runs
+the sandbox escape probe, installs everything into `build/scratch-root`
+through the solver (13 packages: 10 recipes + 3 split libraries), runs
+`list`/`owns`/`info`/`files`/`verify`, checks five refusals (removing a
+needed library, a tampered package, an unsigned package, a root with no
+trusted keys, an `http://` repo), and removes a package. Verified from a
+clean slate (no sources, no repo) in the cloud container: 4.5 min; a
+no-change rebuild of all 10 recipes takes 0.2 s.
+
+Other entry points: `just check` (fmt, clippy -D warnings, 95 tests, repo
+lint), `just sandbox-probe`, `just build-recipes`, `just seed-sources`,
+`just clean-build`, `just nix-check`.
 
 ## Done
 
-- Names fixed: Solace / `sol` / `spk` / `ace` / Koi (CLAUDE.md section 0,
-  DECISIONS.md).
-- CLAUDE.md with names filled in; `tools/` added to the layout.
-- Repo layout from CLAUDE.md section 5: every directory exists with a
-  README saying what goes there and which phase fills it. **These are
-  empty placeholders, not implementations.**
-- `flake.nix` devShell (Rust, just, CMake/Ninja, ccache, bubblewrap, zstd,
-  QEMU, OVMF, GRUB EFI, dosfstools/mtools, btrfs-progs, cryptsetup) +
-  `flake.lock`.
-- `justfile`: `check`, `fmt-check`, `clippy`, `test`, `lint`, `fmt`,
-  `demo`, `nix-check`, `doctor`.
-- Cargo workspace (edition 2024, clippy pedantic, `unsafe_code = deny`).
-- `tools/solcheck`: placeholder, Apple-name/asset, and recipe-justification
-  checks, 11 unit tests.
-- Docs: DECISIONS.md, this file, HIG.md (outline only), protocols/ and
-  formats/ indexes (specs not written yet).
+### Phase 0
+- Names (Solace / sol / spk / ace / Koi), CLAUDE.md, repo layout, flake
+  devShell, justfile, solcheck, docs.
 
-## In progress
+### Phase 1
+- Specs: `docs/formats/recipe.md`, `package.md`, `repo.md`.
+- `pkg/libspk` (library), `pkg/spk` (CLI). Modules:
+  - `version`: rpm-style version compare with `~` pre-releases; dep specs.
+  - `manifest`: payload paths must be relative, normalised, under `usr/`;
+    symlinks may not escape the root.
+  - `sign`: ed25519 with domain-separated messages; trusted keyring per
+    root; secret keys 0600 and refused if readable by others.
+  - `package`: reproducible `.solpkg` (tar.zst, manifest first); verify on
+    a private copy, signature before decompression, index match, then
+    extraction that accepts only exact manifest matches.
+  - `repo` + `fetch`: signed index verified before parsing; https-only
+    (redirects too) or local; size-limited, hashed downloads;
+    content-addressed source cache, re-verified on every use.
+  - `db`: SQLite at `usr/lib/spk/db.sqlite` (snapshots with `@system`).
+  - `solve`: resolvo with versioned deps, provides, conflicts, replaces;
+    clear "required by" errors on removal.
+  - `tx`: locked, staged, conflict-checked transactions with a
+    backup/rename journal; any failure (including the DB commit) restores
+    the root exactly. Failure injection test fails every step in turn.
+  - `build`: bubblewrap sandbox (all namespaces, no network, no caps,
+    unprivileged; drops from root via setpriv), sysroot built through the
+    verified install path, output inspected without following symlinks,
+    splits, signing, repo publish, build stamps.
+- CLI: install, remove, upgrade, search, info, files, owns, list, history,
+  verify, build, repo-add, key gen/trust. Refuses to modify `/` on a host
+  that is not Solace.
+- 10 recipes with justifications: zlib, bzip2, xz, lz4, zstd, expat,
+  libffi, pcre2, libxcrypt, libarchive.
+- `tools/sandbox-probe`: hostile recipe; all 10 escape attempts fail.
 
-Nothing.
+## Not done / limitations (honest list)
+
+- **Phase 1 packages are not bootable.** They are compiled with the Nix
+  devShell's GCC and link against its glibc (their RUNPATH contains
+  `/nix/store/...`). This is development scaffolding only; Phase 2 builds
+  our own toolchain from recipes and rebuilds everything, and the system
+  image contains nothing from Nix.
+- `spk rollback` exits with "arrives in Phase 3". System snapshot
+  transactions, triggers (`[triggers]` in recipes is parsed but not run),
+  and initramfs rebuilds are Phase 3.
+- `sol-pkgd` (D-Bus daemon, polkit) is not started; planned with Phase 3
+  so Settings/installer can drive transactions.
+- A transaction that is *killed* mid-apply leaves
+  `usr/lib/spk/staging/` and blocks the next run until removed by hand
+  (crash safety comes from Phase 3 snapshots).
+- No cgroup resource limits or ccache in builds yet (Phase 2, with the
+  bootstrap).
+- Recipe test suites (`make check`) are not run.
+- `spk` has no autoremove of orphaned dependencies.
+- Live HTTPS repository fetching is implemented, but only local repos
+  have been exercised end to end (source downloads over HTTPS are
+  exercised by every clean build).
 
 ## Broken / not verified
 
-- The devShell was verified in the cloud container, not yet on the human's
-  NixOS host.
+- Verified only in the cloud dev container, not yet on the human's NixOS
+  host.
+- The container's network policy blocks sourceware.org, GNU and
+  kernel.org mirrors; `just seed-sources` works around it via the Nix
+  cache with hash checks. On the human's machine direct downloads should
+  work.
 
 ## Open questions for the human
 
 1. **Desktop name:** recorded as DE = Koi, release label "SolOS 1: Koi",
-   OS = Solace. Is "SolOS" meant to replace "Solace" as the OS name?
-2. **License** for our code (no license chosen yet; Cargo manifests have
-   none).
-3. **Git remote:** the repo is local to the session container. It needs a
-   GitHub (or other) remote to push to, or the work is lost when the
-   container is reclaimed.
+   OS = Solace. Is "SolOS" meant to replace "Solace"?
+2. **License** for our code (none chosen yet).
+3. **Git remote:** commits exist only in this session's container until a
+   GitHub repo is attached (connect at https://claude.ai/connect-github,
+   then give me `owner/repo`).
 
-## Next: Phase 1 (spk core)
+## Next: Phase 2 (base bootstrap + sol-init + GRUB + sol-bootgen + image)
 
-Plan, in order:
-
-1. `docs/formats/recipe.md`, `package.md`, `repo.md`.
-2. `pkg/` crates: `spk-core` (recipe + manifest types, versions),
-   `spk-build` (fetch + sha256 verify, then an unprivileged bubblewrap
-   build with no network), `spk-sign` (ed25519 via `ed25519-dalek`),
-   `spk-db` (installed-file DB, SQLite), `spk-solve` (`resolvo`), `spk`
-   CLI.
-3. `.solpkg` = tar.zst + manifest + detached signature; refuse unsigned
-   or mismatched packages, with no override flag.
-4. `install --root` into a scratch root; `files`, `owns`, `info`,
-   `remove`.
-5. Failure-injection tests for corrupt archives and bad signatures.
-6. 10 small recipes (e.g. zlib, zstd, xz, bzip2, lz4, ncurses, readline,
-   bash, coreutils, util-linux) with justifications.
-7. Demo recipe `just demo` -> builds and installs the 10 into
-   `./build/scratch-root`.
+1. Toolchain recipes (binutils, GCC, glibc, Linux headers) and a
+   `bootstrap/` driver: cross toolchain in an isolated container, stage-1
+   tools, then every final package rebuilt by spk against our glibc.
+   Replace `Toolchain::HostNix` with the bootstrap sysroot toolchain; add
+   ccache and cgroup limits to the sandbox.
+2. Kernel recipe with our trimmed config (sched_ext on).
+3. `init/`: sol-init (PID 1, TOML units, dependency graph, supervision,
+   sol-log), `solctl`; `docs/formats/unit.md`; tests for ordering,
+   restarts, clean shutdown.
+4. `boot/bootgen`: grub.cfg generation (atomic write, ESP space check,
+   1/5/20-snapshot tests, other-OS entries, menu styles).
+5. `boot/grub-theme`: first version of our gfxmenu theme.
+6. `image/`: btrfs layout (`@system` read-only, `@etc`, `@var`, `@users`,
+   `@snapshots`), ESP, `just qemu` with OVMF; measure GRUB-to-login time.

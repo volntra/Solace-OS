@@ -10,4 +10,4 @@
 | `icon.md` | `<app-id>.solicon/` adaptive icons | Phase 7 |
 | `install-profile.md` | installer profile TOML | Phase 12 |
 
-None are written yet.
+recipe.md, package.md and repo.md are written (Phase 1); the rest are not yet.

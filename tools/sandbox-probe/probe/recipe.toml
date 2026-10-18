@@ -1,0 +1,59 @@
+# A hostile "build" that tries to escape the spk build sandbox. Every probe
+# must FAIL for the build to succeed. Run by `just sandbox-probe` (and the
+# Phase 1 demo). The source is zlib's tarball, only because spk requires a
+# hash-pinned source; it is never compiled.
+name = "probe"
+version = "1"
+release = 1
+summary = "spk sandbox escape probe (test only, never shipped)"
+license = "MIT"
+
+[[source]]
+url = "https://github.com/madler/zlib/releases/download/v1.3.2/zlib-1.3.2.tar.gz"
+sha256 = "bb329a0a2cd0274d05519d61c667c062e06990d72e125ee2dfa8de64f0119d16"
+
+[build]
+system = "custom"
+compile = '''
+fail() { echo "SANDBOX PROBE FAILED: $*"; exit 1; }
+ok() { echo "  ok: $*"; }
+
+[ "$(id -u)" != 0 ] || fail "running as uid 0"
+ok "uid $(id -u), not root"
+
+caps=$(sed -n 's/^CapEff:[[:space:]]*//p' /proc/self/status)
+[ "$caps" = 0000000000000000 ] || fail "effective capabilities $caps"
+ok "no effective capabilities"
+
+grep -q '^NoNewPrivs:[[:space:]]*1' /proc/self/status || fail "no_new_privs not set"
+ok "no_new_privs set"
+
+if (exec 3<>/dev/tcp/1.1.1.1/443) 2>/dev/null; then fail "TCP to 1.1.1.1 works"; fi
+if (exec 3<>/dev/tcp/140.82.112.3/443) 2>/dev/null; then fail "TCP to github works"; fi
+ok "no network"
+links=$(awk -F: 'NR > 2 { gsub(/ /, "", $1); printf "%s ", $1 }' /proc/net/dev)
+case "$links" in ""|"lo ") ok "only loopback in this network namespace";; *) fail "interfaces: $links";; esac
+[ ! -e /sys/class/net ] || fail "/sys is mounted"
+ok "no /sys"
+
+if touch /usr/probe 2>/dev/null; then fail "wrote to /usr (sysroot)"; fi
+if touch /nix/store/probe 2>/dev/null; then fail "wrote to /nix/store"; fi
+if touch /build/recipe/probe 2>/dev/null; then fail "wrote to the recipe dir"; fi
+ok "toolchain, sysroot, and recipe are read-only"
+
+for p in /root /home /etc/shadow /etc/passwd /var /run/dbus /tmp/claude-0; do
+  [ ! -e "$p" ] || fail "host path visible: $p"
+done
+ok "no host filesystem visible"
+
+n=$(ls -d /proc/[0-9]* | wc -l)
+[ "$n" -lt 10 ] || fail "$n processes visible (PID namespace missing?)"
+ok "own PID namespace ($n processes)"
+
+h=$(cat /proc/sys/kernel/hostname); [ "$h" = spk-build ] || fail "hostname $h"
+ok "own UTS namespace"
+'''
+install = '''
+mkdir -p "$DESTDIR/usr/share/probe"
+echo passed > "$DESTDIR/usr/share/probe/result"
+'''

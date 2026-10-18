@@ -23,13 +23,19 @@ build-recipes: spk
     @test -f build/keys/dev.key || target/release/spk key gen dev --dir build/keys
     target/release/spk build --all
 
+# Run a hostile recipe that must fail to escape the build sandbox
+sandbox-probe: spk
+    @test -f build/keys/dev.key || target/release/spk key gen dev --dir build/keys
+    target/release/spk build --force --recipes-dir tools/sandbox-probe --repo-dir build/probe-repo --work build/probe-work probe
+    @grep -h "ok:" build/probe-work/probe/build.log
+
 # Fill build/sources from the Nix binary cache where nixpkgs pins the same hash
 seed-sources:
     tools/seed-sources-from-nix.sh build/sources
 
 # Delete build outputs (keeps the source cache and signing key)
 clean-build:
-    rm -rf build/work build/repo build/scratch-root build/demo-*
+    rm -rf build/work build/repo build/scratch-root build/demo-* build/probe-*
 
 # --- Verification -----------------------------------------------------------
 
