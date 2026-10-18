@@ -1,0 +1,11 @@
+/target
+/result
+/result-*
+/.direnv
+/build
+/out
+*.qcow2
+*.img
+*.iso
+*.solpkg
+.ccache/
