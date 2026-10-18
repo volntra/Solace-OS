@@ -12,6 +12,7 @@ pub mod recipe;
 pub mod repo;
 pub mod sign;
 pub mod solve;
+pub mod tx;
 pub mod version;
 
 pub use error::{Error, Result};
