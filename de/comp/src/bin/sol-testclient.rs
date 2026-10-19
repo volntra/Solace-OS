@@ -3,7 +3,8 @@
 //! and can ask for background blur.
 //!
 //! ```text
-//! sol-testclient [--size WxH] [--color RRGGBBAA] [--stripes] [--blur] [--title T]
+//! sol-testclient [--size WxH] [--color RRGGBBAA] [--stripes]
+//!                [--blur | --blur-region X,Y,W,H] [--title T]
 //! ```
 
 use std::io::Write;
@@ -15,6 +16,7 @@ use wayland_client::{
     protocol::{
         wl_buffer::WlBuffer,
         wl_compositor::WlCompositor,
+        wl_region::WlRegion,
         wl_registry::WlRegistry,
         wl_shm::{self, WlShm},
         wl_shm_pool::WlShmPool,
@@ -38,6 +40,8 @@ struct Options {
     color: [u8; 4],
     stripes: bool,
     blur: bool,
+    /// Blur only this part of the surface (implies `blur`).
+    blur_region: Option<(i32, i32, i32, i32)>,
     title: String,
 }
 
@@ -48,6 +52,7 @@ impl Default for Options {
             color: [0xf4, 0xf1, 0xfa, 0xff],
             stripes: false,
             blur: false,
+            blur_region: None,
             title: "Test".into(),
         }
     }
@@ -57,6 +62,17 @@ fn parse_size(s: &str) -> Option<(i32, i32)> {
     let (w, h) = s.split_once('x')?;
     let (w, h) = (w.parse().ok()?, h.parse().ok()?);
     (w > 0 && h > 0 && w <= 8192 && h <= 8192).then_some((w, h))
+}
+
+fn parse_rect(text: &str) -> Option<(i32, i32, i32, i32)> {
+    let v: Vec<i32> = text
+        .split(',')
+        .map(|n| n.parse().ok())
+        .collect::<Option<_>>()?;
+    match v[..] {
+        [x, y, width, height] if width > 0 && height > 0 => Some((x, y, width, height)),
+        _ => None,
+    }
 }
 
 fn parse_color(s: &str) -> Option<[u8; 4]> {
@@ -79,6 +95,10 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
             "--title" => o.title.clone_from(value()?),
             "--stripes" => o.stripes = true,
             "--blur" => o.blur = true,
+            "--blur-region" => {
+                o.blur_region = Some(parse_rect(value()?).ok_or("--blur-region wants X,Y,W,H")?);
+                o.blur = true;
+            }
             other => return Err(format!("unknown argument {other}")),
         }
     }
@@ -189,6 +209,12 @@ fn run(options: Options) -> Result<(), String> {
             .map_err(|e| format!("blur protocol: {e}"))?;
         let blur = manager.create(&surface, &qh, ());
         // No region: the whole surface.
+        if let Some((x, y, w, h)) = options.blur_region {
+            let region = compositor.create_region(&qh, ());
+            region.add(x, y, w, h);
+            blur.set_region(Some(&region));
+            region.destroy();
+        }
         blur.commit();
     }
     surface.commit();
@@ -277,6 +303,7 @@ impl Dispatch<XdgToplevel, ()> for App {
 
 delegate_noop!(App: WlCompositor);
 delegate_noop!(App: WlShmPool);
+delegate_noop!(App: WlRegion);
 delegate_noop!(App: OrgKdeKwinBlurManager);
 delegate_noop!(App: OrgKdeKwinBlur);
 delegate_noop!(App: ignore WlShm);
@@ -302,6 +329,13 @@ mod tests {
         assert!(o.blur && !o.stripes);
         assert_eq!(o.title, "Glass");
         assert_eq!(parse_args(&[]).unwrap(), Options::default());
+    }
+
+    #[test]
+    fn a_blur_region_implies_blur() {
+        let o = parse_args(&args("--blur-region 0,10,200,50")).unwrap();
+        assert!(o.blur);
+        assert_eq!(o.blur_region, Some((0, 10, 200, 50)));
     }
 
     #[test]

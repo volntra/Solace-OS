@@ -575,6 +575,23 @@ pub struct Wallpaper {
     pub size: (i32, i32),
 }
 
+impl Wallpaper {
+    /// A wallpaper of one colour (RGB), e.g. for tests.
+    pub fn solid([r, g, b]: [u8; 3]) -> Self {
+        Wallpaper {
+            buffer: MemoryRenderBuffer::from_slice(
+                &[b, g, r, 255],
+                Fourcc::Argb8888,
+                (1, 1),
+                1,
+                Transform::Normal,
+                None,
+            ),
+            size: (1, 1),
+        }
+    }
+}
+
 /// Loads a PNG wallpaper into a memory buffer (8-bit RGB or RGBA).
 ///
 /// # Errors

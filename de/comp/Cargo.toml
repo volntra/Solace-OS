@@ -16,13 +16,26 @@ path = "src/lib.rs"
 name = "sol-comp"
 path = "src/bin/sol-comp.rs"
 
+# A scriptable Wayland client for tests (coloured, striped, blurred windows).
+[[bin]]
+name = "sol-testclient"
+path = "src/bin/sol-testclient.rs"
+
+# Pixel tests: a headless compositor, real clients, screenshots. Runs its
+# own main (one compositor at a time, environment set before threads).
+[[test]]
+name = "render"
+harness = false
+
 [dependencies]
 smithay = { version = "0.7.0", default-features = false, features = ["backend_winit", "wayland_frontend", "desktop"] }
 bitflags = "2"
 png = "0.17"
-wayland-protocols-plasma = { version = "0.3", features = ["server"] }
+wayland-protocols-plasma = { version = "0.3", features = ["server", "client"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client"] }
 
 [lints]
 workspace = true

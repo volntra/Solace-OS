@@ -89,10 +89,15 @@ qemu-test:
 comp *CLIENT:
     cargo run -p sol-comp -- --nested {{ if CLIENT != "" { "-- " + CLIENT } else { "" } }}
 
+# Compositor pixel tests: headless sol-comp, real clients, screenshots
+# (kept in target/tmp/sol-comp-render/). Also part of `just check`.
+comp-test *SCENARIO:
+    cargo test -p sol-comp --test render -- {{SCENARIO}}
+
 # Phase 4 renderer demo: a striped window behind a frosted-glass one
 # (blur, rounded corners, shadows, wallpaper)
 comp-demo:
-    cargo build -p sol-comp -p sol-testclient
+    cargo build -p sol-comp
     target/debug/sol-comp --nested -- sh -c 'target/debug/sol-testclient --stripes --size 640x400 & sleep 1; exec target/debug/sol-testclient --size 900x200 --color f4f1fa40 --blur --title Glass'
 
 # --- System updates (Phase 3) -----------------------------------------------

@@ -7,7 +7,7 @@ Repository: https://github.com/volntra/Solace-OS (`main`).
 ## Current phase: 4 (compositor core): in progress
 
 Stages: 1 foundation ✓, 2 renderer ✓ (corners, shadows, wallpaper,
-background blur), 3 test client (started) + screenshot tests, 4
+background blur), 3 headless backend + pixel tests ✓, 4
 graphics base recipes (Mesa, libdrm, libinput, ...), 5 DRM backend on
 the QEMU image, then 165 Hz on the NVIDIA machine.
 
@@ -18,6 +18,7 @@ nix develop
 just wallpapers            # build/wallpapers/dusk.png, the default wallpaper
 just comp weston-terminal  # any Wayland client; more with WAYLAND_DISPLAY=wayland-N
 just comp-demo             # a striped window behind a frosted-glass one
+just comp-test             # pixel tests, headless (also run by `just check`)
 ```
 
 ![sol-comp nested in Xvfb: wallpaper, rounded corners, shadows](design/img/comp-nested.png)
@@ -29,13 +30,23 @@ in the shader), focus-dependent soft shadows (analytic Gaussian), the
 wallpaper (cover-cropped), background blur for windows that ask for it
 (`org_kde_kwin_blur`; dual-Kawase, cached until what is behind changes),
 damage tracking (only changed regions are redrawn and presented; an idle
-nested session uses almost no CPU). `sol-testclient` (de/comp/testclient)
+nested session uses almost no CPU). `sol-testclient` (de/comp/src/bin)
 opens a coloured, striped or blurred window for tests. Verified in the
 cloud container in Xvfb on llvmpipe; not yet on a real GPU.
 
+Tests (`just comp-test`, de/comp/tests/render.rs): a headless sol-comp
+(Mesa surfaceless EGL, software rendering, no display needed) runs real
+`sol-testclient` windows and checks pixels: the image is upright, corners
+are cut and edges are not, shadows fall below windows and follow focus,
+blur smooths what is behind a window that asks for it (whole surface or
+a region) and nothing else, blurred backdrops are reused while idle and
+redone when what is behind moves, and idle frames have no damage.
+Screenshots land in `target/tmp/sol-comp-render/`. Checked to fail when
+the Stage 2 shadow-damage bug is put back, or when blur is switched off.
+
 Not yet: server-side titlebars (Phase 5, sol-wm), every protocol beyond
 xdg-shell and blur, layer-shell (the dock and menu bar need it), the DRM
-backend, automated screenshot tests, measured frame times. Rotated
+backend, measured frame times. Rotated
 outputs are not handled by the corner clip yet.
 
 ## Phase 3 (previous): demo works

@@ -521,3 +521,25 @@ entry names a recipe that does not exist.
 - **Test client:** `sol-testclient` (Rust, wayland-client), the seed of
   stage 3's protocol and screenshot tests.
 
+### 2026-10-19: Compositor tests: headless backend and pixel checks (Phase 4, stage 3)
+
+- **Decision:** sol-comp has a headless backend (offscreen texture, Mesa's
+  surfaceless EGL platform, llvmpipe forced) and an integration test that
+  starts a compositor per scenario, connects real `sol-testclient`
+  processes over Wayland, and asserts on pixels of read-back frames.
+  Software rendering keeps the expected pixels identical on every machine,
+  including the NVIDIA host.
+- **Assertions on pixels, not golden images:** each check names what it
+  tests (corner pixel cut, edge pixel solid, shadow darker below the
+  window, spread of colours under the blur, average colour of the blurred
+  stripes). Golden images would break on every intended visual tweak and
+  say nothing about what went wrong.
+- **Own `main` (`harness = false`):** scenarios share process state
+  (EGL, the environment: `XDG_RUNTIME_DIR`, the Mesa vendor file), which
+  must be set before any thread exists; running them one at a time in a
+  single thread makes that sound.
+- **sol-testclient moved into the sol-comp package** so the test finds it
+  through `CARGO_BIN_EXE_sol-testclient`.
+- **Not done:** protocol tests for protocols we do not have yet; frame
+  time measurements (need real hardware).
+

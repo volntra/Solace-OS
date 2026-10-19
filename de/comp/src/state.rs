@@ -229,6 +229,19 @@ impl Comp {
         self.focus(Some(window));
     }
 
+    /// After a frame was shown on `output`: frame callbacks to every
+    /// window (so animating clients draw their next frame), then cleanup.
+    pub fn frame_shown(&mut self, output: &smithay::output::Output) {
+        let now = self.start_time.elapsed();
+        for window in self.space.elements() {
+            window.send_frame(output, now, Some(std::time::Duration::ZERO), |_, _| {
+                Some(output.clone())
+            });
+        }
+        self.space.refresh();
+        self.popups.cleanup();
+    }
+
     /// Raises and focuses `window` (or clears focus), updating every
     /// window's activated state.
     pub fn focus(&mut self, window: Option<&Window>) {

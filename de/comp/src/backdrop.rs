@@ -10,6 +10,7 @@
 //! dock costs nothing per frame.
 
 use std::cell::RefCell;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use smithay::{
     backend::{
@@ -193,6 +194,15 @@ pub fn capture_area(
 /// What a blurred result was made from: every element behind it that
 /// touches the captured area, with its version and place.
 type Key = Vec<(Id, CommitCounter, Rectangle<i32, Physical>)>;
+
+/// How many times a backdrop has been blurred, process-wide: lets tests
+/// check that unchanged backdrops are reused.
+static RENDERS: AtomicU64 = AtomicU64::new(0);
+
+/// Backdrops blurred so far (see [`RENDERS`]).
+pub fn renders() -> u64 {
+    RENDERS.load(Ordering::Relaxed)
+}
 
 /// A window's blur textures and the key they were made from.
 #[derive(Default)]
@@ -469,6 +479,7 @@ pub fn backdrops<E: RenderElement<GlesRenderer>>(
             renderer, shaders, style, &mut cache, behind, area, output, scale,
         )?;
         tracing::debug!(?area, "blurred backdrop re-rendered");
+        RENDERS.fetch_add(1, Ordering::Relaxed);
         cache.area = Some(area);
         cache.key = key;
         cache.commit.increment();
