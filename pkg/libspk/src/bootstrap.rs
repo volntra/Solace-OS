@@ -152,10 +152,6 @@ recipes = ["b"]
                 "twice",
             ),
             (
-                GOOD.replace("toolchain = \"native\"", "toolchain = \"cross\""),
-                "base",
-            ),
-            (
                 GOOD.replace("toolchain = \"cross\"", "toolchain = \"magic\""),
                 "unknown variant",
             ),

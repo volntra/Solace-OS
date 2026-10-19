@@ -335,7 +335,10 @@ impl Recipe {
             } else {
                 // Each phase starts in the source dir: a `cd` in one phase
                 // must not leak into the next.
-                format!("echo '==> {name}'\n(\nset -euo pipefail\n{}\n)\n", body.trim_end())
+                format!(
+                    "echo '==> {name}'\n(\nset -euo pipefail\n{}\n)\n",
+                    body.trim_end()
+                )
             }
         };
         let mut s = String::from("set -euo pipefail\n");
