@@ -1,4 +1,5 @@
-# LFS 7.9.
+# LFS 7.9. No man pages: the chroot has no man directories, so Configure
+# would otherwise install them at / (and this perl only runs build scripts).
 name = "perl"
 version = "5.42.3~bootstrap"
 release = 1
@@ -15,7 +16,8 @@ configure = '''
 sh Configure -des -D prefix=/usr -D vendorprefix=/usr -D useshrplib \
   -D privlib=/usr/lib/perl5/5.42/core_perl -D archlib=/usr/lib/perl5/5.42/core_perl \
   -D sitelib=/usr/lib/perl5/5.42/site_perl -D sitearch=/usr/lib/perl5/5.42/site_perl \
-  -D vendorlib=/usr/lib/perl5/5.42/vendor_perl -D vendorarch=/usr/lib/perl5/5.42/vendor_perl
+  -D vendorlib=/usr/lib/perl5/5.42/vendor_perl -D vendorarch=/usr/lib/perl5/5.42/vendor_perl \
+  -D man1dir=none -D man3dir=none
 '''
 compile = '''
 make
