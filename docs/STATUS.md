@@ -21,13 +21,23 @@ Phase 2 stages:
 | Stage | What | State |
 |---|---|---|
 | 1 | Bootstrap plan + spk toolchain modes (host/cross/native/rust) | done |
-| 2 | Cross, temporary and chroot-stage recipes (`bootstrap/recipes`) | done |
-| 3 | Final system recipes (glibc ... gcc, kernel with our config) | written; building |
-| 4 | sol-init (PID 1, units, supervision, sol-log, solctl) | done, 37 tests |
+| 2 | Cross, temporary and chroot-stage recipes (`bootstrap/recipes`) | done, builds |
+| 3 | Final system recipes (glibc ... gcc, kernel, GRUB, OpenSSL, pkgconf) | rebuilding (gawk fix) |
+| 4 | sol-init (PID 1, units, supervision, sol-log, solctl) | done, 39 tests |
 | 5 | sol-bootgen (grub.cfg, ESP kernels) + GRUB theme | done, 15 tests |
 | 6 | Packages for our own tools (sol-init, sol-bootgen, solace-base, theme) | done |
-| 7 | Image builder, `just qemu`, `just qemu-test` | written; waits on stage 3 |
-| 8 | Boot in QEMU, measure GRUB-to-login | not yet |
+| 7 | Image builder, `just qemu`, `just qemu-test` | done |
+| 8 | Boot in QEMU, measure GRUB-to-login | boots to login; login fix pending rebuild |
+
+**First boots (2026-10-19, software emulation, no KVM):** UEFI -> our GRUB
+-> our kernel -> initramfs -> sealed btrfs root -> sol-init -> login
+prompt on tty1 and serial: `solace: boot complete: 5260 ms after the
+kernel started (386 ms in sol-init)`, with the bootstrap using the CPUs
+at the same time. Each boot found a real bug, all fixed with tests:
+`noatime` passed as a btrfs option (EINVAL), an invalid unit name halting
+boot (now skipped and logged), services not in their own session (login
+could not read a password), and rustix's `waitpid(None)` only reaping our
+own process group.
 
 Phase 1's demo still works: `just demo`.
 
