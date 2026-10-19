@@ -1,0 +1,30 @@
+[package]
+name = "sol-bootgen"
+version = "0.1.0"
+description = "Generates Solace's grub.cfg and manages kernels on the ESP"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lib]
+name = "bootgen"
+path = "src/lib.rs"
+
+[[bin]]
+name = "sol-bootgen"
+path = "src/main.rs"
+
+[dependencies]
+hex = "0.4.3"
+rustix = { version = "1.1.5", features = ["fs"] }
+serde = { version = "1.0.229", features = ["derive"] }
+sha2 = "0.11.1"
+toml = "1.1.8"
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+tempfile = "3.27.0"
