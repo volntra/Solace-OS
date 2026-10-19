@@ -19,6 +19,9 @@ prepare = '''
 # Generic x86-64 code, not tuned to the build machine's CPU.
 cp configfsf.guess config.guess
 cp configfsf.sub config.sub
+# C23 (GCC's default): a configure probe declares g() and calls it with
+# arguments; declare it variadic, as LFS does.
+sed -i '/long long t1;/,+1s/()/(...)/' configure
 '''
 configure = '''
 ./configure --prefix=/usr --enable-cxx --disable-static
