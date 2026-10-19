@@ -6,6 +6,8 @@
 //! atomically (temp file, fsync, rename, fsync dir). If anything fails
 //! before the rename, the previous `grub.cfg` is untouched.
 
+pub mod initramfs;
+
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::fs::{self, File};

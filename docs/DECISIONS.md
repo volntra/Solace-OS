@@ -39,6 +39,9 @@ entry names a recipe that does not exist.
 - `shadow`: user/group/password tools and the text-console login.
 - `tar`: unpacking sources; archives.
 - `util-linux`: mount, agetty, fdisk, lsblk, and libmount/libblkid.
+- `sol-init`: ours (init/): PID 1, service manager, solctl, sol-log.
+- `sol-bootgen`: ours (boot/bootgen/): grub.cfg, ESP kernels, initramfs.
+- `solace-base`: ours (image/base/): os-release, factory /etc, console units.
 - `bzip2`: bzip2 tool and libbz2; libarchive and pcre2grep read .bz2, and many upstream sources ship as .tar.bz2.
 - `expat`: XML parser required by dbus-daemon, fontconfig, Mesa, and wayland-scanner.
 - `libarchive`: archive library Flatpak requires (it unpacks OCI/bundle layers); provides bsdtar.
@@ -340,3 +343,14 @@ entry names a recipe that does not exist.
   official GitHub release assets, trust-on-first-use (nixpkgs packages a
   different bc and builds shadow from a git archive). Every other final
   source matches nixpkgs' pinned hash byte for byte.
+
+### 2026-10-19: Our Rust tools are built with the host's rustc, linked by us
+
+- **Decision:** `toolchain = "rust"` builds run in the native sandbox
+  (our gcc, binutils, glibc) with only `cargo`/`rustc` taken from the
+  host, until Rust itself is bootstrapped. Crates are vendored before the
+  sandbox (cargo checks each against Cargo.lock) and the build runs
+  offline. Outputs are static binaries linked by our gcc against our
+  glibc, so nothing from the host remains in them.
+- **Why:** bootstrapping rustc is a large project of its own (it needs
+  LLVM and a stage-0 compiler); the binaries we ship are independent of it.

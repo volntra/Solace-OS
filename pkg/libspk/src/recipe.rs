@@ -68,6 +68,8 @@ impl Source {
     /// local source, the directory name).
     pub fn file_name(&self) -> &str {
         match &self.local {
+            // The repository root itself.
+            Some(l) if l == "." => "repo",
             Some(l) => l
                 .trim_end_matches('/')
                 .rsplit('/')
@@ -84,6 +86,9 @@ impl Source {
 
 /// A local source path: relative, normalised, no `..`.
 fn valid_local(p: &str) -> bool {
+    if p == "." {
+        return true;
+    }
     !p.is_empty()
         && !p.starts_with('/')
         && p.trim_end_matches('/')
@@ -124,6 +129,10 @@ pub enum ToolchainMode {
     /// Only our own packages: the sandbox has no `/nix`, and every tool
     /// comes from the sysroot. Everything that ships is built this way.
     Native,
+    /// The native environment plus the host's Rust compiler (`cargo`,
+    /// `rustc`) until Rust itself is bootstrapped. Our gcc links, against
+    /// our glibc; crates are vendored offline (`build.cargo = true`).
+    Rust,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -133,6 +142,10 @@ pub struct Build {
     /// Overrides the build stage's default toolchain mode.
     #[serde(default)]
     pub toolchain: Option<ToolchainMode>,
+    /// Vendor the crates of the first (local) source's Cargo.lock before
+    /// the sandbox starts, and point cargo at them offline.
+    #[serde(default)]
+    pub cargo: bool,
     #[serde(default)]
     pub configure_args: Vec<String>,
     #[serde(default)]
@@ -267,6 +280,11 @@ impl Recipe {
             if f.is_empty() || f == "." || f == ".." || f.contains(['\\', '\0']) {
                 return Err(Error::invalid(format!("bad source file name in {}", s.url)));
             }
+        }
+        if self.build.cargo && !self.sources.first().is_some_and(Source::is_local) {
+            return Err(Error::invalid(
+                "build.cargo needs a local first source holding Cargo.lock",
+            ));
         }
         if self.build.system == BuildSystem::Custom
             && (self.build.compile.is_none() || self.build.install.is_none())

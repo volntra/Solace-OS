@@ -158,7 +158,7 @@ pub fn mode_of(recipe: &Recipe, cfg: &BuildConfig) -> ToolchainMode {
 fn host_of(cfg: &BuildConfig, mode: ToolchainMode) -> Result<Option<&HostTools>> {
     match mode {
         ToolchainMode::Native => Ok(None),
-        ToolchainMode::Host | ToolchainMode::Cross => {
+        ToolchainMode::Host | ToolchainMode::Cross | ToolchainMode::Rust => {
             cfg.host.as_ref().map(Some).ok_or_else(|| {
                 Error::Build(format!(
                     "{mode:?} builds need the host tools; run inside `nix develop`"
@@ -236,6 +236,17 @@ pub fn build(recipe: &Recipe, cfg: &BuildConfig, on: &mut dyn FnMut(BuildEvent))
         let src = local_path(&cfg.repo_root, s)?;
         copy_tree(&src, &bdir.join("src").join(s.file_name()))?;
     }
+    let vendor = if recipe.build.cargo {
+        on(BuildEvent::Fetching {
+            url: "crates (cargo vendor)".into(),
+        });
+        let first = &recipe.sources[0];
+        let dir = cargo_vendor(cfg, host, &local_path(&cfg.repo_root, first)?)?;
+        write_cargo_config(&bdir)?;
+        Some(dir)
+    } else {
+        None
+    };
 
     // 3. Build deps into the sysroot, through the verified install path.
     prepare_sysroot(recipe, cfg, host, &sysroot, on)?;
@@ -262,6 +273,7 @@ pub fn build(recipe: &Recipe, cfg: &BuildConfig, on: &mut dyn FnMut(BuildEvent))
         sysroot: &sysroot,
         bdir: &bdir,
         etc: &work.join("etc"),
+        vendor: vendor.as_deref(),
     };
     run_sandbox(&sb, "/build/src", &extract, run_uid, &mut log, &log_path)?;
     let srcdir = source_dir(&bdir.join("src"), &recipe.sources)?;
@@ -346,6 +358,55 @@ fn local_path(repo_root: &Path, s: &Source) -> Result<PathBuf> {
         )));
     }
     Ok(resolved)
+}
+
+/// Vendors the crates in `<src>/Cargo.lock` into a shared cache keyed by
+/// the lockfile's hash (cargo verifies every crate's checksum against the
+/// lockfile while vendoring). Runs on the host, before the sandbox.
+fn cargo_vendor(cfg: &BuildConfig, host: Option<&HostTools>, src: &Path) -> Result<PathBuf> {
+    let lock = src.join("Cargo.lock");
+    let key = hash::sha256_hex(&fs::read(&lock).at(&lock)?);
+    let dir = cfg.sources.join("cargo-vendor").join(&key[..16]);
+    if dir.join(".complete").exists() {
+        return Ok(dir);
+    }
+    let host_path = std::env::var("PATH").unwrap_or_default();
+    let cargo = host
+        .and_then(|h| which(&h.path, "cargo"))
+        .or_else(|| which(&host_path, "cargo"))
+        .ok_or_else(|| Error::Build("cargo not found on the host".into()))?;
+    let tmp = cfg
+        .sources
+        .join("cargo-vendor")
+        .join(format!("{}.part", &key[..16]));
+    let _ = fs::remove_dir_all(&tmp);
+    fs::create_dir_all(&tmp).at(&tmp)?;
+    let out = Command::new(cargo)
+        .args(["vendor", "--locked", "--versioned-dirs", "--manifest-path"])
+        .arg(src.join("Cargo.toml"))
+        .arg(&tmp)
+        .stdout(Stdio::null())
+        .output()
+        .map_err(|e| Error::Build(format!("cargo vendor: {e}")))?;
+    if !out.status.success() {
+        return Err(Error::Build(format!(
+            "cargo vendor failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        )));
+    }
+    fs::write(tmp.join(".complete"), "").at(&tmp)?;
+    fs::rename(&tmp, &dir).at(&dir)?;
+    Ok(dir)
+}
+
+/// Points cargo at /build/vendor instead of crates.io.
+fn write_cargo_config(bdir: &Path) -> Result<()> {
+    let home = bdir.join("cargo-home");
+    fs::create_dir_all(&home).at(&home)?;
+    fs::create_dir_all(bdir.join("vendor")).at(bdir.join("vendor"))?;
+    let cfg = "[source.crates-io]\nreplace-with = \"vendored\"\n\n\
+               [source.vendored]\ndirectory = \"/build/vendor\"\n";
+    fs::write(home.join("config.toml"), cfg).at(home.join("config.toml"))
 }
 
 /// Directories never copied from a local source.
@@ -610,6 +671,8 @@ struct Sandbox<'a> {
     sysroot: &'a Path,
     bdir: &'a Path,
     etc: &'a Path,
+    /// Vendored crates, bound read-only at /build/vendor.
+    vendor: Option<&'a Path>,
 }
 
 /// Runs `script` with bash inside the sandbox.
@@ -707,8 +770,11 @@ fn sandbox_args(sb: &Sandbox<'_>, chdir: &str, script: &str) -> Vec<String> {
         "--tmpfs",
         "/tmp",
     ]);
-    match sb.host {
-        Some(h) => add(&[
+    if let Some(v) = sb.vendor {
+        add(&["--ro-bind", &s(v), "/build/vendor"]);
+    }
+    match (sb.mode, sb.host) {
+        (ToolchainMode::Host | ToolchainMode::Cross, Some(h)) => add(&[
             "--dir",
             "/bin",
             "--symlink",
@@ -719,7 +785,7 @@ fn sandbox_args(sb: &Sandbox<'_>, chdir: &str, script: &str) -> Vec<String> {
             "/bin/bash",
         ]),
         // Our own merged-/usr layout (CLAUDE.md section 4).
-        None => add(&[
+        _ => add(&[
             "--symlink",
             "usr/bin",
             "/bin",
@@ -751,6 +817,8 @@ fn sandbox_env(sb: &Sandbox<'_>) -> Vec<(&'static str, String)> {
     let cfg = sb.cfg;
     let path = match (sb.mode, sb.host) {
         (ToolchainMode::Native, _) | (_, None) => "/usr/bin".to_string(),
+        // Ours first, so cc/ld/as are our toolchain; then the host's Rust.
+        (ToolchainMode::Rust, Some(h)) => format!("/usr/bin:/usr/sbin:{}", h.path),
         (ToolchainMode::Cross, Some(h)) => format!("/usr/cross/bin:{}:/usr/bin", h.path),
         (ToolchainMode::Host, Some(h)) => format!("{}:/usr/bin", h.path),
     };
@@ -770,6 +838,18 @@ fn sandbox_env(sb: &Sandbox<'_>) -> Vec<(&'static str, String)> {
         ("SHELL", "/bin/sh".into()),
         ("CONFIG_SHELL", "/bin/sh".into()),
     ];
+    if sb.mode == ToolchainMode::Rust {
+        env.extend([
+            ("CARGO_HOME", "/build/cargo-home".to_string()),
+            ("CARGO_NET_OFFLINE", "true".to_string()),
+            ("CARGO_TARGET_DIR", "/build/target".to_string()),
+            // Static binaries against our glibc, linked by our gcc.
+            (
+                "RUSTFLAGS",
+                "-C target-feature=+crt-static -C linker=cc".to_string(),
+            ),
+        ]);
+    }
     if sb.mode == ToolchainMode::Host {
         // Phase 1 host toolchain: point it at the sysroot. Its loader does
         // not search /usr/lib, so test programs need an rpath.

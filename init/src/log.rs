@@ -162,7 +162,7 @@ impl LineBuffer {
             out.push(String::from_utf8_lossy(&line[..line.len() - 1]).into_owned());
         }
         if self.buf.len() > MAX_LINE {
-            let line: Vec<u8> = self.buf.drain(..).collect();
+            let line = std::mem::take(&mut self.buf);
             out.push(String::from_utf8_lossy(&line).into_owned());
         }
         out
@@ -173,7 +173,7 @@ impl LineBuffer {
         if self.buf.is_empty() {
             None
         } else {
-            let line: Vec<u8> = self.buf.drain(..).collect();
+            let line = std::mem::take(&mut self.buf);
             Some(String::from_utf8_lossy(&line).into_owned())
         }
     }

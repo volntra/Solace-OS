@@ -26,7 +26,9 @@ compile = '''
 make
 '''
 install = '''
-make DESTDIR="$DESTDIR" TIC_PATH="$(pwd)/build/progs/tic" install
+# ncurses 6.6 run_tic.sh reads the build-side tic from $tic_path when
+# cross-compiling (older releases used TIC_PATH).
+tic_path="$(pwd)/build/progs/tic" make DESTDIR="$DESTDIR" install
 ln -sv libncursesw.so "$DESTDIR/usr/lib/libncurses.so"
 sed -e 's/^#if.*XOPEN.*$/#if 1/' -i "$DESTDIR/usr/include/curses.h"
 '''

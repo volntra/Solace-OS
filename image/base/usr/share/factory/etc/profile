@@ -1,0 +1,7 @@
+# System-wide shell defaults (Solace).
+export PATH=/usr/local/bin:/usr/bin:/usr/sbin
+export LANG=C.UTF-8
+umask 022
+if [ -n "$BASH_VERSION" ]; then
+  PS1='\u@\h \w \$ '
+fi

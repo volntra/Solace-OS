@@ -1,0 +1,22 @@
+# Our own: boot/bootgen/ in this repository.
+name = "sol-bootgen"
+version = "0.1.0"
+release = 1
+summary = "grub.cfg generator, ESP kernel manager, and initramfs builder"
+license = "GPL-3.0-or-later"
+
+[[source]]
+local = "."
+
+[build]
+system = "custom"
+toolchain = "rust"
+cargo = true
+compile = '''
+cargo build --release --locked --offline --target x86_64-unknown-linux-gnu -p sol-bootgen
+'''
+install = '''
+out=/build/target/x86_64-unknown-linux-gnu/release
+install -Dm755 "$out/sol-bootgen" "$DESTDIR/usr/sbin/sol-bootgen"
+install -Dm755 "$out/sol-mkinitramfs" "$DESTDIR/usr/sbin/sol-mkinitramfs"
+'''

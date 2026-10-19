@@ -149,7 +149,10 @@ fn parse_mode(s: &str) -> std::result::Result<ToolchainMode, String> {
         "host" => Ok(ToolchainMode::Host),
         "cross" => Ok(ToolchainMode::Cross),
         "native" => Ok(ToolchainMode::Native),
-        _ => Err(format!("unknown toolchain {s:?} (host, cross, native)")),
+        "rust" => Ok(ToolchainMode::Rust),
+        _ => Err(format!(
+            "unknown toolchain {s:?} (host, cross, native, rust)"
+        )),
     }
 }
 

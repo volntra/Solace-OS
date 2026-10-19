@@ -1,0 +1,22 @@
+# Our own: image/base/ in this repository. The system's identity
+# (os-release), first-boot /etc defaults, and the console login units.
+name = "solace-base"
+version = "0.1"
+release = 1
+summary = "Solace base files: os-release, factory /etc, console login units"
+license = "GPL-3.0-or-later"
+
+[[source]]
+local = "image/base"
+
+[deps]
+runtime = ["sol-init", "bash", "coreutils", "shadow", "util-linux"]
+
+[build]
+system = "custom"
+compile = "true"
+install = '''
+cp -R usr "$DESTDIR/"
+# git does not keep these modes.
+chmod 600 "$DESTDIR/usr/share/factory/etc/shadow" "$DESTDIR/usr/share/factory/etc/gshadow"
+'''

@@ -1,0 +1,23 @@
+# Our own: init/ in this repository.
+name = "sol-init"
+version = "0.1.0"
+release = 1
+summary = "Solace init and service manager (PID 1), solctl, and sol-log"
+license = "GPL-3.0-or-later"
+
+[[source]]
+local = "."
+
+[build]
+system = "custom"
+toolchain = "rust"
+cargo = true
+# --target keeps build scripts and proc-macros out of the static link.
+compile = '''
+cargo build --release --locked --offline --target x86_64-unknown-linux-gnu -p sol-init
+'''
+install = '''
+out=/build/target/x86_64-unknown-linux-gnu/release
+install -Dm755 "$out/sol-init" "$DESTDIR/usr/lib/sol/sol-init"
+install -Dm755 "$out/solctl" "$DESTDIR/usr/bin/solctl"
+'''

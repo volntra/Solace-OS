@@ -1,0 +1,10 @@
+description = "Login prompt on the serial console"
+enabled = true
+
+[service]
+exec = ["/usr/sbin/agetty", "-L", "115200", "ttyS0", "vt102"]
+restart = "always"
+restart_delay_ms = 200
+
+[sandbox]
+no_new_privs = false
