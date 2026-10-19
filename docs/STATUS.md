@@ -8,10 +8,43 @@ Repository: https://github.com/volntra/Solace-OS (`main`).
 
 Stages: 1 foundation ✓, 2 renderer ✓ (corners, shadows, wallpaper,
 background blur), 3 headless backend + pixel tests ✓, 4 graphics base
-recipes ✓, 5 DRM backend on the QEMU image, then 165 Hz on the NVIDIA
-machine.
+recipes ✓, 5 DRM backend on the QEMU image ✓; next: NVIDIA (open kernel
+modules + userspace recipes) and 165 Hz on the human's machine, which
+only the human can run.
 
-**Try it (nested in your desktop):**
+**On the QEMU image (sol-comp drives the display):**
+
+```sh
+nix develop
+just bootstrap && just image   # builds sol-comp and the graphics base too
+just qemu                      # boots to the desktop; Ctrl+Alt+F2: console login
+just qemu-test-comp            # automated: wallpaper, windows, blur, VT switching
+```
+
+![sol-comp on the QEMU image's virtio GPU (KMS), software-rendered](design/img/comp-drm-qemu.png)
+
+Verified in the cloud container (2026-10-19), `just qemu-test-comp`:
+
+```
+✓ booted and logged in on the serial console
+✓ sol-comp took the display
+✓ the wallpaper is on screen (1280x800)
+✓ a client window is drawn
+✓ blur: the stripes behind the glass are smoothed, the rest stay sharp
+✓ rounded window corners
+✓ Ctrl+Alt+F2: the console on tty2 (desktop paused)
+✓ Ctrl+Alt+F1: the desktop is back
+✓ clean poweroff
+```
+
+The boot now starts udev (hwdb compiled on first boot, coldplug trigger,
+settle), seatd and sol-comp (as root until the login screen exists).
+tty1 is the desktop; the console login moved to tty2. Without host 3D,
+Mesa renders in software (`kms_swrast`, softpipe); on the NVIDIA host,
+`-device virtio-vga-gl -display gtk,gl=on` gives virgl acceleration (not
+tried yet).
+
+**Nested in your desktop:**
 
 ```sh
 nix develop
@@ -51,12 +84,14 @@ sources, libudev), libdrm, wayland 1.26, wayland-protocols, xkeyboard-config,
 libxkbcommon, libevdev, mtdev, libinput 1.32, seatd/libseat, libglvnd and
 Mesa 26.2 (EGL, GBM, GLES2; virgl + softpipe; no LLVM). All built in the
 cloud container; a scratch root with them installed has every library
-dependency resolved. Not in the image yet (stage 5 adds them with the DRM
-backend); not yet run.
+dependency resolved; in the image since stage 5.
 
 Not yet: server-side titlebars (Phase 5, sol-wm), every protocol beyond
-xdg-shell and blur, layer-shell (the dock and menu bar need it), the DRM
-backend, measured frame times. Rotated
+xdg-shell and blur, layer-shell (the dock and menu bar need it),
+linux-dmabuf (so GPU clients can share buffers: shm clients only for now),
+explicit sync, multi-GPU, measured frame times. Several displays are laid
+out side by side but only tested with one. The idle render loop checks
+each display once per refresh period rather than waking only on change. Rotated
 outputs are not handled by the corner clip yet. udev has no seat ACLs
 (acl) or module autoloading (kmod) yet, and its hardware database is not
 compiled (`systemd-hwdb update`) until the image runs it; libseat has no
@@ -332,9 +367,12 @@ Phase 1's demo still works: `just demo`.
 
 ## Next
 
-1. On the NixOS host: measure the Phase 2 boot time with KVM
-   (`just qemu-test`), and try the Phase 3 demo with a window
-   (`just qemu --update build/demo/update.img`).
-2. Phase 4: compositor core (sol-comp, Smithay): nested in the host
-   desktop first, then DRM on the QEMU image. It needs the graphics base
-   (Mesa, libdrm, libinput, Wayland, ...) as recipes first.
+1. On the NixOS host: measure the boot time with KVM (`just qemu-test`;
+   the boot now also starts udev, seatd and sol-comp), try the Phase 3
+   demo with a window (`just qemu --update build/demo/update.img`), and
+   look at the desktop in a window (`just qemu`; with host 3D, try
+   `-device virtio-vga-gl -display gtk,gl=on` for virgl).
+2. Phase 4, last stage: NVIDIA. Recipes for the open kernel modules and
+   NVIDIA's userspace (EGL/GBM through libglvnd), then sol-comp at 165 Hz
+   on the human's RTX 5070 Ti, nested first (`just comp`) and then on the
+   real display from a live image. Only the human can run this part.

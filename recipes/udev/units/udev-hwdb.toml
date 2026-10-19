@@ -1,0 +1,7 @@
+description = "Compile the hardware database (first boot)"
+enabled = true
+
+[service]
+type = "oneshot"
+# /usr is sealed, so the database lives in /etc; built once.
+exec = ["/bin/sh", "-c", "test -e /etc/udev/hwdb.bin || exec /usr/bin/systemd-hwdb update"]

@@ -1,0 +1,8 @@
+description = "Seat manager (display and input device access)"
+enabled = true
+after = ["udev-trigger"]
+
+[service]
+# Members of "video" may take the seat.
+exec = ["/usr/bin/seatd", "-g", "video"]
+restart = "always"

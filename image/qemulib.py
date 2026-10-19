@@ -98,6 +98,9 @@ class Console:
         """Waits for a boot to finish and logs in as root. Returns the boot
         time reported by sol-init (ms after the kernel started)."""
         m = self.expect(rb"boot complete: (\d+) ms after the kernel started", "sol-init boot complete")
+        # The serial login may have printed its prompt before the last
+        # units finished; an empty line makes it ask again.
+        self.send("\n")
         self.expect(rb"login: ", "the login prompt")
         self.send("root\n")
         self.expect(rb"Password: ", "the password prompt", 60)

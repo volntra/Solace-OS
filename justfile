@@ -100,6 +100,11 @@ comp-demo:
     cargo build -p sol-comp
     target/debug/sol-comp --nested -- sh -c 'target/debug/sol-testclient --stripes --size 640x400 & sleep 1; exec target/debug/sol-testclient --size 900x200 --color f4f1fa40 --blur --title Glass'
 
+# Phase 4 demo on the image: sol-comp on the virtio GPU (KMS, libinput,
+# libseat), test windows, blur, VT switching; screenshots in build/image/
+qemu-test-comp:
+    image/qemu-test-comp.py
+
 # --- System updates (Phase 3) -----------------------------------------------
 
 # Build the demo update (solace-base 0.1.1) and the update disk carrying it

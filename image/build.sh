@@ -72,14 +72,26 @@ extra=$(cd "$root" && find . -mindepth 1 ! -path ./usr ! -path './usr/*' \
 [ -z "$extra" ] || die "unexpected files outside usr/: $extra"
 sys=$root/usr
 
-# Every shared library a binary needs must be in the system, in usr/lib
-# or beside the binary (glibc's gconv modules). readelf fails on scripts
-# and data, which need none.
+# Every shared library a binary needs must be in the system: in usr/lib,
+# beside the binary (glibc's gconv modules), or on its RUNPATH (udev's
+# private libsystemd-shared). readelf fails on scripts and data, which
+# need none.
 missing=$(find "$sys" -type f \( -perm -u+x -o -name '*.so*' \) -print0 |
   { xargs -0 readelf -d 2>/dev/null || true; } |
-  awk -v sys="$sys" '/^File: /{d=$2; sub(/\/[^\/]*$/, "", d)}
-    /\(NEEDED\)/{l=$NF; gsub(/[][]/, "", l); print d, l}' | sort -u |
-  while read -r dir lib; do [ -e "$sys/lib/$lib" ] || [ -e "$dir/$lib" ] || echo "$lib"; done |
+  awk 'function flush() { for (i = 1; i <= n; i++) print d, (rp == "" ? "-" : rp), need[i]; n = 0; rp = "" }
+    /^File: /{flush(); d=$2; sub(/\/[^\/]*$/, "", d)}
+    /\(NEEDED\)/{l=$NF; gsub(/[][]/, "", l); need[++n]=l}
+    /\((RUNPATH|RPATH)\)/{r=$NF; gsub(/[][]/, "", r); rp=r}
+    END{flush()}' | sort -u |
+  while read -r dir rp lib; do
+    [ -e "$sys/lib/$lib" ] || [ -e "$dir/$lib" ] && continue
+    found=
+    if [ "$rp" != - ]; then
+      IFS=: read -ra rps <<<"$rp"
+      for p in "${rps[@]}"; do [ -e "$root$p/$lib" ] && found=1; done
+    fi
+    [ -n "$found" ] || echo "$lib"
+  done |
   sort -u | tr '\n' ' ')
 [ -z "$missing" ] || die "libraries needed but not installed: $missing"
 

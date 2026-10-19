@@ -5,7 +5,7 @@
 # (kmod); see docs/STATUS.md.
 name = "udev"
 version = "262"
-release = 1
+release = 2
 summary = "Device manager (udevd, udevadm, rules, hardware database)"
 license = "GPL-2.0-or-later AND LGPL-2.1-or-later"
 homepage = "https://systemd.io/"
@@ -57,6 +57,10 @@ for p in $keep; do cp -a --parents "$p" "$DESTDIR/"; done
 cp -a --parents usr/lib/systemd/libsystemd-shared-*.so usr/lib/libudev.so* "$DESTDIR/"
 # Hooks into systemd units we do not have.
 rm -f "$DESTDIR/usr/lib/udev/rules.d/99-systemd.rules"
+# Our service units (sol-init).
+install -Dm644 "$RECIPE/units/udev-hwdb.toml" "$DESTDIR/usr/lib/sol/units/udev-hwdb.toml"
+install -Dm644 "$RECIPE/units/udevd.toml" "$DESTDIR/usr/lib/sol/units/udevd.toml"
+install -Dm644 "$RECIPE/units/udev-trigger.toml" "$DESTDIR/usr/lib/sol/units/udev-trigger.toml"
 '''
 
 [[split]]

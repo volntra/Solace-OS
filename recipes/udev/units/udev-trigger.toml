@@ -1,0 +1,9 @@
+description = "Announce the devices found at boot"
+enabled = true
+requires = ["udevd"]
+
+[service]
+type = "oneshot"
+# Replay "add" for everything the kernel found before udevd ran, then wait
+# until the rules have run (device nodes, permissions, tags).
+exec = ["/bin/sh", "-c", "udevadm trigger --type=subsystems --action=add && udevadm trigger --type=devices --action=add && exec udevadm settle --timeout=30"]

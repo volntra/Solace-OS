@@ -69,6 +69,8 @@ entry names a recipe that does not exist.
 - `sol-init`: ours (init/): PID 1, service manager, solctl, sol-log.
 - `solace-base`: ours (image/base/): os-release, factory /etc, console units.
 - `solace-grub-theme`: ours (boot/grub-theme/): boot menu theme + Inter fonts for GRUB.
+- `sol-comp`: our compositor (Phase 4); the image's display server.
+- `solace-wallpapers`: our wallpapers, rendered from assets/wallpapers.
 - `spk`: ours (pkg/): the package manager; system transactions on a running Solace.
 - `tar`: unpacking sources; archives.
 - `udev`: device manager from the systemd tree (standalone, locked stack): hotplug, device nodes, libudev for libinput.
@@ -600,4 +602,38 @@ entry names a recipe that does not exist.
 - **Rust recipes include `de/comp/Cargo.toml`:** cargo loads every
   workspace member; only the manifest is included so compositor changes
   do not rebuild sol-init, spk or sol-bootgen.
+
+### 2026-10-19: sol-comp on the display (Phase 4, stage 5)
+
+- **Decision:** a DRM backend modelled on Smithay's anvil, reduced to one
+  GPU: libseat session, udev for GPU discovery and hotplug, DRM + GBM +
+  EGL, `DrmOutputManager` per connector, libinput for input. Each display
+  runs its own loop: render, queue, wait for vblank; an empty frame is
+  skipped and checked again one refresh period later.
+- **GPU choice:** the boot GPU unless it is the firmware's framebuffer
+  (simpledrm), then any real GPU. simpledrm stays next to the real driver
+  in QEMU and on some PCs (NVIDIA among them), and drawing to it shows
+  nothing once the real driver runs. Found because the QEMU test looked at
+  the wrong screen.
+- **Cargo features:** `nested` (winit) and `drm`; the image's package is
+  built with `drm` only. sol-comp links dynamically (the rust toolchain's
+  static default cannot load EGL/GBM drivers).
+- **The pointer** is ours: an arrow drawn in code (no image assets),
+  placed on the cursor plane by Smithay when the hardware has one.
+- **Session keys:** Ctrl+Alt+F1..F12 switch VTs through libseat,
+  Ctrl+Alt+Backspace quits the compositor.
+- **Services ship with their packages:** udev (hwdb on first boot into
+  /etc, udevd, coldplug trigger + settle), seatd, sol-comp; each recipe
+  installs its unit from its recipe directory. A test parses every unit in
+  the repository with sol-init's parser.
+- **tty1 is the desktop**, the console login moved to tty2. sol-comp runs
+  as root through seatd until the login screen (Phase 9) starts it per
+  user.
+- **QEMU:** one GPU (`-vga none -device virtio-vga`) plus virtio keyboard
+  and tablet for `--screen` and windowed runs; the headless mode keeps
+  QEMU's default VGA for the boot-menu screenshots.
+- **Wallpapers** are a package (`solace-wallpapers`), rendered from our
+  SVGs with resvg from the dev workbench until resvg has a recipe.
+- **Standard groups** added to the factory /etc/group (render, kvm, lp,
+  cdrom, ...): udev's rules assign device nodes to them.
 

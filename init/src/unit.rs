@@ -298,6 +298,37 @@ pub fn enabled_set(root: &Path, units: &BTreeMap<String, Unit>) -> BTreeSet<Stri
 
 #[cfg(test)]
 pub(crate) mod tests {
+
+    /// Every unit shipped in this repository (recipes' `units/` and the
+    /// base image) parses, and everything it requires or orders after is
+    /// shipped too.
+    #[test]
+    fn shipped_units_are_valid() {
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let mut dirs = vec![repo.join("image/base/usr/lib/sol/units")];
+        for r in fs::read_dir(repo.join("recipes")).unwrap() {
+            dirs.push(r.unwrap().path().join("units"));
+        }
+        let mut units = BTreeMap::new();
+        for dir in dirs {
+            let Ok(rd) = fs::read_dir(&dir) else { continue };
+            for f in rd {
+                let path = f.unwrap().path();
+                let name = path.file_stem().unwrap().to_str().unwrap().to_string();
+                let text = fs::read_to_string(&path).unwrap();
+                let unit =
+                    Unit::parse(&name, &text).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+                units.insert(name, unit);
+            }
+        }
+        assert!(units.contains_key("udevd") && units.contains_key("sol-comp"));
+        for u in units.values() {
+            for d in u.requires.iter().chain(&u.after) {
+                assert!(units.contains_key(d), "{} names unknown unit {d}", u.name);
+            }
+        }
+    }
+
     use super::*;
 
     pub fn unit(name: &str, requires: &[&str]) -> Unit {
@@ -437,14 +468,5 @@ cpu_weight = 50
         assert_eq!(problems.len(), 3, "{problems:?}");
         assert!(problems.iter().any(|p| p.contains("missing")));
         assert!(problems.iter().any(|p| p.contains("Bad-Name")));
-    }
-
-    /// Every unit shipped in the base image must load.
-    #[test]
-    fn shipped_units_are_valid() {
-        let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../image/base");
-        let (all, problems) = load_all(&base);
-        assert!(problems.is_empty(), "{problems:?}");
-        assert!(!all.is_empty(), "no units found under {}", base.display());
     }
 }

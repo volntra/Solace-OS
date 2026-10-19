@@ -2,7 +2,7 @@
 # (os-release), first-boot /etc defaults, and the console login units.
 name = "solace-base"
 version = "0.1"
-release = 1
+release = 3
 summary = "Solace base files: os-release, factory /etc, console login units"
 license = "GPL-3.0-or-later"
 

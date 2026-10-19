@@ -1,0 +1,22 @@
+# Our wallpapers (assets/wallpapers/*.svg), rendered to PNG. Host
+# toolchain for the renderer (resvg, from the dev workbench) until it has
+# a recipe; the output is data generated from our own sources.
+name = "solace-wallpapers"
+version = "0.1"
+release = 1
+summary = "Solace wallpapers"
+license = "GPL-3.0-or-later"
+
+[[source]]
+local = "assets/wallpapers"
+include = ["dusk.svg", "dusk-blurred.svg"]
+
+[build]
+system = "custom"
+toolchain = "host"
+compile = '''
+resvg -w 2560 dusk.svg dusk.png
+'''
+install = '''
+install -Dm644 dusk.png "$DESTDIR/usr/share/sol/wallpapers/dusk.png"
+'''

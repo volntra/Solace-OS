@@ -12,6 +12,10 @@ spk
 solace-grub-theme
 grub
 
+# The desktop so far: the compositor on the display (pulls in udev, seatd,
+# Mesa, libinput and the wallpaper).
+sol-comp
+
 # Everyday command-line tools for the text console.
 grep
 sed
