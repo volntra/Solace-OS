@@ -9,8 +9,10 @@
 pub mod graph;
 pub mod log;
 pub mod manager;
+pub mod pid1;
 pub mod policy;
 pub mod proto;
+pub mod runtime;
 pub mod unit;
 
 use std::fmt;

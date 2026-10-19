@@ -48,7 +48,7 @@ cpu_weight = 100          # 1..10000
 |---|---|---|
 | `simple` | the process has been started | (runs until stopped) |
 | `oneshot` | it exits with status 0 | same; a non-zero exit is a failure |
-| `notify` | it writes `READY=1\n` to the fd in `$NOTIFY_FD` | (runs until stopped) |
+| `notify` | it sends a datagram `READY=1` to the Unix socket at `$NOTIFY_SOCKET` | (runs until stopped) |
 
 A unit is not started until every unit in `requires` is ready.
 Independent units start in parallel.
