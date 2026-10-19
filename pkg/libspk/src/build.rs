@@ -353,7 +353,7 @@ pub fn build(recipe: &Recipe, cfg: &BuildConfig, on: &mut dyn FnMut(BuildEvent))
     let (sysroot, bdir, log_path) = prepare_workdir(&work, recipe, &fetched)?;
     for s in recipe.sources.iter().filter(|s| s.is_local()) {
         let src = local_path(&cfg.repo_root, s)?;
-        copy_tree(&src, &bdir.join("src").join(s.file_name()))?;
+        copy_tree(&src, &bdir.join("src").join(s.file_name()), &s.include)?;
     }
     let vendor = if recipe.build.cargo {
         on(BuildEvent::Fetching {
@@ -531,6 +531,27 @@ fn write_cargo_config(bdir: &Path) -> Result<()> {
 /// Directories never copied from a local source.
 const LOCAL_SKIP: &[&str] = &[".git", "target", "build", "result", ".direnv"];
 
+/// Whether a walk of a local source visits `e`: never build outputs
+/// ([`LOCAL_SKIP`]); with an `include` list, only those paths and the
+/// directories leading to them.
+fn local_wanted(e: &walkdir::DirEntry, root: &Path, include: &[String]) -> bool {
+    if e.depth() == 0 {
+        return true;
+    }
+    if LOCAL_SKIP.iter().any(|s| e.file_name() == *s) {
+        return false;
+    }
+    let rel = e.path().strip_prefix(root).unwrap_or(e.path());
+    let rel = rel.to_string_lossy();
+    include.is_empty()
+        || include.iter().any(|i| {
+            let i = i.trim_end_matches('/');
+            rel == i
+                || rel.strip_prefix(i).is_some_and(|r| r.starts_with('/'))
+                || i.strip_prefix(&*rel).is_some_and(|r| r.starts_with('/'))
+        })
+}
+
 /// A symlink in a local source is refused rather than skipped: dropping it
 /// silently once lost /etc/os-release from the image. Recipes create links
 /// in their install step instead.
@@ -546,12 +567,12 @@ fn refuse_symlink(e: &walkdir::DirEntry) -> Result<()> {
 
 /// Copies a local source tree: regular files and directories only,
 /// skipping build outputs. Symlinks are an error ([`refuse_symlink`]).
-fn copy_tree(src: &Path, dst: &Path) -> Result<()> {
+fn copy_tree(src: &Path, dst: &Path, include: &[String]) -> Result<()> {
     let walk = walkdir::WalkDir::new(src)
         .follow_links(false)
         .sort_by_file_name()
         .into_iter()
-        .filter_entry(|e| e.depth() == 0 || !LOCAL_SKIP.iter().any(|s| e.file_name() == *s));
+        .filter_entry(|e| local_wanted(e, src, include));
     for e in walk {
         let e = e.map_err(|e| Error::Build(e.to_string()))?;
         refuse_symlink(&e)?;
@@ -567,13 +588,13 @@ fn copy_tree(src: &Path, dst: &Path) -> Result<()> {
 }
 
 /// sha256 over a local source tree (paths and contents), for stamps.
-fn tree_hash(dir: &Path) -> Result<String> {
+fn tree_hash(dir: &Path, include: &[String]) -> Result<String> {
     let mut text = String::new();
     let walk = walkdir::WalkDir::new(dir)
         .follow_links(false)
         .sort_by_file_name()
         .into_iter()
-        .filter_entry(|e| e.depth() == 0 || !LOCAL_SKIP.iter().any(|s| e.file_name() == *s));
+        .filter_entry(|e| local_wanted(e, dir, include));
     for e in walk {
         let e = e.map_err(|e| Error::Build(e.to_string()))?;
         refuse_symlink(&e)?;
@@ -635,7 +656,7 @@ fn build_stamp(recipe: &Recipe, cfg: &BuildConfig, keyring: &Keyring) -> Result<
             s,
             "local {} {}",
             src.file_name(),
-            tree_hash(&local_path(&cfg.repo_root, src)?)?
+            tree_hash(&local_path(&cfg.repo_root, src)?, &src.include)?
         );
     }
     let deps = sysroot_deps(recipe, cfg);
@@ -1700,19 +1721,47 @@ system = "make"
     }
 
     #[test]
+    fn include_limits_what_a_local_source_copies_and_hashes() {
+        let d = tempfile::tempdir().unwrap();
+        let src = d.path().join("repo");
+        for f in [
+            "Cargo.toml",
+            "init/src/main.rs",
+            "docs/a.md",
+            "init-extra/x",
+        ] {
+            let p = src.join(f);
+            fs::create_dir_all(p.parent().unwrap()).unwrap();
+            fs::write(&p, f).unwrap();
+        }
+        let inc = vec!["Cargo.toml".to_string(), "init".to_string()];
+        let out = d.path().join("out");
+        copy_tree(&src, &out, &inc).unwrap();
+        assert!(out.join("Cargo.toml").is_file() && out.join("init/src/main.rs").is_file());
+        assert!(!out.join("docs").exists(), "not included");
+        assert!(!out.join("init-extra").exists(), "a prefix is not a path");
+        // A change outside the included paths keeps the hash.
+        let h = tree_hash(&src, &inc).unwrap();
+        fs::write(src.join("docs/a.md"), "changed").unwrap();
+        assert_eq!(h, tree_hash(&src, &inc).unwrap());
+        fs::write(src.join("init/src/main.rs"), "changed").unwrap();
+        assert_ne!(h, tree_hash(&src, &inc).unwrap());
+    }
+
+    #[test]
     fn local_sources_refuse_symlinks() {
         let d = tempfile::tempdir().unwrap();
         let src = d.path().join("src");
         fs::create_dir_all(src.join("etc")).unwrap();
         fs::write(src.join("etc/a"), "a").unwrap();
-        assert!(copy_tree(&src, &d.path().join("ok")).is_ok());
-        assert!(tree_hash(&src).is_ok());
+        assert!(copy_tree(&src, &d.path().join("ok"), &[]).is_ok());
+        assert!(tree_hash(&src, &[]).is_ok());
         std::os::unix::fs::symlink("../lib/os-release", src.join("etc/os-release")).unwrap();
-        let err = copy_tree(&src, &d.path().join("out"))
+        let err = copy_tree(&src, &d.path().join("out"), &[])
             .unwrap_err()
             .to_string();
         assert!(err.contains("may not contain symlinks"), "{err}");
-        assert!(tree_hash(&src).is_err());
+        assert!(tree_hash(&src, &[]).is_err());
     }
 
     #[test]
@@ -1730,19 +1779,20 @@ system = "make"
             extract: false,
             dir: None,
             local: Some(p.into()),
+            include: vec![],
         };
         assert!(local_path(repo.path(), &src("escape")).is_err());
         let code = local_path(repo.path(), &src("code")).unwrap();
         let dst = tempfile::tempdir().unwrap();
-        copy_tree(&code, &dst.path().join("code")).unwrap();
+        copy_tree(&code, &dst.path().join("code"), &[]).unwrap();
         assert!(dst.path().join("code/a.rs").is_file());
         assert!(
             !dst.path().join("code/target").exists(),
             "build outputs skipped"
         );
-        let h1 = tree_hash(&code).unwrap();
+        let h1 = tree_hash(&code, &[]).unwrap();
         fs::write(repo.path().join("code/a.rs"), "b").unwrap();
-        assert_ne!(h1, tree_hash(&code).unwrap());
+        assert_ne!(h1, tree_hash(&code, &[]).unwrap());
     }
 
     #[test]
@@ -1754,6 +1804,7 @@ system = "make"
             extract: true,
             dir: None,
             local: None,
+            include: vec![],
         };
         let s = extract_script(&[(src, PathBuf::new())]);
         assert!(s.contains("'a b;rm -rf.tar.gz'"), "{s}");

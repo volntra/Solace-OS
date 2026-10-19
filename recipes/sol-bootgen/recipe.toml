@@ -7,6 +7,8 @@ license = "GPL-3.0-or-later"
 
 [[source]]
 local = "."
+# The Cargo workspace only: other changes in the repo do not rebuild it.
+include = ["Cargo.toml", "Cargo.lock", "init", "boot/bootgen", "pkg", "tools/solcheck"]
 
 [build]
 system = "custom"

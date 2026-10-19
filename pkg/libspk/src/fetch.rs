@@ -236,6 +236,7 @@ mod tests {
             extract: true,
             dir: None,
             local: None,
+            include: vec![],
         };
         assert_eq!(fetch_source(&src, d.path()).unwrap(), d.path().join(&sha));
 

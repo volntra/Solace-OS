@@ -51,6 +51,11 @@ pub struct Source {
     /// repo, and its contents are hashed into the build stamp).
     #[serde(default)]
     pub local: Option<String>,
+    /// For a local source: only these paths (relative to it) are copied in
+    /// and hashed, so unrelated changes elsewhere do not rebuild it.
+    /// Empty: the whole directory.
+    #[serde(default)]
+    pub include: Vec<String>,
     #[serde(default)]
     pub mirrors: Vec<String>,
     #[serde(default = "default_true")]
@@ -261,7 +266,15 @@ impl Recipe {
                         "local source {l:?} must be a relative path inside the repository"
                     )));
                 }
+                if let Some(bad) = s.include.iter().find(|i| *i == "." || !valid_local(i)) {
+                    return Err(Error::invalid(format!(
+                        "source {l}: include {bad:?} must be a relative path inside it"
+                    )));
+                }
                 continue;
+            }
+            if !s.include.is_empty() {
+                return Err(Error::invalid("include is only for local sources"));
             }
             for url in std::iter::once(&s.url).chain(&s.mirrors) {
                 if !url.starts_with("https://") {
