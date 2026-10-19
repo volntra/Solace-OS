@@ -2,7 +2,7 @@
 # Boots a throwaway ESP with our GRUB theme in QEMU (OVMF) and saves a
 # screenshot of the real boot menu. Development aid; writes only build/.
 #
-#   tools/grub-preview.sh [out.ppm]
+#   [GRUB_EFI=grubx64.efi] tools/grub-preview.sh [out.ppm]
 set -euo pipefail
 out=${1:-build/grub-preview/menu.ppm}
 dir=build/grub-preview
@@ -37,11 +37,16 @@ uuid = "1234-ABCD"
 efi_path = "/EFI/Microsoft/Boot/bootmgfw.efi"
 INV
 printf 'menu = "always"\ntimeout = 30\n' > "$dir/boot.toml"
-cargo run -q -p sol-bootgen -- --esp "$dir/esp" --inventory "$dir/inventory.toml" --settings "$dir/boot.toml"
+cargo run -q -p sol-bootgen --bin sol-bootgen -- --esp "$dir/esp" --inventory "$dir/inventory.toml" --settings "$dir/boot.toml"
 
-grub-mkimage -d "$GRUB_EFI_LIB" -O x86_64-efi -p /grub -o "$dir/esp/EFI/BOOT/BOOTX64.EFI" \
-  part_gpt part_msdos fat normal configfile search search_fs_uuid all_video \
-  gfxterm gfxmenu png font echo linux gzio chain keystatus test sleep
+# GRUB_EFI=<grubx64.efi> previews a given GRUB binary (e.g. our package's).
+if [ -n "${GRUB_EFI:-}" ]; then
+  cp "$GRUB_EFI" "$dir/esp/EFI/BOOT/BOOTX64.EFI"
+else
+  grub-mkimage -d "$GRUB_EFI_LIB" -O x86_64-efi -p /grub -o "$dir/esp/EFI/BOOT/BOOTX64.EFI" \
+    part_gpt part_msdos fat normal configfile search search_fs_uuid all_video \
+    gfxterm gfxmenu png font echo linux gzio chain keystatus test sleep
+fi
 
 # A FAT image with volume id ABCD-1234, filled with mtools (no root).
 img="$dir/esp.img"
