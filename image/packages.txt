@@ -7,6 +7,7 @@ solace-base
 linux
 sol-bootgen
 solace-grub-theme
+grub
 
 # Everyday command-line tools for the text console.
 grep

@@ -1,0 +1,49 @@
+# GRUB 2 for UEFI, with upstream branding removed (solace-branding.patch:
+# no "GNU GRUB version" header, no GRUB wording in the text-mode help).
+# grub.cfg is written only by sol-bootgen, so grub-mkconfig and its
+# helpers are not installed. The release tarball's signature was checked
+# against the GNU keyring (key BE5C2320...2166, Daniel Kiper) before the
+# hash was pinned.
+name = "grub"
+version = "2.14"
+release = 1
+summary = "Boot loader (UEFI)"
+license = "GPL-3.0-or-later"
+homepage = "https://www.gnu.org/software/grub/"
+
+[[source]]
+url = "https://ftp.gnu.org/gnu/grub/grub-2.14.tar.xz"
+sha256 = "bc8d3c73535b8838d8c8e2654d73edc4e6ae8c8acdb45d5df5dc9a1547446d43"
+
+[deps]
+build = ["flex", "xz"]
+runtime = ["xz"]
+
+[build]
+system = "custom"
+prepare = '''
+patch -p1 < "$RECIPE/solace-branding.patch"
+'''
+configure = '''
+./configure --prefix=/usr --sysconfdir=/etc --with-platform=efi --target=x86_64 \
+  --disable-efiemu --disable-werror --disable-grub-mkfont --disable-nls \
+  --disable-device-mapper --disable-libzfs
+'''
+compile = '''
+make
+'''
+install = '''
+make DESTDIR="$DESTDIR" install
+rm -rf "$DESTDIR/etc" "$DESTDIR/usr/share/grub/grub-mkconfig_lib"
+rm -f "$DESTDIR"/usr/sbin/grub-{mkconfig,reboot,set-default}
+rm -f "$DESTDIR"/usr/share/man/man8/grub-{mkconfig,reboot,set-default}.8
+# The ESP binary: every module the boot path needs is built in, so the
+# ESP holds no module directory. The prefix has no device: GRUB uses the
+# partition it was loaded from.
+install -d "$DESTDIR/usr/lib/sol/boot"
+"$DESTDIR/usr/bin/grub-mkimage" -O x86_64-efi -d "$DESTDIR/usr/lib/grub/x86_64-efi" \
+  -p /grub -o "$DESTDIR/usr/lib/sol/boot/grubx64.efi" \
+  part_gpt fat normal configfile search search_fs_uuid echo test true \
+  linux gzio all_video efi_gop gfxterm gfxterm_background gfxmenu png \
+  font keystatus chain sleep reboot halt
+'''

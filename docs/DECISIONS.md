@@ -27,6 +27,7 @@ entry names a recipe that does not exist.
 - `gzip`: .gz archives (kernel image, sources).
 - `less`: pager for text output (logs, man pages).
 - `linux`: the kernel, with our configuration (boot/kernel/solace.config).
+- `grub`: the boot loader on the ESP (locked stack); built for UEFI only, branding patched out.
 - `linux-headers`: kernel API headers for glibc and everything else.
 - `m4`: macro processor needed by autoconf-generated builds and bison.
 - `make`: build driver.
