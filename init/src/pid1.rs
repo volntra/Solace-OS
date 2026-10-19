@@ -187,6 +187,16 @@ pub const ROOT_LINKS: &[(&str, &str)] = &[
     ("System", "usr"),
 ];
 
+/// btrfs options and mount flags for one of our subvolumes. Generic words
+/// such as `noatime` are flags, not filesystem options: mount(2) passes
+/// the data string to btrfs, which rejects them with EINVAL.
+fn subvol_mount(name: &str) -> (String, MountFlags) {
+    (
+        format!("subvol={name},compress=zstd:3"),
+        MountFlags::NOATIME,
+    )
+}
+
 /// Builds the real root under `new_root` from the btrfs subvolumes on
 /// `dev`: a tmpfs skeleton with `@system` (read-only) at /usr, `@etc`,
 /// `@var`, and `@users`.
@@ -213,9 +223,16 @@ pub fn assemble_root(dev: &Path, system: &str, new_root: &Path) -> Result<(), St
         std::os::unix::fs::symlink(target, r(link)).map_err(|e| e.to_string())?;
     }
     let subvol = |name: &str, target: &str, flags: MountFlags| -> Result<(), String> {
-        let o = opts(&format!("subvol={name},compress=zstd:3,noatime"));
-        mount(&*dev_s, r(target), "btrfs", flags, Some(o.as_c_str()))
-            .map_err(|e| format!("mount {name} at /{target}: {e}"))
+        let (data, base) = subvol_mount(name);
+        let o = opts(&data);
+        mount(
+            &*dev_s,
+            r(target),
+            "btrfs",
+            base | flags,
+            Some(o.as_c_str()),
+        )
+        .map_err(|e| format!("mount {name} at /{target}: {e}"))
     };
     subvol(system, "usr", MountFlags::RDONLY)?;
     subvol("@etc", "etc", MountFlags::empty())?;
@@ -421,6 +438,19 @@ pub fn finish(power: Power, log: &mut LogStore) -> ! {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn subvolume_data_holds_only_btrfs_options() {
+        let (data, flags) = subvol_mount("@snapshots/1");
+        assert_eq!(data, "subvol=@snapshots/1,compress=zstd:3");
+        assert!(flags.contains(MountFlags::NOATIME));
+        // VFS-level words belong in the flags; btrfs would reject them.
+        for word in [
+            "noatime", "relatime", "ro", "rw", "nosuid", "nodev", "noexec",
+        ] {
+            assert!(!data.split(',').any(|o| o == word), "{word} in mount data");
+        }
+    }
 
     #[test]
     fn cmdline() {
