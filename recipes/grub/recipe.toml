@@ -35,8 +35,8 @@ make
 install = '''
 make DESTDIR="$DESTDIR" install
 rm -rf "$DESTDIR/etc" "$DESTDIR/usr/share/grub/grub-mkconfig_lib"
-rm -f "$DESTDIR"/usr/sbin/grub-{mkconfig,reboot,set-default}
-rm -f "$DESTDIR"/usr/share/man/man8/grub-{mkconfig,reboot,set-default}.8
+rm -f "$DESTDIR"/usr/sbin/grub-{mkconfig,reboot,set-default,bios-setup,sparc64-setup}
+rm -f "$DESTDIR"/usr/share/man/man8/grub-{mkconfig,reboot,set-default,bios-setup,sparc64-setup}.8
 # The ESP binary: every module the boot path needs is built in, so the
 # ESP holds no module directory. The prefix has no device: GRUB uses the
 # partition it was loaded from.
