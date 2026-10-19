@@ -25,3 +25,16 @@ recipes = [
     "gawk", "grep", "gzip", "make", "patch", "sed", "tar", "xz",
     "binutils", "gcc",
 ]
+
+[[stage]]
+name = "chroot"
+description = "native temporary tools: no host tools from here on (LFS ch. 7)"
+recipes_dir = "bootstrap/recipes"
+repo = "build/bootstrap/repo"
+toolchain = "native"
+base = [
+    "glibc", "linux-headers", "binutils", "gcc", "bash", "coreutils",
+    "diffutils", "file", "findutils", "gawk", "grep", "gzip", "make", "m4",
+    "ncurses", "patch", "sed", "tar", "xz",
+]
+recipes = ["gettext", "bison", "perl", "python"]
