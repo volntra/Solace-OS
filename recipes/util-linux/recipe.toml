@@ -1,5 +1,6 @@
-# LFS 8.80. login and su come from shadow (no PAM yet). No wall: it
-# installs setgid tty, and packages carry only root-owned files.
+# LFS 8.80. login and su come from shadow (no PAM yet). Packages carry
+# only root-owned files, so no chown at install, no setgid-tty wall, and
+# mount/umount are not setuid (users mount drives through udisks).
 name = "util-linux"
 version = "2.42.3"
 release = 1
@@ -20,7 +21,7 @@ configure = '''
 ./configure --bindir=/usr/bin --libdir=/usr/lib --runstatedir=/run --sbindir=/usr/sbin \
   --disable-chfn-chsh --disable-login --disable-nologin --disable-su \
   --disable-setpriv --disable-runuser --disable-pylibmount --disable-liblastlog2 \
-  --disable-wall \
+  --disable-wall --disable-makeinstall-chown --disable-makeinstall-setuid \
   --disable-static --without-python --without-systemd \
   --without-systemdsystemunitdir ADJTIME_PATH=/var/lib/hwclock/adjtime
 '''
