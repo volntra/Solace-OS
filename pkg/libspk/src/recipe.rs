@@ -294,6 +294,13 @@ impl Recipe {
                 return Err(Error::invalid(format!("bad source file name in {}", s.url)));
             }
         }
+        if !self.triggers.post_install.is_empty() {
+            // Not silently ignored: system transactions run only the
+            // built-in initramfs trigger so far (docs/formats/system.md).
+            return Err(Error::invalid(
+                "package triggers ([triggers] post_install) are not supported yet",
+            ));
+        }
         if self.build.cargo && !self.sources.first().is_some_and(Source::is_local) {
             return Err(Error::invalid(
                 "build.cargo needs a local first source holding Cargo.lock",
@@ -457,6 +464,17 @@ files = ["usr/lib/liblzma.so*"]
         r.dir = PathBuf::from("recipes/xz");
         r.validate()?;
         Ok(r)
+    }
+
+    #[test]
+    fn package_triggers_are_refused_until_supported() {
+        assert!(parse(&format!("{GOOD}\n[triggers]\npost_install = []\n")).is_ok());
+        let err = parse(&format!(
+            "{GOOD}\n[triggers]\npost_install = [\"ldconfig\"]\n"
+        ))
+        .unwrap_err()
+        .to_string();
+        assert!(err.contains("not supported"), "{err}");
     }
 
     #[test]

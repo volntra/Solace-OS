@@ -1,10 +1,62 @@
 # Status
 
-_Last updated: 2026-10-19 (session 2, overnight)_
+_Last updated: 2026-10-19 (session 2)_
 
 Repository: https://github.com/volntra/Solace-OS (`main`).
 
-## Current phase: 2 (base bootstrap + sol-init + GRUB + bootgen + image): demo works; boot time to be measured on KVM
+## Current phase: 3 (system transactions + rollback): demo works
+
+**Milestone demo:**
+
+```sh
+nix develop
+just bootstrap && just image   # as in Phase 2 (cached after the first run)
+just update-demo               # build/demo/update.img: Solace 0.1.1 as an update
+just qemu-test-update          # the whole demo, automated (5 boots, ~10 min without KVM)
+```
+
+By hand: `just qemu --update build/demo/update.img`, log in (root /
+solace), then
+
+```sh
+mkdir -p /Volumes/Update && mount -t vfat -o ro /dev/vdb /Volumes/Update
+spk --repo /Volumes/Update/good upgrade   # new system 2; the running one is untouched
+spk systems
+solctl reboot                             # boots system 2 (Solace 0.1.1)
+solctl reboot                             # pick "Solace 0.1" in the boot menu: system 1
+spk rollback                              # or make the previous system the default
+```
+
+Verified in the cloud container (2026-10-19), `just qemu-test-update`:
+
+```
+✓ A: tampered update refused; no snapshot left, boot menu unchanged
+✓ A: power cut after the new system was written, before it was sealed
+✓ B: system 1 still boots after the power cut (snapshots on disk: 1 2)
+✓ B: update applied as system 2 (half-made snapshot cleaned up); next boot: 2
+✓ C: rebooted into system 2 (Solace 0.1.1)
+✓ D: picked the previous system in the boot menu: system 1 (Solace 0.1)
+✓ D: spk rollback made system 1 the default
+✓ E: system 1 boots by default after the rollback
+qemu-test-update: PASS
+```
+
+The boot menu with both systems: `docs/design/img/boot-menu-two-systems.png`.
+`just qemu-test` (Phase 2) still passes and now also checks `/boot`,
+`/run/sol/btrfs` and `spk systems`.
+
+Phase 3 stages:
+
+| Stage | What | State |
+|---|---|---|
+| 1 | Design: docs/formats/system.md | done |
+| 2 | sol-init mounts the btrfs top level and the ESP; bootgen passes `sol.esp=` | done, tests |
+| 3 | libspk `btrfs` (ioctls) + `system` (transact, rollback, prune) | done, tests + QEMU |
+| 4 | spk on Solace: live installs as transactions, `spk systems`, `spk rollback`; spk package | done |
+| 5 | Update disk, `just qemu-test-update` with failure injection | done, passes |
+
+## Phase 2 (previous): demo works; boot time to be measured on KVM
+
 
 **Milestone demo:**
 
@@ -142,9 +194,36 @@ Phase 1's demo still works: `just demo`.
 - `image/`: unprivileged image builder (btrfs `@snapshots/1` read-only,
   `@etc`, `@var`, `@users`; FAT32 ESP; GPT), QEMU runner, smoke test.
 
+### Phase 3
+- `docs/formats/system.md`: snapshots, metadata, the transaction steps,
+  rollback, boot settings.
+- sol-init: `/run/sol/btrfs` (top level, root-only), `/boot` (ESP by FAT
+  volume id), `/run/sol/booted`; sol-bootgen writes `sol.esp=`.
+- libspk: `btrfs` (snapshot, seal, delete; ABI pinned by tests),
+  `system::Live` (transact, rollback, overview), read-only database
+  opens, roots with an explicit keyring; `spk build` accepts deps that
+  are only in dependency repos.
+- spk: live install/remove/upgrade are system transactions; `spk systems`,
+  `spk rollback [ID]`; packaged (`recipes/spk`) and in the image.
+- image: system 1 carries its initramfs and metadata; `/etc/sol/boot.toml`.
+- Tests: `just qemu-test-update` (tampered update, power cut before the
+  seal, update, boot menu pick, rollback).
+
 ## Not done / limitations (honest list)
 
-- **Boot time unmeasured on real virtualization** (see above).
+- **Boot time unmeasured on real virtualization** (Phase 2, see above).
+- **Config updates do not reach /etc.** /etc is seeded from
+  `/usr/share/factory/etc` on first boot only; the 3-way merge of
+  changed factory files (CLAUDE.md section 4) is not implemented.
+- Package triggers (`[triggers]` in recipes) are refused; the only
+  trigger is the built-in initramfs rebuild.
+- The boot menu keeps the newest `keep` systems plus the default. After
+  a rollback followed by several updates, the running system can drop out
+  of the menu (its snapshot is never deleted while it runs).
+- Only local repositories work on Solace itself: the image has no CA
+  certificates for HTTPS yet.
+- `sol-pkgd` (spk over D-Bus for Settings and the installer) is not
+  started; it arrives when Settings needs it.
 - Dev images log in as root with the password `solace`
   (`SOL_ROOT_PASSWORD`); real users come with the installer (Phase 12).
 - shadow is built `--disable-logind` (no libsystemd) until elogind
@@ -168,14 +247,10 @@ Phase 1's demo still works: `just demo`.
 
 - Phase 1's `build/repo` packages (`just demo`) are built with the host
   toolchain and are not bootable; the system stage rebuilds them natively.
-- `spk rollback` exits with "arrives in Phase 3". System snapshot
-  transactions, triggers (`[triggers]` in recipes is parsed but not run),
-  and initramfs rebuilds are Phase 3.
-- `sol-pkgd` (D-Bus daemon, polkit) is not started; planned with Phase 3
-  so Settings/installer can drive transactions.
-- A transaction that is *killed* mid-apply leaves
-  `usr/lib/spk/staging/` and blocks the next run until removed by hand
-  (crash safety comes from Phase 3 snapshots).
+- On a scratch root (not a running Solace), a transaction that is
+  *killed* mid-apply leaves `usr/lib/spk/staging/` and blocks the next
+  run until removed by hand. On Solace, system transactions are crash
+  safe (tested).
 - No cgroup resource limits or ccache in builds yet.
 - Recipe test suites (`make check`) are not run.
 - `spk` has no autoremove of orphaned dependencies.
@@ -199,8 +274,9 @@ Phase 1's demo still works: `just demo`.
 
 ## Next
 
-1. On the NixOS host: `just bootstrap && just image && just qemu-test`
-   to measure the boot time with KVM, and `just qemu` to see it.
-2. Phase 3: system transactions + rollback (new @system snapshot per
-   update, triggers including the initramfs, bootgen entry, `spk
-   rollback`, GRUB pick of the previous system).
+1. On the NixOS host: measure the Phase 2 boot time with KVM
+   (`just qemu-test`), and try the Phase 3 demo with a window
+   (`just qemu --update build/demo/update.img`).
+2. Phase 4: compositor core (sol-comp, Smithay): nested in the host
+   desktop first, then DRM on the QEMU image. It needs the graphics base
+   (Mesa, libdrm, libinput, Wayland, ...) as recipes first.

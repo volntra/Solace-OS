@@ -85,6 +85,9 @@ class Console:
     def run(self, cmd, what=None, timeout=120):
         """Runs a shell command; returns its output (cleaned) as text."""
         what = what or cmd
+        # A trailing echo puts the prompt on its own line even when the
+        # output does not end in a newline (cat of such a file).
+        cmd += "; echo"
         self.send(cmd + "\n")
         self.expect(re.escape(cmd.encode()), f"echo of {what}", 30)
         start = self.pos

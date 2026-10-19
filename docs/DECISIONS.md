@@ -417,3 +417,37 @@ entry names a recipe that does not exist.
   chroot- and system-stage sandbox, and glibc, the kernel and others
   generate code with awk. Patching only gcc's awk would leave packages
   built by a broken tool in the system.
+
+### 2026-10-19: System transactions (Phase 3)
+
+- **Decision:** an update snapshots the **booted** system (not the menu's
+  default), bind-mounts the copy as `usr` of a staging root under
+  `/run/sol/tx`, and runs the ordinary package transaction there with
+  the running system's trusted keys. The initramfs trigger, metadata
+  (`/usr/lib/sol/system.toml`), seal (read-only flag) and sol-bootgen
+  follow; any failure before the boot menu is written deletes the
+  snapshot. An unsealed snapshot can only be an interrupted transaction
+  and is deleted by the next one. Rollback sets `default` in
+  `/etc/sol/boot.toml` and reruns sol-bootgen. Spec:
+  docs/formats/system.md.
+- **Alternatives:** ostree-style deployments (a second store and a
+  checkout step, more than we need with btrfs snapshots); updating
+  `/usr` in place with a journal (the running system would change).
+- **Why:** btrfs snapshots are cheap and atomic, the existing package
+  transaction is reused unchanged, and the running system and boot menu
+  are never half-updated.
+- **Details:** sol-init mounts the volume's top level at
+  `/run/sol/btrfs` (root-only, `noexec`) and the ESP at `/boot` (found
+  by `sol.esp=UUID=`, which sol-bootgen now writes). Because the top
+  level is `noexec`, the initramfs is written with sol-bootgen's library
+  (from the new system's packaged sol-init), not by running a tool from
+  the snapshot. Package triggers (`[triggers]`) are refused until they
+  are implemented. `SPK_TEST_PAUSE=before-seal` pauses a transaction for
+  the QEMU test's power cut (CLAUDE.md section 8); it does nothing unset.
+
+### 2026-10-19: `spk build` accepts dependencies already packaged
+
+- **Decision:** a build may depend on packages that no recipe in its
+  recipes directory produces if a `--dep-repo` has them (names read from
+  the signed index). Needed to rebuild one recipe outside the full set
+  (the Phase 3 demo update).

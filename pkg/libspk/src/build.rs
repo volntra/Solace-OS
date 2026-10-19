@@ -1340,6 +1340,7 @@ pub fn load_recipes(dir: &Path) -> Result<Vec<Recipe>> {
 fn visit<'a>(
     r: &'a Recipe,
     producer: &HashMap<String, &'a Recipe>,
+    available: &BTreeSet<String>,
     state: &mut HashMap<&'a str, u8>,
     order: &mut Vec<&'a Recipe>,
     chain: &mut Vec<&'a str>,
@@ -1359,13 +1360,16 @@ fn visit<'a>(
     chain.push(&r.name);
     for d in r.deps.build.iter().chain(&r.deps.runtime) {
         let Some(dep) = producer.get(d.name.as_str()) else {
+            if available.contains(&d.name) {
+                continue;
+            }
             return Err(Error::invalid(format!(
                 "{} depends on {}, which no recipe produces",
                 r.name, d.name
             )));
         };
         if dep.name != r.name {
-            visit(dep, producer, state, order, chain)?;
+            visit(dep, producer, available, state, order, chain)?;
         }
     }
     chain.pop();
@@ -1374,12 +1378,45 @@ fn visit<'a>(
     Ok(())
 }
 
+/// Names of the packages in `cfg`'s dependency repositories (indexes
+/// verified with the build's keys).
+///
+/// # Errors
+/// Repository errors.
+pub fn dep_repo_names(cfg: &BuildConfig) -> Result<BTreeSet<String>> {
+    let keyring = keyring_of(cfg);
+    let tmp = tempfile::tempdir().at(std::env::temp_dir())?;
+    let mut names = BTreeSet::new();
+    for r in cfg
+        .dep_repos
+        .iter()
+        .filter(|r| r.join(repo::INDEX).exists())
+    {
+        let repo = Repo::open(Location::Local(r.clone()), &keyring, tmp.path())?;
+        names.extend(repo.index.packages.into_iter().map(|e| e.name));
+    }
+    Ok(names)
+}
+
 /// Orders `wanted` (and the recipes they need to build) so every recipe
 /// comes after the recipes producing its build dependencies.
 ///
 /// # Errors
 /// Unknown build dependencies and dependency cycles.
 pub fn build_order<'a>(all: &'a [Recipe], wanted: &[String]) -> Result<Vec<&'a Recipe>> {
+    build_order_with(all, wanted, &BTreeSet::new())
+}
+
+/// Like [`build_order`], where a dependency no recipe produces is fine if
+/// it is in `available` (packages already in the dependency repos).
+///
+/// # Errors
+/// As [`build_order`].
+pub fn build_order_with<'a>(
+    all: &'a [Recipe],
+    wanted: &[String],
+    available: &BTreeSet<String>,
+) -> Result<Vec<&'a Recipe>> {
     let mut producer: HashMap<String, &Recipe> = HashMap::new();
     for r in all {
         for n in r.package_names() {
@@ -1398,7 +1435,14 @@ pub fn build_order<'a>(all: &'a [Recipe], wanted: &[String]) -> Result<Vec<&'a R
             .iter()
             .find(|r| &r.name == w)
             .ok_or_else(|| Error::invalid(format!("no recipe named {w}")))?;
-        visit(r, &producer, &mut state, &mut order, &mut Vec::new())?;
+        visit(
+            r,
+            &producer,
+            available,
+            &mut state,
+            &mut order,
+            &mut Vec::new(),
+        )?;
     }
     Ok(order)
 }
@@ -1471,6 +1515,10 @@ system = "make"
         );
         let all = vec![recipe("a", &["nope"], "")];
         assert!(build_order(&all, &["a".into()]).is_err());
+        // A dependency already packaged in a dependency repo is fine.
+        let avail = BTreeSet::from(["nope".to_string()]);
+        let order = build_order_with(&all, &["a".into()], &avail).unwrap();
+        assert_eq!(order.len(), 1);
     }
 
     #[test]

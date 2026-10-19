@@ -788,10 +788,10 @@ fn build_cmd(a: BuildArgs) -> Result<()> {
             })
             .collect()
     };
-    let order = build::build_order(&all, &wanted)?;
     let mut cfg = base_config(&a.opts, a.repo_dir)?;
     cfg.mode_override = a.toolchain;
     cfg.dep_repos = a.dep_repos;
+    let order = build::build_order_with(&all, &wanted, &build::dep_repo_names(&cfg)?)?;
     cfg.base_deps = a
         .base
         .iter()

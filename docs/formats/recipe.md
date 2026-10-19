@@ -48,8 +48,8 @@ provides = []
 conflicts = []
 replaces = []
 
-[triggers]                  # optional; run by the transaction (Phase 3)
-post_install = []
+[triggers]                  # reserved: refused while non-empty (system
+post_install = []           # transactions run only the initramfs trigger)
 ```
 
 ## Fields
