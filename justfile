@@ -38,6 +38,8 @@ logo:
     python3 tools/brand/gen-logo.py
     resvg -w 512 assets/brand/solace-icon.svg assets/brand/solace-icon-512.png
     resvg -w 128 assets/brand/solace-mark.svg assets/brand/solace-mark-128.png
+    resvg -w 512 assets/brand/solace-icon-glass.svg assets/brand/solace-icon-glass-512.png
+    resvg -w 1350 build/brand/glass-preview.svg docs/design/img/glass-preview.png
 
 # Delete build outputs (keeps the source cache and signing key)
 clean-build:
