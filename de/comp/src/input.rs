@@ -5,24 +5,38 @@
 use smithay::{
     backend::input::{
         AbsolutePositionEvent, Axis, AxisSource, ButtonState, Event, InputBackend, InputEvent,
-        KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent,
+        KeyboardKeyEvent, PointerAxisEvent, PointerButtonEvent, PointerMotionEvent,
     },
     input::{
-        keyboard::FilterResult,
+        keyboard::{FilterResult, Keysym, ModifiersState},
         pointer::{AxisFrame, ButtonEvent, MotionEvent},
     },
-    utils::SERIAL_COUNTER,
+    utils::{Logical, Point, SERIAL_COUNTER},
 };
 
-use crate::state::Comp;
+use crate::state::{Comp, SessionRequest};
 
 /// Scroll distance of one wheel notch, in logical pixels.
 const NOTCH: f64 = 15.0;
+
+/// Keys the compositor keeps for itself: Ctrl+Alt+F1..F12 switch virtual
+/// terminals (xkb maps them to `XF86Switch_VT_n`), Ctrl+Alt+Backspace quits.
+pub fn session_key(modifiers: ModifiersState, sym: Keysym) -> Option<SessionRequest> {
+    let raw = sym.raw();
+    let first = Keysym::XF86_Switch_VT_1.raw();
+    if (first..=Keysym::XF86_Switch_VT_12.raw()).contains(&raw) {
+        return i32::try_from(raw - first + 1)
+            .ok()
+            .map(SessionRequest::SwitchVt);
+    }
+    (modifiers.ctrl && modifiers.alt && sym == Keysym::BackSpace).then_some(SessionRequest::Quit)
+}
 
 impl Comp {
     pub fn process_input_event<I: InputBackend>(&mut self, event: InputEvent<I>) {
         match event {
             InputEvent::Keyboard { event, .. } => self.on_key::<I>(&event),
+            InputEvent::PointerMotion { event, .. } => self.on_pointer_relative::<I>(&event),
             InputEvent::PointerMotionAbsolute { event, .. } => {
                 self.on_pointer_absolute::<I>(&event);
             }
@@ -36,14 +50,68 @@ impl Comp {
         let Some(keyboard) = self.seat.get_keyboard() else {
             return;
         };
-        keyboard.input::<(), _>(
+        let request = keyboard.input::<SessionRequest, _>(
             self,
             event.key_code(),
             event.state(),
             SERIAL_COUNTER.next_serial(),
             Event::time_msec(event),
-            |_, _, _| FilterResult::Forward,
+            |_, modifiers, keysym| {
+                if event.state() == smithay::backend::input::KeyState::Pressed
+                    && let Some(r) = session_key(*modifiers, keysym.modified_sym())
+                {
+                    FilterResult::Intercept(r)
+                } else {
+                    FilterResult::Forward
+                }
+            },
         );
+        if let Some(r) = request {
+            match r {
+                SessionRequest::Quit => self.loop_signal.stop(),
+                SessionRequest::SwitchVt(_) => self.session_request = Some(r),
+            }
+        }
+    }
+
+    /// The pointer moved by a delta (mice, touchpads): stays on the outputs.
+    fn on_pointer_relative<I: InputBackend>(&mut self, event: &I::PointerMotionEvent) {
+        let Some(pointer) = self.seat.get_pointer() else {
+            return;
+        };
+        let pos = self.clamp_to_outputs(pointer.current_location() + event.delta());
+        let under = self.surface_under(pos);
+        pointer.motion(
+            self,
+            under,
+            &MotionEvent {
+                location: pos,
+                serial: SERIAL_COUNTER.next_serial(),
+                time: event.time_msec(),
+            },
+        );
+        pointer.frame(self);
+    }
+
+    /// The nearest point on any output.
+    fn clamp_to_outputs(&self, p: Point<f64, Logical>) -> Point<f64, Logical> {
+        let mut best: Option<(f64, Point<f64, Logical>)> = None;
+        for geo in self
+            .space
+            .outputs()
+            .filter_map(|o| self.space.output_geometry(o))
+        {
+            let g = geo.to_f64();
+            let q = Point::from((
+                p.x.clamp(g.loc.x, g.loc.x + g.size.w - 1.0),
+                p.y.clamp(g.loc.y, g.loc.y + g.size.h - 1.0),
+            ));
+            let d = (q.x - p.x).hypot(q.y - p.y);
+            if best.is_none_or(|(bd, _)| d < bd) {
+                best = Some((d, q));
+            }
+        }
+        best.map_or(p, |(_, q)| q)
     }
 
     fn on_pointer_absolute<I: InputBackend>(&mut self, event: &I::PointerMotionAbsoluteEvent) {
@@ -125,5 +193,34 @@ impl Comp {
         }
         pointer.axis(self, frame);
         pointer.frame(self);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn session_keys() {
+        let none = ModifiersState::default();
+        let ctrl_alt = ModifiersState {
+            ctrl: true,
+            alt: true,
+            ..ModifiersState::default()
+        };
+        assert_eq!(
+            session_key(ctrl_alt, Keysym::XF86_Switch_VT_1),
+            Some(SessionRequest::SwitchVt(1))
+        );
+        assert_eq!(
+            session_key(ctrl_alt, Keysym::XF86_Switch_VT_12),
+            Some(SessionRequest::SwitchVt(12))
+        );
+        assert_eq!(
+            session_key(ctrl_alt, Keysym::BackSpace),
+            Some(SessionRequest::Quit)
+        );
+        assert_eq!(session_key(none, Keysym::BackSpace), None);
+        assert_eq!(session_key(ctrl_alt, Keysym::F1), None);
     }
 }

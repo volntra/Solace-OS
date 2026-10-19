@@ -46,6 +46,17 @@ pub struct Comp {
     pub blur_state: crate::blur::BlurManagerState,
 
     pub seat: Seat<Self>,
+    /// A request for the session owner (the DRM backend), set by input.
+    pub session_request: Option<SessionRequest>,
+}
+
+/// Things only the backend holding the session can do.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionRequest {
+    /// Switch to virtual terminal n.
+    SwitchVt(i32),
+    /// Leave the compositor (Ctrl+Alt+Backspace).
+    Quit,
 }
 
 impl Comp {
@@ -112,6 +123,7 @@ impl Comp {
             popups,
             blur_state,
             seat,
+            session_request: None,
         })
     }
 

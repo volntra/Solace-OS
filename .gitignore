@@ -9,3 +9,4 @@
 *.iso
 *.solpkg
 .ccache/
+__pycache__/

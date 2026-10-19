@@ -21,7 +21,7 @@ use smithay::{
 
 use crate::{
     Comp,
-    backend::winit::BACKGROUND,
+    backend::BACKGROUND,
     render::{self, Shaders, Wallpaper},
 };
 
@@ -159,7 +159,7 @@ impl Headless {
             &self.shaders,
             &state.space,
             self.wallpaper.as_ref(),
-            logical,
+            Rectangle::from_size(logical),
             1.0,
         );
         // The texture keeps the previous frame, so after the first frame

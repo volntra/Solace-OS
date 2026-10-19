@@ -3,7 +3,6 @@
 //! smallvil example (v0.7.0, MIT licence).
 
 use std::cell::RefCell;
-use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -17,17 +16,14 @@ use smithay::{
         EventLoop, LoopHandle,
         timer::{TimeoutAction, Timer},
     },
-    utils::Transform,
+    utils::{Rectangle, Transform},
 };
 
 use crate::{
     Comp, LoopData,
+    backend::BACKGROUND,
     render::{self, Shaders, Wallpaper},
 };
-
-/// The desktop background until the wallpaper is drawn: the dusk palette's
-/// deepest tone.
-pub const BACKGROUND: [f32; 4] = [0.075, 0.07, 0.14, 1.0];
 
 /// When nothing changed, the next frame is checked after this long (the
 /// nested output's 60 Hz) instead of immediately.
@@ -82,7 +78,7 @@ pub fn init(
         damage_tracker: OutputDamageTracker::from_output(&output),
         output,
         shaders,
-        wallpaper: load_wallpaper(),
+        wallpaper: render::default_wallpaper(),
         handle: event_loop.handle(),
     };
 
@@ -126,7 +122,7 @@ impl Nested<'_> {
                 &self.shaders,
                 &state.space,
                 self.wallpaper.as_ref(),
-                logical,
+                Rectangle::from_size(logical),
                 1.0,
             );
             match self.damage_tracker.render_output(
@@ -168,28 +164,4 @@ impl Nested<'_> {
             backend.window().request_redraw();
         }
     }
-}
-
-/// The wallpaper: `SOL_WALLPAPER`, the installed default, or the
-/// development build's render (`just wallpapers`). Missing is not fatal.
-fn load_wallpaper() -> Option<Wallpaper> {
-    let candidates: Vec<PathBuf> = std::env::var_os("SOL_WALLPAPER")
-        .map(PathBuf::from)
-        .into_iter()
-        .chain([
-            PathBuf::from("/usr/share/sol/wallpapers/dusk.png"),
-            PathBuf::from("build/wallpapers/dusk.png"),
-        ])
-        .collect();
-    for path in &candidates {
-        if !path.exists() {
-            continue;
-        }
-        match render::load_wallpaper(path) {
-            Ok(w) => return Some(w),
-            Err(e) => tracing::warn!("wallpaper: {e}"),
-        }
-    }
-    tracing::info!("no wallpaper found; using the plain background");
-    None
 }

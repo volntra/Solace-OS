@@ -1,14 +1,24 @@
 //! sol-comp: the Solace compositor.
 //!
-//!   sol-comp [--nested] [-- COMMAND [ARGS...]]
+//!   sol-comp [--nested | --drm] [-- COMMAND [ARGS...]]
 //!
-//! `--nested` (the only backend so far) runs inside another desktop. A
-//! command after `--` is started as a client of the new compositor.
+//! `--drm` drives the display (KMS, libinput, libseat); `--nested` runs
+//! inside another desktop. Without either, sol-comp nests when it finds a
+//! desktop to nest in (`WAYLAND_DISPLAY` or `DISPLAY`) and takes the
+//! display otherwise. A command after `--` is started as a client.
 
 use std::process::{Command, ExitCode};
 
 use smithay::reexports::{calloop::EventLoop, wayland_server::Display};
 use solcomp::{Comp, LoopData};
+
+const USAGE: &str = "usage: sol-comp [--nested | --drm] [-- COMMAND [ARGS...]]";
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Backend {
+    Nested,
+    Drm,
+}
 
 fn main() -> ExitCode {
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
@@ -17,21 +27,33 @@ fn main() -> ExitCode {
 
     let mut args = std::env::args().skip(1);
     let mut client: Vec<String> = Vec::new();
+    let mut backend = None;
     while let Some(a) = args.next() {
         match a.as_str() {
-            "--nested" => {}
+            "--nested" => backend = Some(Backend::Nested),
+            "--drm" => backend = Some(Backend::Drm),
             "--" => client = args.by_ref().collect(),
             "-h" | "--help" => {
-                println!("usage: sol-comp [--nested] [-- COMMAND [ARGS...]]");
+                println!("{USAGE}");
                 return ExitCode::SUCCESS;
             }
             other => {
-                eprintln!("sol-comp: unknown argument {other}");
+                eprintln!("sol-comp: unknown argument {other}\n{USAGE}");
                 return ExitCode::from(2);
             }
         }
     }
-    match run(&client) {
+    let backend = backend.unwrap_or_else(|| {
+        let nested = ["WAYLAND_DISPLAY", "DISPLAY"]
+            .iter()
+            .any(|v| std::env::var_os(v).is_some_and(|s| !s.is_empty()));
+        if nested {
+            Backend::Nested
+        } else {
+            Backend::Drm
+        }
+    });
+    match run(backend, &client) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("sol-comp: {e}");
@@ -40,8 +62,8 @@ fn main() -> ExitCode {
     }
 }
 
-fn run(client: &[String]) -> Result<(), Box<dyn std::error::Error>> {
-    let mut event_loop: EventLoop<LoopData> = EventLoop::try_new()?;
+fn run(backend: Backend, client: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+    let mut event_loop: EventLoop<'static, LoopData> = EventLoop::try_new()?;
     let display: Display<Comp> = Display::new()?;
     let display_handle = display.handle();
     let state = Comp::new(&mut event_loop, display)?;
@@ -49,7 +71,14 @@ fn run(client: &[String]) -> Result<(), Box<dyn std::error::Error>> {
         state,
         display_handle,
     };
-    solcomp::backend::winit::init(&mut event_loop, &mut data)?;
+    match backend {
+        #[cfg(feature = "nested")]
+        Backend::Nested => solcomp::backend::winit::init(&mut event_loop, &mut data)?,
+        #[cfg(feature = "drm")]
+        Backend::Drm => solcomp::backend::drm::init(&mut event_loop, &mut data)?,
+        #[allow(unreachable_patterns)]
+        other => return Err(format!("built without the {other:?} backend").into()),
+    }
     tracing::info!(socket = ?data.state.socket_name, "listening");
     if let Some((cmd, args)) = client.split_first()
         && let Err(e) = Command::new(cmd)

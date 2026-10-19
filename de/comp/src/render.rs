@@ -5,7 +5,7 @@
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::backdrop::{self, Backdrop, BlurShaders, Clip};
 use crate::blur::surface_blur;
@@ -341,7 +341,8 @@ smithay::backend::renderer::element::render_elements! {
     Window=Rounded,
     Backdrop=Backdrop,
     Shadow=PixelShaderElement,
-    Wallpaper=MemoryRenderBufferRenderElement<GlesRenderer>,
+    /// The wallpaper, the pointer.
+    Image=MemoryRenderBufferRenderElement<GlesRenderer>,
 }
 
 /// The shadow element of a window, kept between frames so its id is
@@ -389,17 +390,19 @@ pub fn shadow_layout(
     (area, win, caster)
 }
 
-/// Builds the output's elements, front to back: each window (its rounded
-/// surfaces, its blurred backdrop if it asked for one, its shadow) from
-/// the top of the stack down, then the wallpaper.
+/// Builds the elements of the output showing `area` of the space, front
+/// to back: each window (its rounded surfaces, its blurred backdrop if it
+/// asked for one, its shadow) from the top of the stack down, then the
+/// wallpaper. Element positions are relative to the output.
 pub fn output_elements(
     renderer: &mut GlesRenderer,
     shaders: &Shaders,
     space: &Space<Window>,
     wallpaper: Option<&Wallpaper>,
-    output_size: Size<i32, Logical>,
+    area: Rectangle<i32, Logical>,
     scale: f64,
 ) -> Vec<OutputElement> {
+    let output_size = area.size;
     // Built from the bottom up, so that everything behind a blurred
     // window is known when its backdrop is made.
     let mut out: VecDeque<OutputElement> = VecDeque::new();
@@ -410,7 +413,7 @@ pub fn output_elements(
     if let Some(wallpaper) = wallpaper
         && let Ok(e) = wallpaper_element(renderer, wallpaper, output_size)
     {
-        out.push_front(OutputElement::Wallpaper(e));
+        out.push_front(OutputElement::Image(e));
     }
     #[allow(clippy::cast_possible_truncation)]
     let radius = (WINDOW_RADIUS * scale) as f32;
@@ -418,6 +421,8 @@ pub fn output_elements(
         let Some(geo) = space.element_geometry(window) else {
             continue;
         };
+        // From here on, in output coordinates.
+        let geo = Rectangle::new(geo.loc - area.loc, geo.size);
         let geo_f = geo.to_f64();
         let geo_px = geo_f.to_physical(s);
         let origin = geo.loc - window.geometry().loc;
@@ -590,6 +595,30 @@ impl Wallpaper {
             size: (1, 1),
         }
     }
+}
+
+/// The wallpaper: `SOL_WALLPAPER`, the installed default, or the
+/// development build's render (`just wallpapers`). Missing is not fatal.
+pub fn default_wallpaper() -> Option<Wallpaper> {
+    let candidates: Vec<PathBuf> = std::env::var_os("SOL_WALLPAPER")
+        .map(PathBuf::from)
+        .into_iter()
+        .chain([
+            PathBuf::from("/usr/share/sol/wallpapers/dusk.png"),
+            PathBuf::from("build/wallpapers/dusk.png"),
+        ])
+        .collect();
+    for path in &candidates {
+        if !path.exists() {
+            continue;
+        }
+        match load_wallpaper(path) {
+            Ok(w) => return Some(w),
+            Err(e) => tracing::warn!("wallpaper: {e}"),
+        }
+    }
+    tracing::info!("no wallpaper found; using the plain background");
+    None
 }
 
 /// Loads a PNG wallpaper into a memory buffer (8-bit RGB or RGBA).

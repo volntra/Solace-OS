@@ -5,6 +5,7 @@
 pub mod backdrop;
 pub mod backend;
 pub mod blur;
+pub mod cursor;
 mod grabs;
 mod handlers;
 mod input;

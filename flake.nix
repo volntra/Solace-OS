@@ -65,6 +65,14 @@
           libglvnd
           mesa
           xorg-server
+          # The DRM backend (stage 5): device access through libseat, GPU
+          # discovery through udev, input through libinput, buffers through
+          # GBM (Mesa's libgbm) and libdrm.
+          seatd
+          libinput
+          systemdLibs
+          libgbm
+          libdrm
         ];
 
         # Libraries the nested compositor opens with dlopen. EGL comes from
