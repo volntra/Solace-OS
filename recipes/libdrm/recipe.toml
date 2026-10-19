@@ -1,0 +1,26 @@
+# Only the core library for now: hardware-specific helpers (amdgpu, ...)
+# come with the drivers that need them.
+name = "libdrm"
+version = "2.4.134"
+release = 1
+summary = "Userspace interface to the kernel's Direct Rendering Manager"
+license = "MIT"
+homepage = "https://gitlab.freedesktop.org/mesa/drm"
+
+[[source]]
+url = "https://dri.freedesktop.org/libdrm/libdrm-2.4.134.tar.xz"
+sha256 = "ac5e74d157830eb8bee44c6a6bf3ad49774ef0dd2a72bdad74a8f20308b52a95"
+
+[deps]
+build = ["python", "meson", "ninja", "pkgconf"]
+
+[build]
+system = "meson"
+configure_args = [
+    "-Dintel=disabled", "-Dradeon=disabled", "-Damdgpu=disabled",
+    "-Dnouveau=disabled", "-Dvmwgfx=disabled", "-Domap=disabled",
+    "-Dexynos=disabled", "-Dfreedreno=disabled", "-Dtegra=disabled",
+    "-Dvc4=disabled", "-Detnaviv=disabled", "-Dcairo-tests=disabled",
+    "-Dman-pages=disabled", "-Dvalgrind=disabled",
+    "-Dinstall-test-programs=false", "-Dudev=false", "-Dtests=false",
+]

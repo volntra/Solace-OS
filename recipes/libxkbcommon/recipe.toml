@@ -1,0 +1,26 @@
+# The keymap library only: no X11, no Wayland tools, no layout registry
+# (that needs libxml2; Settings will want it in Phase 8).
+name = "libxkbcommon"
+version = "1.13.2"
+release = 1
+summary = "Keyboard keymap compiler and state library"
+license = "MIT"
+homepage = "https://xkbcommon.org/"
+
+[[source]]
+url = "https://github.com/xkbcommon/libxkbcommon/archive/refs/tags/xkbcommon-1.13.2.tar.gz"
+sha256 = "acc4d5f7c3cbba5f9f8d08d8bdbeede84ecede46792f47929aa9321873385528"
+# The same file, kept by Gentoo (checked against its Manifest).
+mirrors = ["https://distfiles.gentoo.org/distfiles/21/libxkbcommon-1.13.2.tar.gz"]
+
+[deps]
+build = ["python", "meson", "ninja", "pkgconf", "xkeyboard-config"]
+runtime = ["xkeyboard-config"]
+
+[build]
+system = "meson"
+configure_args = [
+    "-Denable-x11=false", "-Denable-wayland=false", "-Denable-docs=false",
+    "-Denable-xkbregistry=false", "-Denable-tools=false",
+    "-Denable-bash-completion=false",
+]

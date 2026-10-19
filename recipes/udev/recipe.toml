@@ -1,0 +1,65 @@
+# udev built standalone from the systemd source tree (CLAUDE.md section 3),
+# the way Gentoo's systemd-utils does: configure systemd with every
+# component but udev turned off, install into a staging directory, keep
+# only udev. Not yet: ACLs for seat devices (acl) and module autoloading
+# (kmod); see docs/STATUS.md.
+name = "udev"
+version = "262"
+release = 1
+summary = "Device manager (udevd, udevadm, rules, hardware database)"
+license = "GPL-2.0-or-later AND LGPL-2.1-or-later"
+homepage = "https://systemd.io/"
+
+[[source]]
+url = "https://github.com/systemd/systemd/archive/refs/tags/v262.tar.gz"
+sha256 = "6aa77506c0644aa67f940a48e3d3a7368601f787e4f249139516d353f107bcab"
+# The same file, kept by Gentoo (checked against its Manifest).
+mirrors = ["https://distfiles.gentoo.org/distfiles/08/systemd-262.tar.gz"]
+
+[deps]
+build = ["python", "meson", "ninja", "pkgconf", "gperf", "libcap", "util-linux", "python-jinja2"]
+runtime = ["libcap", "util-linux"]
+
+[build]
+system = "meson"
+configure_args = [
+    "--auto-features=disabled", "-Dmode=release", "-Dlibc=glibc",
+    "-Dsplit-bin=false", "-Dblkid=enabled", "-Dlibmount=enabled", "-Dhwdb=true",
+    "-Dtests=false", "-Dman=disabled", "-Dsysusers=false", "-Dtmpfiles=false",
+    "-Dkernel-install=false", "-Dbootloader=disabled", "-Dukify=disabled",
+    "-Dselinux=disabled", "-Dacl=disabled", "-Dkmod=disabled",
+    "-Dadm-group=false", "-Danalyze=false", "-Dbacklight=false", "-Dbinfmt=false",
+    "-Dcreate-log-dirs=false", "-Dcoredump=false", "-Ddns-over-tls=false",
+    "-Denvironment-d=false", "-Dhibernate=false", "-Dhostnamed=false",
+    "-Didn=false", "-Dima=false", "-Dinitrd=false", "-Dipe=false",
+    "-Dfirstboot=false", "-Dldconfig=false", "-Dlocaled=false", "-Dlogind=false",
+    "-Dmachined=false", "-Dmountfsd=false", "-Dnetworkd=false",
+    "-Dnsresourced=false", "-Dnss-myhostname=false", "-Dnss-systemd=false",
+    "-Doomd=false", "-Dportabled=false", "-Dpstore=false", "-Dquotacheck=false",
+    "-Drandomseed=false", "-Dresolve=false", "-Drfkill=false", "-Dsmack=false",
+    "-Dstoragetm=false", "-Dsysext=false", "-Dsysinstall=false",
+    "-Dtimedated=false", "-Dtimesyncd=false", "-Dtpm=false", "-Durlify=false",
+    "-Duserdb=false", "-Dutmp=false", "-Dvconsole=false", "-Dwheel-group=false",
+    "-Dxdg-autostart=false", "-Dbashcompletiondir=no",
+    "-Ddbus-interfaces-dir=no", "-Drpmmacrosdir=no", "-Dshellprofiledir=no",
+    "-Dsshconfdir=no", "-Dsshdconfdir=no", "-Dsshdprivsepdir=no",
+    "-Dzshcompletiondir=no",
+]
+install = '''
+stage="$PWD/_stage"
+DESTDIR="$stage" meson install -C _build --no-rebuild
+cd "$stage"
+# What udev needs; a missing path is an error, so upstream moves are noticed.
+keep="etc/udev usr/bin/udevadm usr/bin/systemd-hwdb usr/lib/systemd/systemd-udevd
+  usr/lib/systemd/network/99-default.link usr/lib/udev usr/share/pkgconfig/udev.pc
+  usr/include/libudev.h usr/lib/pkgconfig/libudev.pc"
+for p in $keep; do cp -a --parents "$p" "$DESTDIR/"; done
+cp -a --parents usr/lib/systemd/libsystemd-shared-*.so usr/lib/libudev.so* "$DESTDIR/"
+# Hooks into systemd units we do not have.
+rm -f "$DESTDIR/usr/lib/udev/rules.d/99-systemd.rules"
+'''
+
+[[split]]
+name = "libudev"
+summary = "Library to query and monitor devices (udev)"
+files = ["usr/lib/libudev.so*", "usr/include/libudev.h", "usr/lib/pkgconfig/libudev.pc"]

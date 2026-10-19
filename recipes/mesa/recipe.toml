@@ -1,0 +1,37 @@
+# Open-source GL/EGL/GBM. For now: Wayland only, no LLVM, and two drivers:
+# virgl (QEMU's virtio-gpu with host 3D) and softpipe (software fallback).
+# NVIDIA uses its own driver through libglvnd. Hardware drivers (and LLVM,
+# where they need it) are added with the hardware.
+name = "mesa"
+version = "26.2.4"
+release = 1
+summary = "OpenGL ES, EGL and GBM implementation"
+license = "MIT"
+homepage = "https://mesa3d.org/"
+
+[[source]]
+url = "https://archive.mesa3d.org/mesa-26.2.4.tar.xz"
+sha256 = "bce5f7fbebb934373b86c999a064d52fb5065878dc57f287f95346648ec832e9"
+
+[deps]
+build = [
+    "python", "meson", "ninja", "pkgconf", "flex", "python-mako", "python-packaging",
+    "python-pyyaml", "libdrm", "wayland", "wayland-protocols", "libglvnd",
+    "expat", "zlib", "libzstd",
+]
+runtime = ["libdrm", "wayland", "libglvnd", "expat", "zlib", "libzstd", "gcc-libs"]
+
+[build]
+system = "meson"
+configure_args = [
+    "-Dplatforms=wayland", "-Dgallium-drivers=softpipe,virgl",
+    "-Dvulkan-drivers=", "-Dllvm=disabled", "-Dglx=disabled",
+    "-Dglvnd=enabled", "-Degl=enabled", "-Dgbm=enabled", "-Dgles1=disabled",
+    "-Dgles2=enabled", "-Dopengl=true", "-Dvalgrind=disabled",
+    "-Dlibunwind=disabled", "-Dlmsensors=disabled", "-Dzstd=enabled",
+    "-Dexpat=enabled", "-Dxmlconfig=enabled", "-Dvideo-codecs=",
+    "-Dteflon=false", "-Dmicrosoft-clc=disabled", "-Dgallium-va=disabled",
+    "-Dgallium-rusticl=false", "-Dtools=", "-Dbuild-tests=false",
+    "-Dhtml-docs=disabled", "-Dperfetto=false", "-Dspirv-tools=disabled",
+    "-Dshader-cache=enabled",
+]

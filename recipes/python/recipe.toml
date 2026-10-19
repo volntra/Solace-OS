@@ -1,0 +1,32 @@
+# LFS 8.x: the final Python, built against the system's libraries (the
+# bootstrap copy has no zlib, ssl, ... modules). Build tool for meson,
+# Mesa and udev; nothing at runtime needs it yet.
+name = "python"
+version = "3.14.7"
+release = 1
+summary = "Python 3"
+license = "Python-2.0"
+homepage = "https://www.python.org/"
+
+[[source]]
+url = "https://www.python.org/ftp/python/3.14.7/Python-3.14.7.tar.xz"
+sha256 = "3b48dac8fb59f62eaa67ac83c1eb12bda1b7a08406dd286e252c11a66be27f81"
+
+[deps]
+build = ["zlib", "libbz2", "liblzma", "libzstd", "expat", "libffi", "openssl", "ncurses", "readline"]
+runtime = ["zlib", "libbz2", "liblzma", "libzstd", "expat", "libffi", "openssl", "ncurses", "readline"]
+
+[build]
+system = "custom"
+configure = '''
+./configure --prefix=/usr --enable-shared --with-system-expat \
+  --without-system-libmpdec --without-ensurepip --without-static-libpython
+'''
+compile = '''
+make
+'''
+install = '''
+make DESTDIR="$DESTDIR" install
+# The test suite is 100+ MB and only for Python's own developers.
+rm -rf "$DESTDIR"/usr/lib/python3.*/test "$DESTDIR"/usr/lib/python3.*/idlelib
+'''

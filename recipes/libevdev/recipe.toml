@@ -1,0 +1,17 @@
+name = "libevdev"
+version = "1.13.7"
+release = 1
+summary = "Wrapper library for evdev input devices"
+license = "MIT"
+homepage = "https://www.freedesktop.org/wiki/Software/libevdev/"
+
+[[source]]
+url = "https://www.freedesktop.org/software/libevdev/libevdev-1.13.7.tar.xz"
+sha256 = "0caf824971108f15bb2ad356433bae198d7d3bf1e82d43f63626e069e060bfa6"
+
+[deps]
+build = ["python", "meson", "ninja", "pkgconf"]
+
+[build]
+system = "meson"
+configure_args = ["-Dtests=disabled", "-Dtools=disabled", "-Ddocumentation=disabled"]

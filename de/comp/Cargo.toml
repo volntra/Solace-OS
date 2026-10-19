@@ -25,6 +25,7 @@ path = "src/bin/sol-testclient.rs"
 # own main (one compositor at a time, environment set before threads).
 [[test]]
 name = "render"
+path = "tests/render.rs"
 harness = false
 
 [dependencies]

@@ -1,0 +1,26 @@
+# Pure Python, copied into site-packages (no pip needed).
+name = "python-markupsafe"
+version = "3.0.4"
+release = 1
+summary = "Safe string escaping for Python (pure-Python build)"
+license = "BSD-3-Clause"
+homepage = "https://palletsprojects.com/p/markupsafe/"
+
+[[source]]
+url = "https://files.pythonhosted.org/packages/38/9b/e422a865e1d5d57d0e509b4e0bf1c1a70a7f6382c29a5aa428df994c8bc8/markupsafe-3.0.4.tar.gz"
+sha256 = "2e9ad7dd851bf45fab9f75cbff4cb493fee9979e8d8c7c9c3ee119022518edd6"
+
+[deps]
+runtime = ["python"]
+
+[build]
+system = "custom"
+# Pure Python: nothing to compile.
+compile = "true"
+install = '''
+site=$(python3 -c 'import sysconfig; print(sysconfig.get_path("purelib"))')
+mkdir -p "$DESTDIR$site"
+cp -r src/markupsafe "$DESTDIR$site/"
+find "$DESTDIR$site" -name '*.c' -delete
+python3 -m compileall -q --invalidation-mode checked-hash -s "$DESTDIR" "$DESTDIR$site/markupsafe"
+'''

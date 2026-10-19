@@ -1,0 +1,22 @@
+# LFS 8.x. No PAM module (no PAM yet), no Go bindings, and setcap is not
+# given capabilities at install.
+name = "libcap"
+version = "2.78"
+release = 1
+summary = "POSIX capabilities library and tools"
+license = "BSD-3-Clause OR GPL-2.0-only"
+homepage = "https://sites.google.com/site/fullycapable/"
+
+[[source]]
+url = "https://www.kernel.org/pub/linux/libs/security/linux-privs/libcap2/libcap-2.78.tar.xz"
+sha256 = "0d621e562fd932ccf67b9660fb018e468a683d7b827541df27813228c996bb11"
+
+[build]
+system = "custom"
+compile = '''
+make prefix=/usr lib=lib RAISE_SETFCAP=no PAM_CAP=no GOLANG=no
+'''
+install = '''
+make prefix=/usr lib=lib RAISE_SETFCAP=no PAM_CAP=no GOLANG=no DESTDIR="$DESTDIR" install
+rm -f "$DESTDIR"/usr/lib/libcap.a "$DESTDIR"/usr/lib/libpsx.a
+'''

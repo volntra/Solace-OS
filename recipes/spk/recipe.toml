@@ -9,7 +9,9 @@ license = "GPL-3.0-or-later"
 [[source]]
 local = "."
 # The Cargo workspace only: other changes in the repo do not rebuild it.
-include = ["Cargo.toml", "Cargo.lock", "init", "boot/bootgen", "pkg", "tools/solcheck"]
+# de/comp only by its manifest: cargo must load every workspace member, but
+# compositor changes should not rebuild this package.
+include = ["Cargo.toml", "Cargo.lock", "init", "boot/bootgen", "pkg", "tools/solcheck", "de/comp/Cargo.toml"]
 
 [build]
 system = "custom"

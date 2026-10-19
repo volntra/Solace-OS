@@ -13,9 +13,11 @@ entry names a recipe that does not exist.
 - `bash`: /bin/sh and the login shell until ace exists (Phase 10).
 - `bc`: the kernel build needs it (timeconst); Gavin Howard's bc, as LFS uses.
 - `binutils`: assembler and linker; the system builds itself.
+- `bzip2`: bzip2 tool and libbz2; libarchive and pcre2grep read .bz2, and many upstream sources ship as .tar.bz2.
 - `coreutils`: the basic userland (ls, cp, ...).
 - `diffutils`: diff/cmp, needed by most builds.
 - `elfutils`: libelf, required by the kernel's objtool.
+- `expat`: XML parser required by dbus-daemon, fontconfig, Mesa, and wayland-scanner.
 - `file`: libmagic, used by builds and later by Files for type detection.
 - `findutils`: find/xargs, needed by builds and scripts.
 - `flex`: lexer generator, needed to build the kernel and others.
@@ -23,37 +25,57 @@ entry names a recipe that does not exist.
 - `gcc`: the compiler (C, C++) plus gcc-libs (libgcc_s, libstdc++) at runtime.
 - `glibc`: the C library (locked stack: NVIDIA userspace and Steam need it).
 - `gmp`: GCC's arithmetic library.
+- `gperf`: perfect-hash generator; udev's build needs it.
 - `grep`: needed by builds and scripts.
+- `grub`: the boot loader on the ESP (locked stack); built for UEFI only, branding patched out.
 - `gzip`: .gz archives (kernel image, sources).
 - `less`: pager for text output (logs, man pages).
+- `libarchive`: archive library Flatpak requires (it unpacks OCI/bundle layers); provides bsdtar.
+- `libcap`: POSIX capabilities; required by udev, later by sol-init sandboxing and elogind.
+- `libdrm`: kernel DRM interface; Mesa and the compositor's DRM backend use it.
+- `libevdev`: evdev device wrapper; required by libinput.
+- `libffi`: required by wayland-client/server and GLib (needed for the Wayland stack and Flatpak).
+- `libglvnd`: GL vendor dispatch (libEGL, libGLESv2): Mesa and NVIDIA's driver coexist through it.
+- `libinput`: input devices (pointer acceleration, touchpads) for sol-comp.
+- `libxcrypt`: crypt(3) with yescrypt for Linux-PAM and shadow password hashing.
+- `libxkbcommon`: keymaps and keyboard state for sol-comp and every Wayland client.
 - `linux`: the kernel, with our configuration (boot/kernel/solace.config).
-- `grub`: the boot loader on the ESP (locked stack); built for UEFI only, branding patched out.
 - `linux-headers`: kernel API headers for glibc and everything else.
+- `lz4`: fast compression for zram swap tooling, libarchive, and kernel/initramfs images.
 - `m4`: macro processor needed by autoconf-generated builds and bison.
 - `make`: build driver.
+- `mesa`: open GL ES/EGL/GBM: virgl for QEMU, softpipe as fallback; hardware drivers later.
+- `meson`: build system of the graphics stack (Mesa, Wayland, libinput, udev).
 - `mpc`: GCC's complex-arithmetic library.
 - `mpfr`: GCC's floating-point library.
+- `mtdev`: multitouch protocol translation; required by libinput.
 - `ncurses`: terminal handling for bash, readline, util-linux, less.
+- `ninja`: build executor for meson and cmake builds.
+- `openssl`: TLS/crypto; the kernel's certificate tool needs libcrypto, and so will networking.
 - `patch`: applying recipe patches.
+- `pcre2`: regular expressions for grep, GLib, and Qt.
+- `pkgconf`: pkg-config for builds (shadow needs it; so will Mesa, Wayland, Qt).
+- `python`: the final Python 3 (LFS 8.x), with zlib/ssl/...; runs meson and Mesa's and udev's build scripts.
+- `python-jinja2`: templates in udev's (systemd) build.
+- `python-mako`: code generation in Mesa's build.
+- `python-markupsafe`: required by Jinja2 and Mako.
+- `python-packaging`: version parsing in Mesa's build (Python 3.14 has no distutils).
+- `python-pyyaml`: YAML parsing in Mesa's build.
 - `readline`: line editing for bash and gawk.
+- `seatd`: libseat: lets sol-comp open DRM and input devices without root; seatd until elogind arrives.
 - `sed`: needed by builds and scripts.
 - `shadow`: user/group/password tools and the text-console login.
-- `pkgconf`: pkg-config for builds (shadow needs it; so will Mesa, Wayland, Qt).
-- `openssl`: TLS/crypto; the kernel's certificate tool needs libcrypto, and so will networking.
-- `tar`: unpacking sources; archives.
-- `util-linux`: mount, agetty, fdisk, lsblk, and libmount/libblkid.
-- `sol-init`: ours (init/): PID 1, service manager, solctl, sol-log.
 - `sol-bootgen`: ours (boot/bootgen/): grub.cfg, ESP kernels, initramfs.
-- `spk`: ours (pkg/): the package manager; system transactions on a running Solace.
+- `sol-init`: ours (init/): PID 1, service manager, solctl, sol-log.
 - `solace-base`: ours (image/base/): os-release, factory /etc, console units.
 - `solace-grub-theme`: ours (boot/grub-theme/): boot menu theme + Inter fonts for GRUB.
-- `bzip2`: bzip2 tool and libbz2; libarchive and pcre2grep read .bz2, and many upstream sources ship as .tar.bz2.
-- `expat`: XML parser required by dbus-daemon, fontconfig, Mesa, and wayland-scanner.
-- `libarchive`: archive library Flatpak requires (it unpacks OCI/bundle layers); provides bsdtar.
-- `libffi`: required by wayland-client/server and GLib (needed for the Wayland stack and Flatpak).
-- `libxcrypt`: crypt(3) with yescrypt for Linux-PAM and shadow password hashing.
-- `lz4`: fast compression for zram swap tooling, libarchive, and kernel/initramfs images.
-- `pcre2`: regular expressions for grep, GLib, and Qt.
+- `spk`: ours (pkg/): the package manager; system transactions on a running Solace.
+- `tar`: unpacking sources; archives.
+- `udev`: device manager from the systemd tree (standalone, locked stack): hotplug, device nodes, libudev for libinput.
+- `util-linux`: mount, agetty, fdisk, lsblk, and libmount/libblkid.
+- `wayland`: the Wayland libraries and wayland-scanner: the protocol of the whole desktop.
+- `wayland-protocols`: protocol extensions (xdg-shell, ...) used by sol-comp, Mesa and clients.
+- `xkeyboard-config`: keyboard layout data for libxkbcommon.
 - `xz`: liblzma and the xz tool; kernel module/initramfs compression, libarchive, and .tar.xz sources.
 - `zlib`: deflate; required by almost everything (libpng, Qt, kernel tools, libarchive).
 - `zstd`: our package format (.solpkg is tar.zst), btrfs compression tooling, and initramfs compression.
@@ -542,4 +564,40 @@ entry names a recipe that does not exist.
   through `CARGO_BIN_EXE_sol-testclient`.
 - **Not done:** protocol tests for protocols we do not have yet; frame
   time measurements (need real hardware).
+
+### 2026-10-19: The graphics base (Phase 4, stage 4)
+
+- **Decision:** the stack under sol-comp is built by our recipes in the
+  system stage: Python (final), ninja, meson and the Python modules their
+  builds need, gperf, libcap, udev, libdrm, wayland, wayland-protocols,
+  xkeyboard-config, libxkbcommon, libevdev, mtdev, libinput, seatd,
+  libglvnd and Mesa. spk gains a `meson` build preset (subprojects never
+  downloaded: every dependency is a recipe).
+- **Mesa without LLVM:** Wayland platform, EGL + GBM + GLES2 through
+  libglvnd, two drivers: virgl (QEMU virtio-gpu with host 3D) and softpipe
+  (software fallback). LLVM would add hours of build time for llvmpipe and
+  radeonsi only; it comes with the hardware that needs it. NVIDIA uses its
+  own userspace through the same libglvnd.
+- **udev from the systemd tree** (locked stack), as Gentoo's systemd-utils
+  does: configure systemd with everything but udev off, install to a
+  staging dir, keep udev. Without acl (seat ACLs, elogind's job later) and
+  kmod (module autoloading) for now.
+- **seatd/libseat until elogind:** smithay opens devices through libseat;
+  its seatd and builtin backends work now, the logind backend is enabled
+  when elogind is built (Phase 9 needs it for the greeter).
+- **Final Python:** the bootstrap Python (LFS ch. 7) has no zlib, so meson
+  cannot run on it. The system stage builds Python 3.14 against our
+  libraries, and recipes that need it name `python` as a build dependency
+  (spk swaps in a stage's own copy of a base package only when a recipe
+  names it, so existing packages are not rebuilt).
+- **Sources and GitHub archives:** every new source is pinned by sha256
+  and cross-checked against a second record (Gentoo's Manifest SHA-512,
+  PyPI's digests, or upstream's sha256sum). Where only GitHub tag archives
+  exist (ninja, libxkbcommon, systemd, and sourcehut's seatd), the recipe
+  keeps the upstream URL and lists Gentoo's distfiles copy (the identical
+  file) as a mirror. Mesa 26.2.4 and libevdev 1.13.7 rather than the
+  newest point releases, which no second source had yet.
+- **Rust recipes include `de/comp/Cargo.toml`:** cargo loads every
+  workspace member; only the manifest is included so compositor changes
+  do not rebuild sol-init, spk or sol-bootgen.
 

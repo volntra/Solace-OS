@@ -7,9 +7,9 @@ Repository: https://github.com/volntra/Solace-OS (`main`).
 ## Current phase: 4 (compositor core): in progress
 
 Stages: 1 foundation ✓, 2 renderer ✓ (corners, shadows, wallpaper,
-background blur), 3 headless backend + pixel tests ✓, 4
-graphics base recipes (Mesa, libdrm, libinput, ...), 5 DRM backend on
-the QEMU image, then 165 Hz on the NVIDIA machine.
+background blur), 3 headless backend + pixel tests ✓, 4 graphics base
+recipes ✓, 5 DRM backend on the QEMU image, then 165 Hz on the NVIDIA
+machine.
 
 **Try it (nested in your desktop):**
 
@@ -44,10 +44,23 @@ redone when what is behind moves, and idle frames have no damage.
 Screenshots land in `target/tmp/sol-comp-render/`. Checked to fail when
 the Stage 2 shadow-damage bug is put back, or when blur is switched off.
 
+Graphics base (stage 4, `just bootstrap`; system stage): Python 3.14
+(final), ninja, meson, Mako/Jinja2/MarkupSafe/packaging/PyYAML, gperf,
+libcap, udev 262 (standalone from systemd; udevadm, udevd, rules, hwdb
+sources, libudev), libdrm, wayland 1.26, wayland-protocols, xkeyboard-config,
+libxkbcommon, libevdev, mtdev, libinput 1.32, seatd/libseat, libglvnd and
+Mesa 26.2 (EGL, GBM, GLES2; virgl + softpipe; no LLVM). All built in the
+cloud container; a scratch root with them installed has every library
+dependency resolved. Not in the image yet (stage 5 adds them with the DRM
+backend); not yet run.
+
 Not yet: server-side titlebars (Phase 5, sol-wm), every protocol beyond
 xdg-shell and blur, layer-shell (the dock and menu bar need it), the DRM
 backend, measured frame times. Rotated
-outputs are not handled by the corner clip yet.
+outputs are not handled by the corner clip yet. udev has no seat ACLs
+(acl) or module autoloading (kmod) yet, and its hardware database is not
+compiled (`systemd-hwdb update`) until the image runs it; libseat has no
+logind backend until elogind; Mesa has no hardware drivers (and no LLVM).
 
 ## Phase 3 (previous): demo works
 

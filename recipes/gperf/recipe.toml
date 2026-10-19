@@ -1,0 +1,17 @@
+name = "gperf"
+version = "3.3"
+release = 1
+summary = "Perfect hash function generator"
+license = "GPL-3.0-or-later"
+homepage = "https://www.gnu.org/software/gperf/"
+
+[[source]]
+url = "https://ftp.gnu.org/gnu/gperf/gperf-3.3.tar.gz"
+sha256 = "fd87e0aba7e43ae054837afd6cd4db03a3f2693deb3619085e6ed9d8d9604ad8"
+
+[deps]
+# C++: libstdc++ and libgcc_s at runtime.
+runtime = ["gcc-libs"]
+
+[build]
+system = "autotools"

@@ -61,4 +61,10 @@ recipes = [
     # Then the self-hosting toolchain and the remaining libraries.
     "binutils", "gmp", "mpfr", "mpc", "gcc",
     "expat", "libffi", "pcre2", "libarchive",
+    # The graphics base (Phase 4): build tools, then the stack under sol-comp.
+    "python", "ninja", "meson", "python-markupsafe", "python-jinja2", "python-mako",
+    "python-packaging", "python-pyyaml", "gperf", "libcap", "udev",
+    "libdrm", "wayland", "wayland-protocols", "xkeyboard-config",
+    "libxkbcommon", "libevdev", "mtdev", "libinput", "seatd", "libglvnd",
+    "mesa",
 ]
