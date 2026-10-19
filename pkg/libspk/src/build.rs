@@ -531,8 +531,21 @@ fn write_cargo_config(bdir: &Path) -> Result<()> {
 /// Directories never copied from a local source.
 const LOCAL_SKIP: &[&str] = &[".git", "target", "build", "result", ".direnv"];
 
-/// Copies a local source tree: regular files and directories only (no
-/// symlinks followed or copied), skipping build outputs.
+/// A symlink in a local source is refused rather than skipped: dropping it
+/// silently once lost /etc/os-release from the image. Recipes create links
+/// in their install step instead.
+fn refuse_symlink(e: &walkdir::DirEntry) -> Result<()> {
+    if e.file_type().is_symlink() {
+        return Err(Error::Build(format!(
+            "{}: local sources may not contain symlinks; create the link in the recipe's install step",
+            e.path().display()
+        )));
+    }
+    Ok(())
+}
+
+/// Copies a local source tree: regular files and directories only,
+/// skipping build outputs. Symlinks are an error ([`refuse_symlink`]).
 fn copy_tree(src: &Path, dst: &Path) -> Result<()> {
     let walk = walkdir::WalkDir::new(src)
         .follow_links(false)
@@ -541,6 +554,7 @@ fn copy_tree(src: &Path, dst: &Path) -> Result<()> {
         .filter_entry(|e| e.depth() == 0 || !LOCAL_SKIP.iter().any(|s| e.file_name() == *s));
     for e in walk {
         let e = e.map_err(|e| Error::Build(e.to_string()))?;
+        refuse_symlink(&e)?;
         let rel = e.path().strip_prefix(src).unwrap_or(e.path());
         let to = dst.join(rel);
         if e.file_type().is_dir() {
@@ -562,6 +576,7 @@ fn tree_hash(dir: &Path) -> Result<String> {
         .filter_entry(|e| e.depth() == 0 || !LOCAL_SKIP.iter().any(|s| e.file_name() == *s));
     for e in walk {
         let e = e.map_err(|e| Error::Build(e.to_string()))?;
+        refuse_symlink(&e)?;
         if e.file_type().is_file() {
             let rel = e
                 .path()
@@ -1685,6 +1700,22 @@ system = "make"
     }
 
     #[test]
+    fn local_sources_refuse_symlinks() {
+        let d = tempfile::tempdir().unwrap();
+        let src = d.path().join("src");
+        fs::create_dir_all(src.join("etc")).unwrap();
+        fs::write(src.join("etc/a"), "a").unwrap();
+        assert!(copy_tree(&src, &d.path().join("ok")).is_ok());
+        assert!(tree_hash(&src).is_ok());
+        std::os::unix::fs::symlink("../lib/os-release", src.join("etc/os-release")).unwrap();
+        let err = copy_tree(&src, &d.path().join("out"))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("may not contain symlinks"), "{err}");
+        assert!(tree_hash(&src).is_err());
+    }
+
+    #[test]
     fn local_sources_stay_inside_the_repo() {
         let repo = tempfile::tempdir().unwrap();
         let outside = tempfile::tempdir().unwrap();
@@ -1692,7 +1723,6 @@ system = "make"
         fs::write(repo.path().join("code/a.rs"), "a").unwrap();
         fs::write(repo.path().join("code/target/junk"), "j").unwrap();
         std::os::unix::fs::symlink(outside.path(), repo.path().join("escape")).unwrap();
-        std::os::unix::fs::symlink(outside.path(), repo.path().join("code/link")).unwrap();
         let src = |p: &str| Source {
             url: String::new(),
             sha256: String::new(),
@@ -1709,10 +1739,6 @@ system = "make"
         assert!(
             !dst.path().join("code/target").exists(),
             "build outputs skipped"
-        );
-        assert!(
-            !dst.path().join("code/link").exists(),
-            "symlinks not copied"
         );
         let h1 = tree_hash(&code).unwrap();
         fs::write(repo.path().join("code/a.rs"), "b").unwrap();

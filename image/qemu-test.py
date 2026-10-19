@@ -100,6 +100,8 @@ def main():
         c.send(PASSWORD + "\n")
         c.expect(PROMPT, "a shell prompt after login", 120)
         ok("logged in as root")
+        # A wide terminal, so a command's echo never wraps.
+        c.run("stty cols 200", "stty")
         start = c.pos
         c.run("solctl status", "solctl status")
         out = c.buf[start : c.pos]
@@ -112,8 +114,21 @@ def main():
             fail("solctl boot-time gave no time")
         ok("solctl boot-time")
         c.run("solctl logs -n 5", "solctl logs")
-        c.run("cat /etc/os-release; ls / ; findmnt -n -o TARGET,FSTYPE,OPTIONS /usr", "layout check")
-        if re.search(rb"/usr\s+btrfs\s+ro,", c.buf) is None:
+        start = c.pos
+        c.run("cat /etc/os-release", "os-release")
+        if b"ID=solace" not in c.buf[start : c.pos]:
+            fail("/etc/os-release does not identify Solace")
+        ok("/etc/os-release (from the factory /etc)")
+        start = c.pos
+        c.run("ls -A /", "root listing")
+        listing = c.buf[start : c.pos]
+        for name in (b"Applications", b"Users", b"System", b"Volumes", b"usr", b"etc"):
+            if name not in listing:
+                fail(f"/{name.decode()} missing from the root")
+        ok("macOS-style root layout")
+        start = c.pos
+        c.run("findmnt -n -o FSTYPE,OPTIONS /usr", "findmnt")
+        if re.search(rb"btrfs\s+ro,", c.buf[start : c.pos]) is None:
             fail("/usr is not a read-only btrfs mount")
         ok("/usr is the sealed read-only snapshot")
         c.send("solctl poweroff\n")

@@ -17,6 +17,8 @@ system = "custom"
 compile = "true"
 install = '''
 cp -R usr "$DESTDIR/"
+# Local sources carry no symlinks; /etc/os-release points into the system.
+ln -s ../usr/lib/os-release "$DESTDIR/usr/share/factory/etc/os-release"
 # git does not keep these modes.
 chmod 600 "$DESTDIR/usr/share/factory/etc/shadow" "$DESTDIR/usr/share/factory/etc/gshadow"
 '''
