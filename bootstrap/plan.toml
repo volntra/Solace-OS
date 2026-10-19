@@ -54,7 +54,7 @@ base = [
 recipes = [
     # The boot path first.
     "linux-headers", "glibc", "zlib", "bzip2", "xz", "lz4", "zstd", "file",
-    "m4", "bc", "flex", "ncurses", "readline", "bash", "coreutils",
+    "m4", "flex", "ncurses", "readline", "bc", "bash", "coreutils",
     "diffutils", "gawk", "findutils", "grep", "gzip", "sed", "tar", "make",
     "patch", "less", "libxcrypt", "shadow", "util-linux", "elfutils", "linux",
     "sol-init", "sol-bootgen", "solace-base", "solace-grub-theme", "grub",
