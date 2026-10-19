@@ -193,6 +193,58 @@ fn sysroot_deps(recipe: &Recipe, cfg: &BuildConfig) -> Vec<DepSpec> {
     deps
 }
 
+/// Pins each unversioned base dependency to the newest version in the
+/// stage's dependency repositories (never the stage's own output repo).
+/// Without this, a package's sysroot would change as the stage builds
+/// newer versions of its base packages, and every rerun would rebuild
+/// everything built before them. A stage without dependency repos takes
+/// its base from its own repo and is left as is.
+///
+/// # Errors
+/// Repository errors, or a base package that no dependency repo has.
+pub fn pin_base_deps(cfg: &mut BuildConfig) -> Result<()> {
+    if cfg.dep_repos.is_empty() || cfg.base_deps.iter().all(|d| d.constraint.is_some()) {
+        return Ok(());
+    }
+    let keyring = keyring_of(cfg);
+    let tmp = tempfile::tempdir().at(std::env::temp_dir())?;
+    let mut entries = Vec::new();
+    for r in cfg
+        .dep_repos
+        .iter()
+        .filter(|r| r.join(repo::INDEX).exists())
+    {
+        entries.extend(
+            Repo::open(Location::Local(r.clone()), &keyring, tmp.path())?
+                .index
+                .packages,
+        );
+    }
+    pin_to_newest(&mut cfg.base_deps, &entries)
+}
+
+fn pin_to_newest(base: &mut [DepSpec], entries: &[repo::IndexEntry]) -> Result<()> {
+    for dep in base.iter_mut().filter(|d| d.constraint.is_none()) {
+        let newest = entries
+            .iter()
+            .filter(|e| e.name == dep.name)
+            .map(repo::IndexEntry::pkg_version)
+            .max()
+            .ok_or_else(|| {
+                Error::invalid(format!(
+                    "base package {} is in no dependency repository",
+                    dep.name
+                ))
+            })?;
+        dep.constraint = Some(Constraint {
+            op: Op::Eq,
+            version: newest.version,
+            release: Some(newest.release),
+        });
+    }
+    Ok(())
+}
+
 /// Builds every package of `recipe`. See the module docs for the steps.
 ///
 /// # Errors
@@ -1455,6 +1507,40 @@ system = "make"
             ["usr", "usr/lib"],
             "the link is listed, not its target's contents"
         );
+    }
+
+    #[test]
+    fn base_deps_pin_to_the_newest_dependency_repo_version() {
+        let entry = |name: &str, ver: &str, release: u32| repo::IndexEntry {
+            name: name.into(),
+            version: crate::version::Version::parse(ver).unwrap(),
+            release,
+            arch: "x86_64".into(),
+            summary: String::new(),
+            depends: Vec::new(),
+            provides: Vec::new(),
+            conflicts: Vec::new(),
+            replaces: Vec::new(),
+            file: format!("{name}.solpkg"),
+            size: 1,
+            sha256: "0".repeat(64),
+            installed_size: 1,
+        };
+        let entries = [
+            entry("bash", "5.2~bootstrap", 1),
+            entry("bash", "5.3~bootstrap", 2),
+            entry("gcc", "16.2.0~bootstrap", 1),
+        ];
+        let mut base = vec![
+            DepSpec::parse("bash").unwrap(),
+            DepSpec::parse("gcc>=1").unwrap(),
+        ];
+        pin_to_newest(&mut base, &entries).unwrap();
+        assert_eq!(base[0].to_string(), "bash=5.3~bootstrap-2");
+        // An explicit constraint is left alone.
+        assert_eq!(base[1].to_string(), "gcc>=1");
+        let mut missing = vec![DepSpec::parse("perl").unwrap()];
+        assert!(pin_to_newest(&mut missing, &entries).is_err());
     }
 
     #[test]

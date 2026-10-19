@@ -391,3 +391,15 @@ entry names a recipe that does not exist.
   it to `EFI/BOOT/BOOTX64.EFI` and refuses to build without it. A
   workbench fallback existed briefly while GNU mirrors were blocked in the
   cloud environment; it was removed once network access was opened.
+
+### 2026-10-19: The system stage's base set is pinned to the bootstrap repo
+
+- **Decision:** `spk bootstrap` pins each base package of a stage with
+  dependency repos to the exact version found there (for the system stage:
+  the `~bootstrap` tools). Final packages see each other only through
+  their explicit build deps.
+- **Why:** with "newest wins", a package's sysroot changed as the stage
+  built final versions of its base tools, so every rerun rebuilt
+  everything before the last change, and finishing gcc would have forced
+  a full rebuild. Pinning makes each package's inputs independent of
+  build history.

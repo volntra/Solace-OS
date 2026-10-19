@@ -713,6 +713,7 @@ fn bootstrap_cmd(a: &BootstrapArgs) -> Result<()> {
         cfg.default_mode = st.toolchain;
         cfg.dep_repos.clone_from(&st.dep_repos);
         cfg.base_deps.clone_from(&st.base);
+        build::pin_base_deps(&mut cfg)?;
         cfg.target.clone_from(&plan.target);
         // Each stage keeps its own build stamps.
         cfg.work = a.opts.work.join(&st.name);
