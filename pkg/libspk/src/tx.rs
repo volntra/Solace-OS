@@ -63,6 +63,20 @@ impl Root {
     /// # Errors
     /// I/O errors, a busy lock, or a malformed keyring.
     pub fn open(path: &Path) -> Result<Self> {
+        Self::open_inner(path, None)
+    }
+
+    /// Like [`Root::open`], trusting `keyring` instead of the keys under
+    /// `path` (a system transaction's staging root has no `/etc`; it uses
+    /// the running system's keys).
+    ///
+    /// # Errors
+    /// As [`Root::open`].
+    pub fn open_with_keyring(path: &Path, keyring: Keyring) -> Result<Self> {
+        Self::open_inner(path, Some(keyring))
+    }
+
+    fn open_inner(path: &Path, keyring: Option<Keyring>) -> Result<Self> {
         fs::create_dir_all(path.join(SPK_DIR)).at(path.join(SPK_DIR))?;
         let path = path.canonicalize().at(path)?;
         let lock_path = path.join(LOCK);
@@ -73,7 +87,10 @@ impl Root {
                 path.display()
             ))
         })?;
-        let keyring = Keyring::load(&path)?;
+        let keyring = match keyring {
+            Some(k) => k,
+            None => Keyring::load(&path)?,
+        };
         let db = Db::open(&path)?;
         Ok(Root {
             path,

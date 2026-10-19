@@ -3,6 +3,7 @@
 //! Formats are specified in `docs/formats/` (recipe, package, repo).
 
 pub mod bootstrap;
+pub mod btrfs;
 pub mod build;
 pub mod db;
 pub mod error;
@@ -14,6 +15,7 @@ pub mod recipe;
 pub mod repo;
 pub mod sign;
 pub mod solve;
+pub mod system;
 pub mod tx;
 pub mod version;
 
