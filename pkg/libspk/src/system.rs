@@ -270,6 +270,7 @@ impl Live {
             }
         };
 
+        test_pause("before-seal", id);
         // 7-8: seal, then the boot menu with the new system as default.
         let installed = (|| {
             btrfs::sync_fs(&self.system_dir(id))?;
@@ -449,6 +450,17 @@ impl Live {
             .collect();
         out.sort_by_key(|o| std::cmp::Reverse(o.0.created));
         Ok(out)
+    }
+}
+
+/// Failure injection for the QEMU tests (CLAUDE.md section 8): with
+/// `SPK_TEST_PAUSE=<point>`, the transaction stops at that point and
+/// waits, so the test can cut the power there. Test-only; unset, it does
+/// nothing.
+fn test_pause(point: &str, id: u64) {
+    if std::env::var("SPK_TEST_PAUSE").is_ok_and(|p| p == point) {
+        eprintln!("spk: test pause {point} (system {id})");
+        std::thread::sleep(std::time::Duration::from_secs(600));
     }
 }
 

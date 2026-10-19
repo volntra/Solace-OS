@@ -82,6 +82,17 @@ qemu *ARGS:
 qemu-test:
     image/qemu-test.py
 
+# --- System updates (Phase 3) -----------------------------------------------
+
+# Build the demo update (solace-base 0.1.1) and the update disk carrying it
+update-demo: spk
+    image/update-demo.sh
+
+# Phase 3 demo, automated: refused tampered update, power cut mid-update,
+# update, reboot into it, pick the previous system in the boot menu, rollback
+qemu-test-update:
+    image/qemu-test-update.py
+
 # Delete build outputs (keeps the source cache and signing key)
 clean-build:
     rm -rf build/work build/repo build/scratch-root build/demo-* build/probe-*

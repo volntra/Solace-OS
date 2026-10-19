@@ -5,8 +5,10 @@ Boots image/qemu.sh --headless, follows the serial console, and checks:
   1. GRUB boots our kernel and sol-init reports boot complete, with the
      time since the kernel started (the console is quiet until then)
   2. a text login prompt appears; root logs in with the dev password
-  3. solctl works: status, boot-time, logs
-  4. solctl poweroff shuts the machine down cleanly
+  3. solctl works: status, boot-time, logs; spk systems lists system 1
+  4. /etc/os-release, the Solace root layout, the read-only /usr, and the
+     ESP and system volume mounted for updates
+  5. solctl poweroff shuts the machine down cleanly
 
 Exit status 0 only if every step passed. The full console log is written
 to build/image/qemu-test.log.
@@ -14,123 +16,47 @@ to build/image/qemu-test.log.
 
 import os
 import re
-import subprocess
-import sys
 import time
 
-TIMEOUT = float(os.environ.get("QEMU_TEST_TIMEOUT", "600"))
-PASSWORD = os.environ.get("SOL_ROOT_PASSWORD", "solace")
+from qemulib import Console, fail, ok
+
 LOG = "build/image/qemu-test.log"
-PROMPT = re.compile(rb"\n[^\n]*[#$] $")
-
-
-class Console:
-    def __init__(self, cmd):
-        self.p = subprocess.Popen(
-            cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
-        )
-        os.set_blocking(self.p.stdout.fileno(), False)
-        self.buf = b""
-        self.pos = 0
-        self.log = open(LOG, "wb")
-        self.start = time.monotonic()
-
-    def _read(self):
-        try:
-            data = self.p.stdout.read()
-        except BlockingIOError:
-            data = None
-        if data:
-            self.buf += data
-            self.log.write(data)
-            self.log.flush()
-            sys.stdout.write(data.decode("utf-8", "replace"))
-            sys.stdout.flush()
-        return data
-
-    def expect(self, pattern, what, timeout=TIMEOUT):
-        rx = re.compile(pattern) if isinstance(pattern, bytes) else pattern
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            m = rx.search(self.buf, self.pos)
-            if m:
-                self.pos = m.end()
-                return m
-            if not self._read():
-                if self.p.poll() is not None:
-                    self._read()
-                    m = rx.search(self.buf, self.pos)
-                    if m:
-                        self.pos = m.end()
-                        return m
-                    fail(f"QEMU exited while waiting for {what}")
-                time.sleep(0.05)
-        fail(f"timed out after {timeout:.0f}s waiting for {what}")
-
-    def send(self, text):
-        self.p.stdin.write(text.encode())
-        self.p.stdin.flush()
-
-    def run(self, cmd, what):
-        self.send(cmd + "\n")
-        self.expect(re.escape(cmd.encode()), f"echo of {what}", 30)
-        self.expect(PROMPT, f"prompt after {what}", 120)
-
-
-def fail(msg):
-    print(f"\n\nqemu-test: FAIL: {msg} (console log: {LOG})", file=sys.stderr)
-    sys.exit(1)
-
-
-def ok(msg):
-    print(f"\n\033[32mqemu-test: ✓ {msg}\033[0m", flush=True)
 
 
 def main():
     os.makedirs("build/image", exist_ok=True)
-    c = Console(["image/qemu.sh", "--headless"])
+    if os.path.exists(LOG):
+        os.remove(LOG)
+    c = Console(["image/qemu.sh", "--headless"], LOG)
     try:
-        m = c.expect(rb"boot complete: (\d+) ms after the kernel started", "sol-init boot complete")
-        boot_ms = int(m.group(1))
-        ok(f"sol-init: boot complete {boot_ms} ms after the kernel started")
-        c.expect(rb"login: ", "the login prompt")
-        ok("text login prompt")
-        c.send("root\n")
-        c.expect(rb"Password: ", "the password prompt", 60)
-        c.send(PASSWORD + "\n")
-        c.expect(PROMPT, "a shell prompt after login", 120)
-        ok("logged in as root")
-        # A wide terminal, so a command's echo never wraps.
-        c.run("stty cols 200", "stty")
-        start = c.pos
-        c.run("solctl status", "solctl status")
-        out = c.buf[start : c.pos]
-        if b"getty-serial" not in out:
+        boot_ms = c.boot_and_login()
+        ok(f"sol-init: boot complete {boot_ms} ms after the kernel started; logged in as root")
+        if "getty-serial" not in c.run("solctl status"):
             fail("solctl status did not list getty-serial")
         ok("solctl status")
-        start = c.pos
-        c.run("solctl boot-time", "solctl boot-time")
-        if b"ms after the kernel started" not in c.buf[start : c.pos]:
+        if "ms after the kernel started" not in c.run("solctl boot-time"):
             fail("solctl boot-time gave no time")
         ok("solctl boot-time")
-        c.run("solctl logs -n 5", "solctl logs")
-        start = c.pos
-        c.run("cat /etc/os-release", "os-release")
-        if b"ID=solace" not in c.buf[start : c.pos]:
+        c.run("solctl logs -n 5")
+        if "ID=solace" not in c.run("cat /etc/os-release"):
             fail("/etc/os-release does not identify Solace")
         ok("/etc/os-release (from the factory /etc)")
-        start = c.pos
-        c.run("ls -A /", "root listing")
-        listing = c.buf[start : c.pos]
-        for name in (b"Applications", b"Users", b"System", b"Volumes", b"usr", b"etc"):
+        listing = c.run("ls -A /")
+        for name in ("Applications", "Users", "System", "Volumes", "usr", "etc"):
             if name not in listing:
-                fail(f"/{name.decode()} missing from the root")
+                fail(f"/{name} missing from the root")
         ok("Solace root layout (Applications, Users, System, Volumes)")
-        start = c.pos
-        c.run("findmnt -n -o FSTYPE,OPTIONS /usr", "findmnt")
-        if re.search(rb"btrfs\s+ro,", c.buf[start : c.pos]) is None:
+        if re.search(r"btrfs\s+ro,", c.run("findmnt -n -o FSTYPE,OPTIONS /usr")) is None:
             fail("/usr is not a read-only btrfs mount")
         ok("/usr is the sealed read-only snapshot")
+        mounts = c.run("findmnt -n -o TARGET,FSTYPE /boot; findmnt -n -o TARGET,FSTYPE /run/sol/btrfs")
+        if "vfat" not in mounts or "btrfs" not in mounts:
+            fail(f"the ESP or the system volume is not mounted: {mounts!r}")
+        ok("ESP at /boot and the system volume at /run/sol/btrfs")
+        systems = c.run("spk systems")
+        if not re.search(r"^1\s+\S+\s+.*running", systems, re.M):
+            fail(f"spk systems does not show system 1 running: {systems!r}")
+        ok("spk systems")
         c.send("solctl poweroff\n")
         deadline = time.monotonic() + 120
         while c.p.poll() is None and time.monotonic() < deadline:
@@ -140,11 +66,11 @@ def main():
             fail("the machine did not power off")
         ok("clean poweroff")
         verdict = "under" if boot_ms < 5000 else "OVER"
+        kvm = os.access("/dev/kvm", os.W_OK)
         print(f"\nqemu-test: PASS (boot {boot_ms} ms, {verdict} the 5 s target"
-              f"{'; no KVM, so this is software emulation' if not os.access('/dev/kvm', os.W_OK) else ''})")
+              f"{'' if kvm else '; no KVM, so this is software emulation'})")
     finally:
-        if c.p.poll() is None:
-            c.p.kill()
+        c.close()
 
 
 if __name__ == "__main__":
