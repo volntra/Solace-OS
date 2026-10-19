@@ -54,6 +54,17 @@ fn wait_for(what: &str, mut f: impl FnMut() -> bool) {
     }
 }
 
+/// The STATE column of `solctl status <unit>` (the second line's second
+/// field), so a description such as "long running" cannot match.
+fn state(root: &Path, unit: &str) -> String {
+    stdout(&ctl(root, &["status", unit]))
+        .lines()
+        .nth(1)
+        .and_then(|l| l.split_whitespace().nth(1))
+        .unwrap_or_default()
+        .to_string()
+}
+
 fn pid_alive(pid: u32) -> bool {
     // A zombie is not alive for our purposes.
     fs::read_to_string(format!("/proc/{pid}/stat"))
@@ -85,6 +96,13 @@ fn supervises_a_scratch_root() {
         "crashy",
         "description = \"crashes\"\nenabled = true\n[service]\nexec = [\"/bin/sh\", \"-c\", \"echo crash; exit 3\"]\nrestart = \"always\"\nrestart_delay_ms = 50\n",
     );
+    // Each service is its own session (agetty needs that to take its tty
+    // as controlling terminal). Field 6 of /proc/<pid>/stat is the session.
+    unit(
+        root,
+        "session",
+        "description = \"session check\"\nenabled = true\n[service]\nexec = [\"/bin/sh\", \"-c\", \"set -- $(cat /proc/$$/stat); if [ \\\"$6\\\" = \\\"$$\\\" ]; then echo own-session; else echo shared-session; fi\"]\ntype = \"oneshot\"\nrestart = \"no\"\n",
+    );
     unit(
         root,
         "manual",
@@ -102,9 +120,7 @@ fn supervises_a_scratch_root() {
     wait_for("control socket", || root.join("run/sol/control").exists());
 
     // Ordering: app starts after base finished.
-    wait_for("app running", || {
-        stdout(&ctl(root, &["status", "app"])).contains("running")
-    });
+    wait_for("app running", || state(root, "app") == "running");
     let st = stdout(&ctl(root, &["status"]));
     assert!(st.contains("base") && st.contains("done"), "{st}");
     assert!(st.contains("manual") && st.contains("inactive"), "{st}");
@@ -113,6 +129,11 @@ fn supervises_a_scratch_root() {
     let app_at = logs.find("app-up").expect("app output logged");
     assert!(base_at < app_at, "{logs}");
     assert!(logs.contains("oops"), "stderr captured: {logs}");
+    wait_for("session check", || {
+        stdout(&ctl(root, &["logs", "session"])).contains("-session")
+    });
+    let session = stdout(&ctl(root, &["logs", "session"]));
+    assert!(session.contains("own-session"), "{session}");
 
     // Crash loop: restarted several times, with backoff.
     wait_for("crashy restarts", || {
@@ -131,9 +152,7 @@ fn supervises_a_scratch_root() {
 
     // Manual start and stop.
     assert!(ctl(root, &["start", "manual"]).status.success());
-    wait_for("manual running", || {
-        stdout(&ctl(root, &["status", "manual"])).contains("running")
-    });
+    wait_for("manual running", || state(root, "manual") == "running");
     let pid: u32 = stdout(&ctl(root, &["status", "manual"]))
         .lines()
         .nth(1)

@@ -19,7 +19,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use rustix::event::{PollFd, PollFlags, poll};
-use rustix::process::{Pid, Signal, WaitOptions, kill_process, waitpid};
+use rustix::process::{Pid, Signal, WaitOptions, kill_process, wait};
 
 use crate::log::{LineBuffer, LogStore};
 use crate::manager::{Action, Manager, Sig};
@@ -289,16 +289,22 @@ impl Runtime {
         } else {
             None
         };
-        if u.sandbox.no_new_privs {
-            // SAFETY: the closure runs in the forked child before exec and
-            // only makes one prctl(2) system call, which is
-            // async-signal-safe; it touches no locks or allocations.
-            #[allow(unsafe_code)]
-            unsafe {
-                cmd.pre_exec(|| {
-                    rustix::thread::set_no_new_privs(true).map_err(std::io::Error::from)
-                });
-            }
+        // Every service gets its own session: it must not share PID 1's,
+        // and a getty can only take its tty as controlling terminal (so
+        // login can read a password from /dev/tty) as a session leader.
+        let no_new_privs = u.sandbox.no_new_privs;
+        // SAFETY: the closure runs in the forked child before exec and only
+        // makes the setsid(2) and prctl(2) system calls, which are
+        // async-signal-safe; it touches no locks or allocations.
+        #[allow(unsafe_code)]
+        unsafe {
+            cmd.pre_exec(move || {
+                rustix::process::setsid().map_err(std::io::Error::from)?;
+                if no_new_privs {
+                    rustix::thread::set_no_new_privs(true).map_err(std::io::Error::from)?;
+                }
+                Ok(())
+            });
         }
         let mut child = cmd.spawn().map_err(|e| format!("{}: {e}", svc.exec[0]))?;
         let pid = child.id();
@@ -388,7 +394,10 @@ impl Runtime {
 
     fn reap(&mut self) {
         loop {
-            match waitpid(None, WaitOptions::NOHANG) {
+            // wait(), not waitpid(None): rustix's waitpid(None) only sees
+            // children in our own process group, and every service has its
+            // own session (and so its own group).
+            match wait(WaitOptions::NOHANG) {
                 Ok(Some((pid, status))) => {
                     let exit = if let Some(code) = status.exit_status() {
                         Exit::Code(code)

@@ -414,7 +414,8 @@ pub fn finish(power: Power, log: &mut LogStore) -> ! {
         }
         std::thread::sleep(std::time::Duration::from_millis(500));
         while matches!(
-            rustix::process::waitpid(None, rustix::process::WaitOptions::NOHANG),
+            // Any child, whatever its process group (see Runtime::reap).
+            rustix::process::wait(rustix::process::WaitOptions::NOHANG),
             Ok(Some(_))
         ) {}
     }
