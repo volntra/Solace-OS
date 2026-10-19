@@ -3,7 +3,8 @@
 #
 #   image/update-demo.sh [--out DIR]       (default build/demo)
 #
-# The update is solace-base release 2, reporting version 0.1.1 (os-release),
+# The update is solace-base with the next release number, reporting
+# version 0.1.1 (os-release),
 # so the boot menu and the login banner show which system is running. The
 # update disk (<out>/update.img, FAT, no partition table) holds two
 # repositories:
@@ -32,9 +33,12 @@ sed -i -e 's/^VERSION_ID=.*/VERSION_ID=0.1.1/' \
   -e 's/^VERSION=.*/VERSION="0.1.1 (Koi)"/' \
   -e 's/^PRETTY_NAME=.*/PRETTY_NAME="Solace 0.1.1 (Koi)"/' "$out/base/usr/lib/os-release"
 mkdir -p "$out/recipes/solace-base"
-sed -e 's/^release = 1$/release = 2/' -e "s|^local = \"image/base\"|local = \"$out/base\"|" \
+release=$(sed -n 's/^release = \([0-9]*\)$/\1/p' recipes/solace-base/recipe.toml)
+[ -n "$release" ] || { echo "no release in recipes/solace-base/recipe.toml" >&2; exit 1; }
+next=$((release + 1))
+sed -e "s/^release = $release\$/release = $next/" -e "s|^local = \"image/base\"|local = \"$out/base\"|" \
   recipes/solace-base/recipe.toml >"$out/recipes/solace-base/recipe.toml"
-grep -q '^release = 2$' "$out/recipes/solace-base/recipe.toml"
+grep -q "^release = $next\$" "$out/recipes/solace-base/recipe.toml"
 grep -q "^local = \"$out/base\"" "$out/recipes/solace-base/recipe.toml"
 
 "$SPK" build --recipes-dir "$out/recipes" --repo-dir "$out/repo" --work "$out/work" \

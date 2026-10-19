@@ -113,7 +113,7 @@ update-demo: spk
 
 # Phase 3 demo, automated: refused tampered update, power cut mid-update,
 # update, reboot into it, pick the previous system in the boot menu, rollback
-qemu-test-update:
+qemu-test-update: update-demo
     image/qemu-test-update.py
 
 # Delete build outputs (keeps the source cache and signing key)
