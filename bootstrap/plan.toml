@@ -38,3 +38,26 @@ base = [
     "ncurses", "patch", "sed", "tar", "xz",
 ]
 recipes = ["gettext", "bison", "perl", "python"]
+
+[[stage]]
+name = "system"
+description = "the final system, built natively with our own toolchain (LFS ch. 8)"
+recipes_dir = "recipes"
+repo = "build/system/repo"
+dep_repos = ["build/bootstrap/repo"]
+toolchain = "native"
+base = [
+    "glibc", "linux-headers", "binutils", "gcc", "bash", "coreutils",
+    "diffutils", "file", "findutils", "gawk", "grep", "gzip", "make", "m4",
+    "ncurses", "patch", "sed", "tar", "xz", "perl", "python", "bison", "gettext",
+]
+recipes = [
+    # The boot path first.
+    "linux-headers", "glibc", "zlib", "bzip2", "xz", "lz4", "zstd", "file",
+    "m4", "bc", "flex", "ncurses", "readline", "bash", "coreutils",
+    "diffutils", "gawk", "findutils", "grep", "gzip", "sed", "tar", "make",
+    "patch", "less", "libxcrypt", "shadow", "util-linux", "elfutils", "linux",
+    # Then the self-hosting toolchain and the remaining libraries.
+    "binutils", "gmp", "mpfr", "mpc", "gcc",
+    "expat", "libffi", "pcre2", "libarchive",
+]

@@ -1,0 +1,47 @@
+# Built-in drivers only for now (no modules are built or installed). The
+# configure step fails if any line of boot/kernel/solace.config did not
+# take effect.
+name = "linux"
+version = "7.2"
+release = 1
+summary = "The Linux kernel, with Solace's configuration"
+license = "GPL-2.0-only"
+
+[[source]]
+url = "https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.2.tar.xz"
+sha256 = "f9fef3d14c0df53819026f4be74459835c2a0b0dcbf5b5bbd9ea19f0829402b3"
+dir = "linux-7.2"
+
+[[source]]
+local = "boot/kernel"
+
+[deps]
+build = ["bc", "flex", "elfutils"]
+
+[build]
+system = "custom"
+configure = '''
+make mrproper
+make x86_64_defconfig
+scripts/kconfig/merge_config.sh -m .config ../kernel/solace.config
+make olddefconfig
+# Every line of our fragment must have survived (a typo or an unmet
+# dependency silently drops it otherwise).
+while IFS= read -r line; do
+  case "$line" in ''|'#'*) continue ;; esac
+  key=${line%%=*}; val=${line#*=}
+  if [ "$val" = n ]; then
+    grep -qE "^# $key is not set|^$key=n" .config || { echo "config lost: $line"; exit 1; }
+  else
+    grep -qxF "$line" .config || { echo "config lost: $line"; exit 1; }
+  fi
+done < ../kernel/solace.config
+'''
+compile = '''
+export KBUILD_BUILD_TIMESTAMP="@$SOURCE_DATE_EPOCH" KBUILD_BUILD_USER=solace KBUILD_BUILD_HOST=solace
+make bzImage
+'''
+install = '''
+install -Dm644 arch/x86/boot/bzImage "$DESTDIR/usr/lib/sol/boot/vmlinuz"
+install -Dm644 .config "$DESTDIR/usr/lib/sol/boot/config"
+'''

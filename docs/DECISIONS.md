@@ -10,6 +10,35 @@ One line per recipe in `recipes/`, in the form ``- `name`: why it is in the
 base``. `just lint` fails if a recipe has no entry, an entry is empty, or an
 entry names a recipe that does not exist.
 
+- `bash`: /bin/sh and the login shell until ace exists (Phase 10).
+- `bc`: the kernel build needs it (timeconst); Gavin Howard's bc, as LFS uses.
+- `binutils`: assembler and linker; the system builds itself.
+- `coreutils`: the basic userland (ls, cp, ...).
+- `diffutils`: diff/cmp, needed by most builds.
+- `elfutils`: libelf, required by the kernel's objtool.
+- `file`: libmagic, used by builds and later by Files for type detection.
+- `findutils`: find/xargs, needed by builds and scripts.
+- `flex`: lexer generator, needed to build the kernel and others.
+- `gawk`: awk, needed by builds (glibc, kernel).
+- `gcc`: the compiler (C, C++) plus gcc-libs (libgcc_s, libstdc++) at runtime.
+- `glibc`: the C library (locked stack: NVIDIA userspace and Steam need it).
+- `gmp`: GCC's arithmetic library.
+- `grep`: needed by builds and scripts.
+- `gzip`: .gz archives (kernel image, sources).
+- `less`: pager for text output (logs, man pages).
+- `linux`: the kernel, with our configuration (boot/kernel/solace.config).
+- `linux-headers`: kernel API headers for glibc and everything else.
+- `m4`: macro processor needed by autoconf-generated builds and bison.
+- `make`: build driver.
+- `mpc`: GCC's complex-arithmetic library.
+- `mpfr`: GCC's floating-point library.
+- `ncurses`: terminal handling for bash, readline, util-linux, less.
+- `patch`: applying recipe patches.
+- `readline`: line editing for bash and gawk.
+- `sed`: needed by builds and scripts.
+- `shadow`: user/group/password tools and the text-console login.
+- `tar`: unpacking sources; archives.
+- `util-linux`: mount, agetty, fdisk, lsblk, and libmount/libblkid.
 - `bzip2`: bzip2 tool and libbz2; libarchive and pcre2grep read .bz2, and many upstream sources ship as .tar.bz2.
 - `expat`: XML parser required by dbus-daemon, fontconfig, Mesa, and wayland-scanner.
 - `libarchive`: archive library Flatpak requires (it unpacks OCI/bundle layers); provides bsdtar.
@@ -281,3 +310,33 @@ entry names a recipe that does not exist.
   everything else.
 - Bootstrap recipes (`bootstrap/recipes/`) never ship, so they need no
   justification lines; the final recipes that replace them do.
+
+### 2026-10-19: Text login without PAM (Phase 2)
+
+- **Decision:** Phase 2's text login is agetty (util-linux) + shadow's
+  `login`, built without PAM. Linux-PAM arrives with the graphical greeter
+  (Phase 9), when shadow and util-linux are rebuilt against it.
+- **Why:** Linux-PAM 1.7 builds with Meson, which needs Meson and Ninja
+  (and Python's packaging stack) in the base first. The locked stack still
+  says Linux-PAM; this is only ordering.
+
+### 2026-10-19: sched_ext deferred until the toolchain has pahole
+
+- **Decision:** the Phase 2 kernel enables BPF and BPF JIT but not
+  `CONFIG_SCHED_CLASS_EXT`, which requires BTF debug info and therefore
+  `pahole` (dwarves, which needs CMake) at kernel build time.
+- **When:** with the Performance settings (sched_ext profiles), after the
+  dwarves and CMake recipes exist. Tracked in STATUS.md.
+
+### 2026-10-19: Our own triple everywhere
+
+- **Decision:** the final binutils and GCC are configured with
+  `--build=x86_64-solace-linux-gnu`, so the system's compiler reports our
+  triple (as the bootstrap compilers do) instead of `x86_64-pc-linux-gnu`.
+
+### 2026-10-19: More trust-on-first-use sources
+
+- **Decision:** `bc` 7.0.3 and `shadow` 4.20.2 are pinned from their
+  official GitHub release assets, trust-on-first-use (nixpkgs packages a
+  different bc and builds shadow from a git archive). Every other final
+  source matches nixpkgs' pinned hash byte for byte.

@@ -1,0 +1,30 @@
+# LFS 8.30.
+name = "ncurses"
+version = "6.6"
+release = 1
+summary = "Terminal handling library"
+license = "MIT"
+
+[[source]]
+url = "https://invisible-island.net/archives/ncurses/ncurses-6.6.tar.gz"
+sha256 = "355b4cbbed880b0381a04c46617b7656e362585d52e9cf84a67e2009b749ff11"
+
+[build]
+system = "custom"
+configure = '''
+./configure --prefix=/usr --mandir=/usr/share/man --with-shared --without-debug \
+  --without-normal --with-cxx-shared --enable-pc-files \
+  --with-pkg-config-libdir=/usr/lib/pkgconfig
+'''
+compile = '''
+make
+'''
+install = '''
+make DESTDIR="$DESTDIR" install
+sed -e 's/^#if.*XOPEN.*$/#if 1/' -i "$DESTDIR/usr/include/curses.h"
+for lib in ncurses form panel menu; do
+  ln -sfv "lib${lib}w.so" "$DESTDIR/usr/lib/lib${lib}.so"
+  ln -sfv "${lib}w.pc" "$DESTDIR/usr/lib/pkgconfig/${lib}.pc"
+done
+ln -sfv libncursesw.so "$DESTDIR/usr/lib/libcurses.so"
+'''

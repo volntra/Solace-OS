@@ -1,0 +1,41 @@
+# LFS 8.29.
+name = "gcc"
+version = "16.2.0"
+release = 1
+summary = "GNU compiler collection (C, C++)"
+license = "GPL-3.0-or-later WITH GCC-exception-3.1"
+
+[[source]]
+url = "https://ftp.gnu.org/gnu/gcc/gcc-16.2.0/gcc-16.2.0.tar.xz"
+sha256 = "e6738e29597f733270731aa90600f37ffdc045079dfc27ec7e8192cc81085c3e"
+
+[deps]
+build = ["gmp", "mpfr", "mpc", "zlib"]
+runtime = ["gcc-libs", "gmp", "mpfr", "mpc", "zlib", "binutils"]
+
+[build]
+system = "custom"
+prepare = '''
+sed -e '/m64=/s/lib64/lib/' -i gcc/config/i386/t-linux64
+'''
+configure = '''
+mkdir -v build && cd build
+../configure --prefix=/usr --libdir=/usr/lib --build="$SOL_TGT" LD=ld \
+  --enable-languages=c,c++ --enable-default-pie --enable-default-ssp \
+  --enable-host-pie --disable-multilib --disable-bootstrap \
+  --disable-fixincludes --with-system-zlib
+'''
+compile = '''
+make -C build
+'''
+install = '''
+make -C build DESTDIR="$DESTDIR" install
+ln -sv gcc "$DESTDIR/usr/bin/cc"
+mkdir -p "$DESTDIR/usr/lib/bfd-plugins"
+ln -sfv "../../libexec/gcc/$SOL_TGT/16.2.0/liblto_plugin.so" "$DESTDIR/usr/lib/bfd-plugins/"
+'''
+
+[[split]]
+name = "gcc-libs"
+summary = "GCC runtime libraries (libgcc_s, libstdc++)"
+files = ["usr/lib/libgcc_s.so*", "usr/lib/libstdc++.so*", "usr/lib/libatomic.so*", "usr/lib/libgomp.so*", "usr/lib/libquadmath.so*", "usr/lib/libitm.so*", "usr/lib/libssp.so*"]

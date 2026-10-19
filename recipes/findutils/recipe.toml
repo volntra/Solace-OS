@@ -1,0 +1,21 @@
+name = "findutils"
+version = "4.11.0"
+release = 1
+summary = "GNU find, xargs"
+license = "GPL-3.0-or-later"
+
+[[source]]
+url = "https://ftp.gnu.org/gnu/findutils/findutils-4.11.0.tar.xz"
+sha256 = "bfd19cb06cc71f3352d567e90284d8cdac02ac89774bbeadf0b533b0c11432fd"
+
+[build]
+system = "custom"
+configure = '''
+./configure --prefix=/usr --localstatedir=/var/lib/locate
+'''
+compile = '''
+make
+'''
+install = '''
+make DESTDIR="$DESTDIR" install
+'''

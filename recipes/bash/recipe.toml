@@ -1,0 +1,27 @@
+# LFS 8.36.
+name = "bash"
+version = "5.3"
+release = 1
+summary = "GNU Bourne-Again shell (/bin/sh)"
+license = "GPL-3.0-or-later"
+
+[[source]]
+url = "https://ftp.gnu.org/gnu/bash/bash-5.3.tar.gz"
+sha256 = "0d5cd86965f869a26cf64f4b71be7b96f90a3ba8b3d74e27e8e9d9d5550f31ba"
+
+[deps]
+build = ["readline", "ncurses"]
+runtime = ["readline", "ncurses"]
+
+[build]
+system = "custom"
+configure = '''
+./configure --prefix=/usr --without-bash-malloc --with-installed-readline
+'''
+compile = '''
+make
+'''
+install = '''
+make DESTDIR="$DESTDIR" install
+ln -sv bash "$DESTDIR/usr/bin/sh"
+'''

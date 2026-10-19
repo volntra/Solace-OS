@@ -1,0 +1,34 @@
+# LFS 8.20.
+name = "binutils"
+version = "2.46"
+release = 1
+summary = "GNU assembler, linker, and binary tools"
+license = "GPL-3.0-or-later"
+
+[[source]]
+url = "https://ftp.gnu.org/gnu/binutils/binutils-with-gold-2.46.tar.bz2"
+sha256 = "b8c9a3d796dc0b0e8ea935dc24c5c8d6f345eb177ada5ac6a5b1122c77d62158"
+dir = "binutils-with-gold-2.46"
+
+[deps]
+build = ["zlib"]
+runtime = ["zlib"]
+
+[build]
+system = "custom"
+configure = '''
+mkdir -v build && cd build
+../configure --prefix=/usr --sysconfdir=/etc --build="$SOL_TGT" --enable-ld=default \
+  --enable-plugins --enable-shared --disable-werror --enable-64-bit-bfd \
+  --enable-new-dtags --with-system-zlib --enable-default-hash-style=gnu \
+  --disable-gold --enable-gprofng=no
+'''
+compile = '''
+make -C build tooldir=/usr
+'''
+install = '''
+make -C build tooldir=/usr DESTDIR="$DESTDIR" install
+'''
+post_install = '''
+rm -fv "$DESTDIR"/usr/lib/lib{bfd,ctf,ctf-nobfd,gprofng,opcodes,sframe}.{a,la}
+'''

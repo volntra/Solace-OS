@@ -1,0 +1,27 @@
+# LFS 8.21.
+name = "gmp"
+version = "6.3.0"
+release = 1
+summary = "GNU multiple-precision arithmetic library"
+license = "LGPL-3.0-or-later OR GPL-2.0-or-later"
+
+[[source]]
+url = "https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.bz2"
+sha256 = "ac28211a7cfb609bae2e2c8d6058d66c8fe96434f740cf6fe2e47b000d1c20cb"
+
+[build]
+system = "custom"
+prepare = '''
+# Generic x86-64 code, not tuned to the build machine's CPU.
+cp configfsf.guess config.guess
+cp configfsf.sub config.sub
+'''
+configure = '''
+./configure --prefix=/usr --enable-cxx --disable-static
+'''
+compile = '''
+make
+'''
+install = '''
+make DESTDIR="$DESTDIR" install
+'''

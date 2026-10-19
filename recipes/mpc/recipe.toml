@@ -1,0 +1,25 @@
+name = "mpc"
+version = "1.4.1"
+release = 1
+summary = "Multiple-precision complex arithmetic library"
+license = "LGPL-3.0-or-later"
+
+[[source]]
+url = "https://ftp.gnu.org/gnu/mpc/mpc-1.4.1.tar.xz"
+sha256 = "91204cd32f164bd3b7c992d4a6a8ce6519511aadab30f78b6982d0bf8d73e931"
+
+[deps]
+build = ["gmp", "mpfr"]
+runtime = ["gmp", "mpfr"]
+
+[build]
+system = "custom"
+configure = '''
+./configure --prefix=/usr --disable-static
+'''
+compile = '''
+make
+'''
+install = '''
+make DESTDIR="$DESTDIR" install
+'''

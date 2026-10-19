@@ -1,0 +1,22 @@
+name = "linux-headers"
+version = "7.2"
+release = 1
+summary = "Linux kernel API headers"
+license = "GPL-2.0-only WITH Linux-syscall-note"
+
+[[source]]
+url = "https://cdn.kernel.org/pub/linux/kernel/v7.x/linux-7.2.tar.xz"
+sha256 = "f9fef3d14c0df53819026f4be74459835c2a0b0dcbf5b5bbd9ea19f0829402b3"
+dir = "linux-7.2"
+
+[build]
+system = "custom"
+compile = '''
+make mrproper
+make headers
+find usr/include -type f ! -name '*.h' -delete
+'''
+install = '''
+mkdir -p "$DESTDIR/usr"
+cp -r usr/include "$DESTDIR/usr/"
+'''

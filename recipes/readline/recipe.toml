@@ -1,0 +1,31 @@
+# LFS 8.12.
+name = "readline"
+version = "8.3"
+release = 1
+summary = "Line editing library"
+license = "GPL-3.0-or-later"
+
+[[source]]
+url = "https://ftp.gnu.org/gnu/readline/readline-8.3.tar.gz"
+sha256 = "fe5383204467828cd495ee8d1d3c037a7eba1389c22bc6a041f627976f9061cc"
+
+[deps]
+build = ["ncurses"]
+runtime = ["ncurses"]
+
+[build]
+system = "custom"
+prepare = '''
+sed -i '/MV.*old/d' Makefile.in
+sed -i '/{OLDSUFF}/c:' support/shlib-install
+sed -i 's/-Wl,-rpath,[^ ]*//' support/shobj-conf
+'''
+configure = '''
+./configure --prefix=/usr --disable-static --with-curses
+'''
+compile = '''
+make SHLIB_LIBS="-lncursesw"
+'''
+install = '''
+make SHLIB_LIBS="-lncursesw" DESTDIR="$DESTDIR" install
+'''

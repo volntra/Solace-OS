@@ -1,0 +1,37 @@
+# LFS 8.27, built without PAM for Phase 2's text login (Linux-PAM arrives
+# with the graphical greeter; docs/DECISIONS.md "Text login without PAM").
+name = "shadow"
+version = "4.20.2"
+release = 1
+summary = "Users, groups, passwords, and text-console login"
+license = "BSD-3-Clause"
+
+[[source]]
+url = "https://github.com/shadow-maint/shadow/releases/download/4.20.2/shadow-4.20.2.tar.xz"
+sha256 = "b89f432b75ae55a2d852b446d0365484795fdf533ab97d550e325fa15594a224"
+
+[deps]
+build = ["libxcrypt"]
+runtime = ["libxcrypt"]
+
+[build]
+system = "custom"
+prepare = '''
+# groups comes from coreutils; yescrypt hashes; no /bin or /sbin in PATH.
+sed -i 's/groups$(EXEEXT) //' src/Makefile.in
+find man -name Makefile.in -exec sed -i 's/groups\.1 / /' {} \;
+sed -e 's:#ENCRYPT_METHOD DES:ENCRYPT_METHOD YESCRYPT:' \
+    -e 's:/var/spool/mail:/var/mail:' \
+    -e '/PATH=/{s@/sbin:@@;s@/bin:@@}' -i etc/login.defs
+'''
+configure = '''
+./configure --sysconfdir=/etc --disable-static --with-yescrypt \
+  --without-libbsd --without-libpam --with-group-name-max-length=32
+'''
+compile = '''
+make
+'''
+install = '''
+make exec_prefix=/usr DESTDIR="$DESTDIR" install
+make -C man DESTDIR="$DESTDIR" install-man
+'''

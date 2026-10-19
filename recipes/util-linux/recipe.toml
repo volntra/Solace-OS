@@ -1,0 +1,30 @@
+# LFS 8.80. login and su come from shadow (no PAM yet).
+name = "util-linux"
+version = "2.42.3"
+release = 1
+summary = "Essential system utilities (mount, agetty, fdisk, ...)"
+license = "GPL-2.0-or-later"
+
+[[source]]
+url = "https://cdn.kernel.org/pub/linux/utils/util-linux/v2.42/util-linux-2.42.3.tar.xz"
+sha256 = "66ac7c0e725278eb2b039e3104f2c91119341d941b41bac7a285c695f940bd57"
+
+[deps]
+build = ["ncurses"]
+runtime = ["ncurses"]
+
+[build]
+system = "custom"
+configure = '''
+./configure --bindir=/usr/bin --libdir=/usr/lib --runstatedir=/run --sbindir=/usr/sbin \
+  --disable-chfn-chsh --disable-login --disable-nologin --disable-su \
+  --disable-setpriv --disable-runuser --disable-pylibmount --disable-liblastlog2 \
+  --disable-static --without-python --without-systemd \
+  --without-systemdsystemunitdir ADJTIME_PATH=/var/lib/hwclock/adjtime
+'''
+compile = '''
+make
+'''
+install = '''
+make DESTDIR="$DESTDIR" install
+'''
