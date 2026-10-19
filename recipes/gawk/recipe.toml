@@ -15,6 +15,10 @@ runtime = ["readline"]
 [build]
 system = "custom"
 prepare = '''
+# Upstream fix (gawk commit bf85f8a3, 2026-07): without MPFR/GMP, 5.4.1's
+# NODE layout corrupts uninitialized values ("" prints as "0"), which
+# breaks awk-generated code such as GCC's options.cc.
+patch -p1 < "$RECIPE/node-struct-without-mpfr.patch"
 sed -i 's/extras//' Makefile.in
 '''
 configure = '''

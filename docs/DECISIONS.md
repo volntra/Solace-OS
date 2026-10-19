@@ -404,3 +404,15 @@ entry names a recipe that does not exist.
   everything before the last change, and finishing gcc would have forced
   a full rebuild. Pinning makes each package's inputs independent of
   build history.
+
+### 2026-10-19: gawk carries upstream's 5.4.1 fix; everything after it rebuilt
+
+- **Decision:** both gawk recipes apply upstream commit bf85f8a3 (the
+  NODE layout fix for builds without MPFR/GMP). Without it, gawk 5.4.1
+  prints an uninitialized value as "0" after a numeric comparison
+  (`BEGIN { if (a[1] == 0) {}; print a[1] "z" }` prints `0z`), which broke
+  GCC's generated options.cc.
+- **Why rebuild everything after it:** the broken gawk was in every
+  chroot- and system-stage sandbox, and glibc, the kernel and others
+  generate code with awk. Patching only gcc's awk would leave packages
+  built by a broken tool in the system.
