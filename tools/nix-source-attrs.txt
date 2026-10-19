@@ -1,0 +1,45 @@
+# nixpkgs attributes whose `src` may match a recipe source byte for byte.
+# tools/seed-sources-from-nix.sh fetches a source through the Nix binary
+# cache only when the hashes are identical.
+binutils-unwrapped
+gcc.cc
+glibc
+linuxHeaders
+linux_latest
+gmp
+mpfr
+libmpc
+m4
+ncurses
+bash
+coreutils
+diffutils
+file
+findutils
+gawk
+gnugrep
+gzip
+gnumake
+gnupatch
+gnused
+gnutar
+xz
+perl
+python3
+bison
+texinfo
+gettext
+util-linux
+flex
+zlib
+bzip2
+pcre2
+expat
+libffi
+libxcrypt
+zstd
+lz4
+libarchive
+readline
+linux-pam
+kmod

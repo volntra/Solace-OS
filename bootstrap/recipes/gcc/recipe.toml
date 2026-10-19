@@ -1,0 +1,52 @@
+# LFS 6.18 (GCC pass 2).
+name = "gcc"
+version = "16.2.0~bootstrap"
+release = 1
+summary = "GNU compiler collection, native for Solace (bootstrap)"
+license = "GPL-3.0-or-later WITH GCC-exception-3.1"
+
+[[source]]
+url = "https://ftp.gnu.org/gnu/gcc/gcc-16.2.0/gcc-16.2.0.tar.xz"
+sha256 = "e6738e29597f733270731aa90600f37ffdc045079dfc27ec7e8192cc81085c3e"
+dir = "gcc-16.2.0"
+
+[[source]]
+url = "https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.bz2"
+sha256 = "ac28211a7cfb609bae2e2c8d6058d66c8fe96434f740cf6fe2e47b000d1c20cb"
+
+[[source]]
+url = "https://www.mpfr.org/mpfr-4.2.2/mpfr-4.2.2.tar.xz"
+sha256 = "b67ba0383ef7e8a8563734e2e889ef5ec3c3b898a01d00fa0a6869ad81c6ce01"
+
+[[source]]
+url = "https://ftp.gnu.org/gnu/mpc/mpc-1.4.1.tar.xz"
+sha256 = "91204cd32f164bd3b7c992d4a6a8ce6519511aadab30f78b6982d0bf8d73e931"
+
+[build]
+system = "custom"
+prepare = '''
+mv -v ../gmp-6.3.0 gmp
+mv -v ../mpfr-4.2.2 mpfr
+mv -v ../mpc-1.4.1 mpc
+sed -e '/m64=/s/lib64/lib/' -i gcc/config/i386/t-linux64
+sed '/thread_header =/s/@.*@/gthr-posix.h/' -i libgcc/Makefile.in libstdc++-v3/include/Makefile.in
+'''
+configure = '''
+mkdir -v build && cd build
+../configure --build="$(../config.guess)" --host="$SOL_TGT" --target="$SOL_TGT" \
+  LDFLAGS_FOR_TARGET="-L$PWD/$SOL_TGT/libgcc" \
+  --prefix=/usr --libdir=/usr/lib --with-build-sysroot=/ \
+  --enable-default-pie --enable-default-ssp --disable-nls --disable-multilib \
+  --disable-libatomic --disable-libgomp --disable-libquadmath \
+  --disable-libsanitizer --disable-libssp --disable-libvtv \
+  --enable-languages=c,c++
+'''
+compile = '''
+make -C build
+'''
+install = '''
+make -C build DESTDIR="$DESTDIR" install
+'''
+post_install = '''
+ln -sv gcc "$DESTDIR/usr/bin/cc"
+'''

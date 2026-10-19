@@ -7,7 +7,8 @@ use std::time::Duration;
 use anyhow::{Context, Result, anyhow, bail};
 use clap::{Parser, Subcommand};
 use indicatif::{ProgressBar, ProgressStyle};
-use libspk::build::{self, BuildConfig, BuildEvent, Toolchain};
+use libspk::bootstrap::Plan;
+use libspk::build::{self, BuildConfig, BuildEvent, HostTools, ToolchainMode};
 use libspk::db::Db;
 use libspk::fetch::Location;
 use libspk::manifest::{FileKind, Manifest};
@@ -64,6 +65,8 @@ enum Cmd {
     Rollback,
     /// Build recipes into signed packages in a local repository
     Build(BuildArgs),
+    /// Build the whole system from source, stage by stage (bootstrap/plan.toml)
+    Bootstrap(BootstrapArgs),
     /// Add signed packages to a repository and re-sign its index
     RepoAdd {
         repo: PathBuf,
@@ -81,17 +84,7 @@ enum Cmd {
 }
 
 #[derive(clap::Args)]
-struct BuildArgs {
-    /// Recipe names (or recipe directories)
-    recipes: Vec<String>,
-    /// Build every recipe in --recipes
-    #[arg(long)]
-    all: bool,
-    #[arg(long, default_value = "recipes")]
-    recipes_dir: PathBuf,
-    /// Local repository that receives the packages
-    #[arg(long, default_value = "build/repo")]
-    repo_dir: PathBuf,
+struct BuildOpts {
     #[arg(long, default_value = "build/work")]
     work: PathBuf,
     #[arg(long, default_value = "build/sources")]
@@ -105,6 +98,59 @@ struct BuildArgs {
     /// Rebuild even if nothing changed
     #[arg(long)]
     force: bool,
+    /// Keep each build's work tree after success (can be several GB)
+    #[arg(long)]
+    keep_work: bool,
+}
+
+#[derive(clap::Args)]
+struct BuildArgs {
+    /// Recipe names (or recipe directories)
+    recipes: Vec<String>,
+    /// Build every recipe in --recipes-dir
+    #[arg(long)]
+    all: bool,
+    #[arg(long, default_value = "recipes")]
+    recipes_dir: PathBuf,
+    /// Local repository that receives the packages
+    #[arg(long, default_value = "build/repo")]
+    repo_dir: PathBuf,
+    /// Further repositories build deps may come from; repeatable
+    #[arg(long = "dep-repo")]
+    dep_repos: Vec<PathBuf>,
+    /// Toolchain for every recipe: host, cross, or native (default: each
+    /// recipe's own, else native)
+    #[arg(long, value_parser = parse_mode)]
+    toolchain: Option<ToolchainMode>,
+    /// Packages installed into every native sysroot; repeatable
+    #[arg(long = "base")]
+    base: Vec<String>,
+    #[command(flatten)]
+    opts: BuildOpts,
+}
+
+#[derive(clap::Args)]
+struct BootstrapArgs {
+    /// Bootstrap plan
+    #[arg(default_value = "bootstrap/plan.toml")]
+    plan: PathBuf,
+    /// Run only these stages (repeatable); default: all, in order
+    #[arg(long = "stage")]
+    stages: Vec<String>,
+    /// Stop after this recipe (useful while writing recipes)
+    #[arg(long)]
+    until: Option<String>,
+    #[command(flatten)]
+    opts: BuildOpts,
+}
+
+fn parse_mode(s: &str) -> std::result::Result<ToolchainMode, String> {
+    match s {
+        "host" => Ok(ToolchainMode::Host),
+        "cross" => Ok(ToolchainMode::Cross),
+        "native" => Ok(ToolchainMode::Native),
+        _ => Err(format!("unknown toolchain {s:?} (host, cross, native)")),
+    }
 }
 
 #[derive(Subcommand)]
@@ -185,6 +231,7 @@ fn run(cli: Cli) -> Result<()> {
              (not implemented yet)"
         ),
         Cmd::Build(args) => build_cmd(args),
+        Cmd::Bootstrap(args) => bootstrap_cmd(&args),
         Cmd::RepoAdd {
             repo,
             packages,
@@ -202,7 +249,13 @@ fn run(cli: Cli) -> Result<()> {
             );
             Ok(())
         }
-        Cmd::Key(KeyCmd::Gen { name, dir }) => {
+        Cmd::Key(k) => key_cmd(&cli.root, k),
+    }
+}
+
+fn key_cmd(root: &Path, cmd: KeyCmd) -> Result<()> {
+    match cmd {
+        KeyCmd::Gen { name, dir } => {
             let k = SecretKey::generate()?;
             let (sk, pk) = k.save(&dir, &name)?;
             anstream::println!(
@@ -214,19 +267,19 @@ fn run(cli: Cli) -> Result<()> {
             );
             Ok(())
         }
-        Cmd::Key(KeyCmd::Trust { pubkey }) => {
-            guard_host_root(&cli.root)?;
+        KeyCmd::Trust { pubkey } => {
+            guard_host_root(root)?;
             let text = std::fs::read_to_string(&pubkey)
                 .with_context(|| format!("reading {}", pubkey.display()))?;
             let k = PublicKey::parse(&text)?;
-            let dir = cli.root.join(ADMIN_KEY_DIR);
+            let dir = root.join(ADMIN_KEY_DIR);
             std::fs::create_dir_all(&dir)?;
             let dest = dir.join(format!("{}.pub", k.key_id()));
             std::fs::write(&dest, k.to_text())?;
             anstream::println!(
                 "{} {} trusts key {}",
                 "✓".green(),
-                cli.root.display(),
+                root.display(),
                 k.key_id()
             );
             Ok(())
@@ -570,16 +623,41 @@ fn verify(root: &Path) -> Result<()> {
     Ok(())
 }
 
-fn build_cmd(a: BuildArgs) -> Result<()> {
-    let key = SecretKey::load(&a.key).with_context(|| {
+fn load_key(path: &Path) -> Result<SecretKey> {
+    SecretKey::load(path).with_context(|| {
         format!(
             "loading signing key {} (create one with `spk key gen dev --dir {}`)",
-            a.key.display(),
-            a.key
-                .parent()
+            path.display(),
+            path.parent()
                 .map_or(".".into(), |p| p.display().to_string())
         )
-    })?;
+    })
+}
+
+fn base_config(o: &BuildOpts, repo: PathBuf) -> Result<BuildConfig> {
+    Ok(BuildConfig {
+        work: o.work.clone(),
+        sources: o.sources.clone(),
+        repo,
+        repo_name: "solace-local".into(),
+        key: load_key(&o.key)?,
+        trusted: Vec::new(),
+        host: HostTools::detect().ok(),
+        default_mode: ToolchainMode::Native,
+        mode_override: None,
+        dep_repos: Vec::new(),
+        base_deps: Vec::new(),
+        target: build::TARGET.to_string(),
+        keep_work: o.keep_work,
+        jobs: o
+            .jobs
+            .unwrap_or_else(|| std::thread::available_parallelism().map_or(1, usize::from)),
+        build_uid: build::DEFAULT_BUILD_UID,
+        force: o.force,
+    })
+}
+
+fn build_cmd(a: BuildArgs) -> Result<()> {
     let all = build::load_recipes(&a.recipes_dir)?;
     let wanted: Vec<String> = if a.all {
         all.iter().map(|r| r.name.clone()).collect()
@@ -596,26 +674,60 @@ fn build_cmd(a: BuildArgs) -> Result<()> {
             .collect()
     };
     let order = build::build_order(&all, &wanted)?;
-    let cfg = BuildConfig {
-        work: a.work,
-        sources: a.sources,
-        repo: a.repo_dir,
-        repo_name: "solace-local".into(),
-        key,
-        trusted: Vec::new(),
-        toolchain: Toolchain::host_nix()?,
-        jobs: a
-            .jobs
-            .unwrap_or_else(|| std::thread::available_parallelism().map_or(1, usize::from)),
-        build_uid: build::DEFAULT_BUILD_UID,
-        force: a.force,
-    };
+    let mut cfg = base_config(&a.opts, a.repo_dir)?;
+    cfg.mode_override = a.toolchain;
+    cfg.dep_repos = a.dep_repos;
+    cfg.base_deps = a
+        .base
+        .iter()
+        .map(|b| DepSpec::parse(b))
+        .collect::<libspk::Result<_>>()?;
+    run_builds(&order, &cfg, "")
+}
+
+fn bootstrap_cmd(a: &BootstrapArgs) -> Result<()> {
+    let plan = Plan::load(&a.plan, Path::new("."))?;
+    for st in &plan.stages {
+        if !a.stages.is_empty() && !a.stages.contains(&st.name) {
+            continue;
+        }
+        anstream::println!(
+            "\n{} {} ({:?}): {}",
+            "Stage".cyan().bold(),
+            st.name.bold(),
+            st.toolchain,
+            st.description
+        );
+        let mut recipes = Vec::new();
+        for name in &st.recipes {
+            recipes.push(libspk::recipe::Recipe::load(&st.recipes_dir.join(name))?);
+            if a.until.as_deref() == Some(name) {
+                break;
+            }
+        }
+        let mut cfg = base_config(&a.opts, st.repo.clone())?;
+        cfg.default_mode = st.toolchain;
+        cfg.dep_repos.clone_from(&st.dep_repos);
+        cfg.base_deps.clone_from(&st.base);
+        cfg.target.clone_from(&plan.target);
+        // Each stage keeps its own build stamps.
+        cfg.work = a.opts.work.join(&st.name);
+        let order: Vec<&libspk::recipe::Recipe> = recipes.iter().collect();
+        run_builds(&order, &cfg, &format!("{} ", st.name))?;
+        if a.until.as_ref().is_some_and(|u| st.recipes.contains(u)) {
+            break;
+        }
+    }
+    Ok(())
+}
+
+fn run_builds(order: &[&libspk::recipe::Recipe], cfg: &BuildConfig, label: &str) -> Result<()> {
     let total = order.len();
     for (n, r) in order.iter().enumerate() {
         let started = std::time::Instant::now();
-        let pb = spinner(&format!("[{}/{total}]", n + 1));
+        let pb = spinner(&format!("{label}[{}/{total}]", n + 1));
         pb.set_message(format!("{} {}", r.name, r.pkg_version()));
-        let res = build::build(r, &cfg, &mut |ev| match ev {
+        let res = build::build(r, cfg, &mut |ev| match ev {
             BuildEvent::Fetching { url } => pb.set_message(format!("{}: fetching {url}", r.name)),
             BuildEvent::InstallingDeps { count } => {
                 pb.set_message(format!("{}: installing {count} build dependencies", r.name));

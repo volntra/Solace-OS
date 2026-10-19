@@ -1,0 +1,22 @@
+# LFS 6.6.
+name = "diffutils"
+version = "3.12~bootstrap"
+release = 1
+summary = "GNU diff, cmp, sdiff, diff3 (bootstrap)"
+license = "GPL-3.0-or-later"
+
+[[source]]
+url = "https://ftp.gnu.org/gnu/diffutils/diffutils-3.12.tar.xz"
+sha256 = "7c8b7f9fc8609141fdea9cece85249d308624391ff61dedaf528fcb337727dfd"
+
+[build]
+system = "custom"
+configure = '''
+./configure --prefix=/usr --host="$SOL_TGT" --build="$(./build-aux/config.guess)" gl_cv_func_strcasecmp_works=y
+'''
+compile = '''
+make
+'''
+install = '''
+make DESTDIR="$DESTDIR" install
+'''

@@ -38,24 +38,27 @@ pub const DEFAULT_BUILD_UID: u32 = 65534;
 const SANDBOX_UID: u32 = 1000;
 const LOG_TAIL_LINES: usize = 40;
 
-/// Where the compilers come from.
+pub use crate::recipe::ToolchainMode;
+
+/// Default target triple. Differs from the host's so that bootstrap stage 0
+/// and 1 are true cross builds (nothing from the host leaks in).
+pub const TARGET: &str = "x86_64-solace-linux-gnu";
+
+/// The host's tools (the Nix devShell), used by `host` and `cross` builds.
 #[derive(Clone, Debug)]
-pub enum Toolchain {
-    /// Phase 1: the Nix devShell's toolchain. `/nix/store` is bound
-    /// read-only and `PATH` is the devShell's `/nix/store` entries.
-    HostNix {
-        path: String,
-        bash: PathBuf,
-        env: PathBuf,
-    },
+pub struct HostTools {
+    /// The devShell's `/nix/store/...` PATH entries.
+    pub path: String,
+    pub bash: PathBuf,
+    pub env: PathBuf,
 }
 
-impl Toolchain {
-    /// Detects the Nix devShell toolchain from `$PATH`.
+impl HostTools {
+    /// Detects the Nix devShell's tools from `$PATH`.
     ///
     /// # Errors
     /// [`Error::Build`] outside a Nix devShell.
-    pub fn host_nix() -> Result<Self> {
+    pub fn detect() -> Result<Self> {
         let path = std::env::var("PATH").unwrap_or_default();
         let store_path: Vec<&str> = path
             .split(':')
@@ -69,23 +72,19 @@ impl Toolchain {
         };
         let (Some(bash), Some(env), Some(_)) = (find("bash"), find("env"), find("gcc")) else {
             return Err(Error::Build(
-                "no Nix toolchain on PATH: run spk build inside `nix develop` (Phase 1 builds \
-                 with the devShell's compilers)"
-                    .into(),
+                "no Nix toolchain on PATH: host and cross builds run inside `nix develop`".into(),
             ));
         };
-        Ok(Toolchain::HostNix {
+        Ok(HostTools {
             path: store_path.join(":"),
             bash,
             env,
         })
     }
 
-    /// A stable identifier: changing the toolchain invalidates build stamps.
+    /// A stable identifier: changing the host tools invalidates stamps.
     pub fn id(&self) -> String {
-        match self {
-            Toolchain::HostNix { path, .. } => hash::sha256_hex(path.as_bytes()),
-        }
+        hash::sha256_hex(self.path.as_bytes())
     }
 }
 
@@ -102,7 +101,24 @@ pub struct BuildConfig {
     /// Keys trusted when installing build deps (the signing key's public
     /// key is always included).
     pub trusted: Vec<PublicKey>,
-    pub toolchain: Toolchain,
+    /// The host's tools; required for `host` and `cross` builds only.
+    pub host: Option<HostTools>,
+    /// Mode for recipes that do not set `build.toolchain`.
+    pub default_mode: ToolchainMode,
+    /// Forces a mode for every recipe (e.g. the Phase 1 demo's `host`).
+    pub mode_override: Option<ToolchainMode>,
+    /// Further repositories build deps may come from (e.g. the bootstrap
+    /// repo). Newest version wins, so final packages replace `~bootstrap`
+    /// ones as soon as they exist.
+    pub dep_repos: Vec<PathBuf>,
+    /// Installed into every sysroot of the stage: the compiler, make,
+    /// shell...
+    pub base_deps: Vec<DepSpec>,
+    /// `$SOL_TGT` in build scripts.
+    pub target: String,
+    /// Keep `build/` and `sysroot/` after a successful build (they can be
+    /// several GB); the log is always kept.
+    pub keep_work: bool,
     pub jobs: usize,
     pub build_uid: u32,
     /// Rebuild even if the stamp says nothing changed.
@@ -130,6 +146,46 @@ fn effective_uid() -> u32 {
     fs::metadata("/proc/self").map_or(u32::MAX, |m| m.uid())
 }
 
+/// The toolchain mode `recipe` builds with under `cfg`.
+pub fn mode_of(recipe: &Recipe, cfg: &BuildConfig) -> ToolchainMode {
+    cfg.mode_override
+        .or(recipe.build.toolchain)
+        .unwrap_or(cfg.default_mode)
+}
+
+fn host_of(cfg: &BuildConfig, mode: ToolchainMode) -> Result<Option<&HostTools>> {
+    match mode {
+        ToolchainMode::Native => Ok(None),
+        ToolchainMode::Host | ToolchainMode::Cross => {
+            cfg.host.as_ref().map(Some).ok_or_else(|| {
+                Error::Build(format!(
+                    "{mode:?} builds need the host tools; run inside `nix develop`"
+                ))
+            })
+        }
+    }
+}
+
+/// Build-dep repositories that exist (the output repo first).
+fn dep_locations(cfg: &BuildConfig) -> Vec<Location> {
+    std::iter::once(&cfg.repo)
+        .chain(&cfg.dep_repos)
+        .filter(|r| r.join(repo::INDEX).exists())
+        .map(|r| Location::Local(r.clone()))
+        .collect()
+}
+
+/// Everything installed into the sysroot for `recipe`.
+fn sysroot_deps(recipe: &Recipe, cfg: &BuildConfig) -> Vec<DepSpec> {
+    let mut deps = recipe.deps.build.clone();
+    for b in &cfg.base_deps {
+        if !deps.iter().any(|d| d.name == b.name) {
+            deps.push(b.clone());
+        }
+    }
+    deps
+}
+
 /// Builds every package of `recipe`. See the module docs for the steps.
 ///
 /// # Errors
@@ -137,6 +193,8 @@ fn effective_uid() -> u32 {
 /// log's tail is included in [`Error::Build`].
 pub fn build(recipe: &Recipe, cfg: &BuildConfig, on: &mut dyn FnMut(BuildEvent)) -> Result<Built> {
     let keyring = keyring_of(cfg);
+    let mode = mode_of(recipe, cfg);
+    let host = host_of(cfg, mode)?;
     let work = cfg.work.join(&recipe.name);
     let stamp_path = cfg
         .work
@@ -169,7 +227,7 @@ pub fn build(recipe: &Recipe, cfg: &BuildConfig, on: &mut dyn FnMut(BuildEvent))
     let (sysroot, bdir, log_path) = prepare_workdir(&work, recipe, &fetched)?;
 
     // 3. Build deps into the sysroot, through the verified install path.
-    prepare_sysroot(recipe, cfg, &sysroot, on)?;
+    prepare_sysroot(recipe, cfg, host, &sysroot, on)?;
 
     // 4. Hand the build dir to the build user and run the sandbox.
     let run_uid = if effective_uid() == 0 {
@@ -186,16 +244,15 @@ pub fn build(recipe: &Recipe, cfg: &BuildConfig, on: &mut dyn FnMut(BuildEvent))
         phase: "extract".into(),
     });
     let extract = extract_script(&fetched);
-    run_sandbox(
+    let sb = Sandbox {
         cfg,
-        &sysroot,
-        &bdir,
-        "/build/src",
-        &extract,
-        run_uid,
-        &mut log,
-        &log_path,
-    )?;
+        mode,
+        host,
+        sysroot: &sysroot,
+        bdir: &bdir,
+        etc: &work.join("etc"),
+    };
+    run_sandbox(&sb, "/build/src", &extract, run_uid, &mut log, &log_path)?;
     let srcdir = source_dir(&bdir.join("src"), &recipe.sources)?;
     on(BuildEvent::Phase {
         recipe: recipe.name.clone(),
@@ -203,9 +260,7 @@ pub fn build(recipe: &Recipe, cfg: &BuildConfig, on: &mut dyn FnMut(BuildEvent))
     });
     let chdir = format!("/build/src/{srcdir}");
     run_sandbox(
-        cfg,
-        &sysroot,
-        &bdir,
+        &sb,
         &chdir,
         &recipe.build_script(),
         run_uid,
@@ -227,25 +282,45 @@ pub fn build(recipe: &Recipe, cfg: &BuildConfig, on: &mut dyn FnMut(BuildEvent))
         out.push(p);
     }
 
-    // 6. Publish into the local repo, then record the stamp.
-    repo::repo_add(&cfg.repo, &cfg.repo_name, &out, &cfg.key, &keyring)?;
-    for p in &out {
+    // 6. Publish into the local repo, record the stamp, clean up.
+    let published = publish(cfg, &keyring, &out, &stamp_path, &stamp, &[&bdir, &sysroot])?;
+    Ok(Built {
+        packages: published,
+        skipped: false,
+    })
+}
+
+/// Adds freshly built packages to the repo, records the build stamp, and
+/// (unless `keep_work`) removes the work trees.
+fn publish(
+    cfg: &BuildConfig,
+    keyring: &Keyring,
+    out: &[PathBuf],
+    stamp_path: &Path,
+    stamp: &str,
+    work_trees: &[&Path],
+) -> Result<Vec<PathBuf>> {
+    repo::repo_add(&cfg.repo, &cfg.repo_name, out, &cfg.key, keyring)?;
+    for p in out {
         let _ = fs::remove_file(p);
         let _ = fs::remove_file(crate::sign::sig_path(p));
     }
     if let Some(d) = stamp_path.parent() {
         fs::create_dir_all(d).at(d)?;
     }
-    fs::write(&stamp_path, stamp).at(&stamp_path)?;
+    fs::write(stamp_path, stamp).at(stamp_path)?;
+    if !cfg.keep_work {
+        for d in work_trees {
+            make_removable(d);
+            let _ = fs::remove_dir_all(d);
+        }
+    }
     let published = out
         .iter()
         .filter_map(|p| p.file_name())
         .map(|f| cfg.repo.join("packages").join(f))
         .collect();
-    Ok(Built {
-        packages: published,
-        skipped: false,
-    })
+    Ok(published)
 }
 
 /// Wipes and recreates `<work>/`: `sysroot/`, `build/{src,dest,home,
@@ -282,12 +357,20 @@ fn keyring_of(cfg: &BuildConfig) -> Keyring {
 fn build_stamp(recipe: &Recipe, cfg: &BuildConfig, keyring: &Keyring) -> Result<String> {
     let mut s = String::new();
     let _ = writeln!(s, "recipe {}", recipe.content_hash()?);
-    let _ = writeln!(s, "toolchain {}", cfg.toolchain.id());
+    let mode = mode_of(recipe, cfg);
+    let _ = writeln!(s, "mode {mode:?} target {}", cfg.target);
+    if let Some(h) = host_of(cfg, mode)? {
+        let _ = writeln!(s, "host {}", h.id());
+    }
     let _ = writeln!(s, "epoch {SOURCE_DATE_EPOCH}");
-    if !recipe.deps.build.is_empty() && cfg.repo.join(repo::INDEX).exists() {
+    let deps = sysroot_deps(recipe, cfg);
+    if !deps.is_empty() {
         let tmp = tempfile::tempdir().at(std::env::temp_dir())?;
-        let r = Repo::open(Location::Local(cfg.repo.clone()), keyring, tmp.path())?;
-        for d in dep_closure(&r.index.packages, &recipe.deps.build) {
+        let mut entries = Vec::new();
+        for loc in dep_locations(cfg) {
+            entries.extend(Repo::open(loc, keyring, tmp.path())?.index.packages);
+        }
+        for d in dep_closure(&entries, &deps) {
             let _ = writeln!(s, "dep {d}");
         }
     }
@@ -334,6 +417,7 @@ fn outputs_in_repo(recipe: &Recipe, cfg: &BuildConfig, keyring: &Keyring) -> Res
 fn prepare_sysroot(
     recipe: &Recipe,
     cfg: &BuildConfig,
+    host: Option<&HostTools>,
     sysroot: &Path,
     on: &mut dyn FnMut(BuildEvent),
 ) -> Result<()> {
@@ -343,28 +427,49 @@ fn prepare_sysroot(
         let p = keydir.join(format!("build-{i}.pub"));
         fs::write(&p, k.to_text()).at(&p)?;
     }
-    if !recipe.deps.build.is_empty() {
-        on(BuildEvent::InstallingDeps {
-            count: recipe.deps.build.len(),
-        });
+    let deps = sysroot_deps(recipe, cfg);
+    if !deps.is_empty() {
+        on(BuildEvent::InstallingDeps { count: deps.len() });
         let mut root = Root::open(sysroot)?;
         let req = Request {
-            install: recipe.deps.build.clone(),
+            install: deps,
             ..Request::default()
         };
         let sources = Sources {
-            repos: vec![Location::Local(cfg.repo.clone())],
+            repos: dep_locations(cfg),
             files: vec![],
         };
         tx::run(&mut root, &req, &sources, &mut |_| {})
             .map_err(|e| Error::Build(format!("installing build dependencies: {e}")))?;
     }
-    // The sandbox mounts sysroot/usr at /usr; scripts expect /usr/bin/env.
-    let Toolchain::HostNix { env, .. } = &cfg.toolchain;
     let bin = sysroot.join("usr/bin");
     fs::create_dir_all(&bin).at(&bin)?;
-    if fs::symlink_metadata(bin.join("env")).is_err() {
-        std::os::unix::fs::symlink(env, bin.join("env")).at(bin.join("env"))?;
+    // Host builds mount sysroot/usr at /usr; scripts expect /usr/bin/env.
+    if let Some(h) = host
+        && fs::symlink_metadata(bin.join("env")).is_err()
+    {
+        std::os::unix::fs::symlink(&h.env, bin.join("env")).at(bin.join("env"))?;
+    }
+    // Native builds get a minimal /etc (read-only).
+    let etc = sysroot.parent().unwrap_or(sysroot).join("etc");
+    fs::create_dir_all(&etc).at(&etc)?;
+    for (f, text) in [
+        (
+            "passwd",
+            format!(
+                "root:x:0:0:root:/root:/bin/sh\nbuilder:x:{SANDBOX_UID}:{SANDBOX_UID}:builder:/build/home:/bin/sh\nnobody:x:65534:65534:nobody:/:/bin/false\n"
+            ),
+        ),
+        (
+            "group",
+            format!("root:x:0:\nbuilder:x:{SANDBOX_UID}:\nnobody:x:65534:\n"),
+        ),
+        (
+            "hosts",
+            "127.0.0.1 localhost spk-build\n::1 localhost\n".to_string(),
+        ),
+    ] {
+        fs::write(etc.join(f), text).at(etc.join(f))?;
     }
     Ok(())
 }
@@ -417,24 +522,33 @@ fn validate_rel(d: &str) -> Result<()> {
     Ok(())
 }
 
+/// What one sandboxed run needs.
+struct Sandbox<'a> {
+    cfg: &'a BuildConfig,
+    mode: ToolchainMode,
+    host: Option<&'a HostTools>,
+    sysroot: &'a Path,
+    bdir: &'a Path,
+    etc: &'a Path,
+}
+
 /// Runs `script` with bash inside the sandbox.
-#[allow(clippy::too_many_arguments)]
 fn run_sandbox(
-    cfg: &BuildConfig,
-    sysroot: &Path,
-    bdir: &Path,
+    sb: &Sandbox<'_>,
     chdir: &str,
     script: &str,
     run_uid: Option<u32>,
     log: &mut File,
     log_path: &Path,
 ) -> Result<()> {
-    let Toolchain::HostNix { path, .. } = &cfg.toolchain;
-    let args = sandbox_args(cfg, sysroot, bdir, chdir, script);
-    let bwrap = which(path, "bwrap").ok_or_else(|| Error::Build("bwrap not found".into()))?;
+    let args = sandbox_args(sb, chdir, script);
+    // bwrap and setpriv are the *host's* sandboxing tools, whatever the
+    // build's toolchain mode.
+    let host_path = std::env::var("PATH").unwrap_or_default();
+    let bwrap = which(&host_path, "bwrap").ok_or_else(|| Error::Build("bwrap not found".into()))?;
     let mut cmd = if let Some(uid) = run_uid {
         let setpriv =
-            which(path, "setpriv").ok_or_else(|| Error::Build("setpriv not found".into()))?;
+            which(&host_path, "setpriv").ok_or_else(|| Error::Build("setpriv not found".into()))?;
         let mut c = Command::new(setpriv);
         c.args([
             &format!("--reuid={uid}"),
@@ -470,18 +584,11 @@ fn run_sandbox(
 
 /// bubblewrap arguments: every namespace unshared (network included), no
 /// capabilities, tmpfs root, read-only toolchain and sysroot, writable
-/// `/build` only.
-fn sandbox_args(
-    cfg: &BuildConfig,
-    sysroot: &Path,
-    bdir: &Path,
-    chdir: &str,
-    script: &str,
-) -> Vec<String> {
-    let Toolchain::HostNix { path, bash, .. } = &cfg.toolchain;
-    let mut args: Vec<String> = Vec::new();
-    let mut a = |s: &str| args.push(s.to_string());
-    for x in [
+/// `/build` only. `native` builds see no host files at all.
+fn sandbox_args(sb: &Sandbox<'_>, chdir: &str, script: &str) -> Vec<String> {
+    let s = |p: &Path| p.to_string_lossy().into_owned();
+    let uid = SANDBOX_UID.to_string();
+    let mut args: Vec<String> = [
         "--unshare-all",
         "--die-with-parent",
         "--new-session",
@@ -490,22 +597,28 @@ fn sandbox_args(
         "--hostname",
         "spk-build",
         "--uid",
-        &SANDBOX_UID.to_string(),
+        &uid,
         "--gid",
-        &SANDBOX_UID.to_string(),
+        &uid,
         "--tmpfs",
         "/",
+    ]
+    .iter()
+    .map(ToString::to_string)
+    .collect();
+    let mut add = |xs: &[&str]| args.extend(xs.iter().map(ToString::to_string));
+    if sb.host.is_some() {
+        add(&["--ro-bind", "/nix/store", "/nix/store"]);
+    }
+    add(&[
         "--ro-bind",
-        "/nix/store",
-        "/nix/store",
-        "--ro-bind",
-        &sysroot.join("usr").to_string_lossy(),
+        &s(&sb.sysroot.join("usr")),
         "/usr",
         "--bind",
-        &bdir.to_string_lossy(),
+        &s(sb.bdir),
         "/build",
         "--ro-bind",
-        &bdir.join("recipe").to_string_lossy(),
+        &s(&sb.bdir.join("recipe")),
         "/build/recipe",
         "--proc",
         "/proc",
@@ -513,52 +626,88 @@ fn sandbox_args(
         "/dev",
         "--tmpfs",
         "/tmp",
-        "--dir",
-        "/bin",
-        "--symlink",
-        &bash.to_string_lossy(),
-        "/bin/sh",
-        "--symlink",
-        &bash.to_string_lossy(),
-        "/bin/bash",
-        "--chdir",
-        chdir,
-        "--clearenv",
-    ] {
-        a(x);
+    ]);
+    match sb.host {
+        Some(h) => add(&[
+            "--dir",
+            "/bin",
+            "--symlink",
+            &s(&h.bash),
+            "/bin/sh",
+            "--symlink",
+            &s(&h.bash),
+            "/bin/bash",
+        ]),
+        // Our own merged-/usr layout (CLAUDE.md section 4).
+        None => add(&[
+            "--symlink",
+            "usr/bin",
+            "/bin",
+            "--symlink",
+            "usr/sbin",
+            "/sbin",
+            "--symlink",
+            "usr/lib",
+            "/lib",
+            "--symlink",
+            "usr/lib",
+            "/lib64",
+            "--ro-bind",
+            &s(sb.etc),
+            "/etc",
+        ]),
     }
-    let env = [
-        ("PATH", format!("{path}:/usr/bin")),
+    add(&["--chdir", chdir, "--clearenv"]);
+
+    for (k, v) in sandbox_env(sb) {
+        args.extend(["--setenv".into(), k.into(), v]);
+    }
+    args.extend(["/bin/bash".into(), "-c".into(), script.to_string()]);
+    args
+}
+
+/// The build's entire environment (the sandbox starts with `--clearenv`).
+fn sandbox_env(sb: &Sandbox<'_>) -> Vec<(&'static str, String)> {
+    let cfg = sb.cfg;
+    let path = match (sb.mode, sb.host) {
+        (ToolchainMode::Native, _) | (_, None) => "/usr/bin".to_string(),
+        (ToolchainMode::Cross, Some(h)) => format!("/usr/cross/bin:{}:/usr/bin", h.path),
+        (ToolchainMode::Host, Some(h)) => format!("{}:/usr/bin", h.path),
+    };
+    let mut env: Vec<(&'static str, String)> = vec![
+        ("PATH", path),
         ("HOME", "/build/home".into()),
         ("TMPDIR", "/tmp".into()),
         ("DESTDIR", "/build/dest".into()),
         ("RECIPE", "/build/recipe".into()),
         ("MAKEFLAGS", format!("-j{}", cfg.jobs.max(1))),
+        ("SOL_JOBS", cfg.jobs.max(1).to_string()),
+        ("SOL_TGT", cfg.target.clone()),
         ("SOURCE_DATE_EPOCH", SOURCE_DATE_EPOCH.to_string()),
         ("LC_ALL", "C".into()),
         ("TZ", "UTC".into()),
         ("TERM", "dumb".into()),
         ("SHELL", "/bin/sh".into()),
         ("CONFIG_SHELL", "/bin/sh".into()),
-        ("CPPFLAGS", "-I/usr/include".into()),
-        // Phase 1 host toolchain: its loader does not search /usr/lib, so
-        // test programs run by configure need an rpath to the sysroot libs.
-        ("LDFLAGS", "-L/usr/lib -Wl,-rpath,/usr/lib".into()),
-        (
-            "PKG_CONFIG_PATH",
-            "/usr/lib/pkgconfig:/usr/share/pkgconfig".into(),
-        ),
-        (
-            "PKG_CONFIG_PATH_FOR_TARGET",
-            "/usr/lib/pkgconfig:/usr/share/pkgconfig".into(),
-        ),
-        ("CMAKE_PREFIX_PATH", "/usr".into()),
     ];
-    for (k, v) in env {
-        args.extend(["--setenv".into(), k.into(), v]);
+    if sb.mode == ToolchainMode::Host {
+        // Phase 1 host toolchain: point it at the sysroot. Its loader does
+        // not search /usr/lib, so test programs need an rpath.
+        env.extend([
+            ("CPPFLAGS", "-I/usr/include".to_string()),
+            ("LDFLAGS", "-L/usr/lib -Wl,-rpath,/usr/lib".to_string()),
+            (
+                "PKG_CONFIG_PATH",
+                "/usr/lib/pkgconfig:/usr/share/pkgconfig".to_string(),
+            ),
+            (
+                "PKG_CONFIG_PATH_FOR_TARGET",
+                "/usr/lib/pkgconfig:/usr/share/pkgconfig".to_string(),
+            ),
+            ("CMAKE_PREFIX_PATH", "/usr".to_string()),
+        ]);
     }
-    args.extend(["/bin/bash".into(), "-c".into(), script.to_string()]);
-    args
+    env
 }
 
 fn which(path: &str, exe: &str) -> Option<PathBuf> {

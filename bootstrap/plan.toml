@@ -1,0 +1,27 @@
+# The Solace bootstrap: from the host's compilers to a system that builds
+# itself. Run with `just bootstrap` (spk bootstrap bootstrap/plan.toml).
+# Format: docs/formats/bootstrap-plan.md. Follows Linux From Scratch
+# chapters 5-8, with every step an ordinary signed spk package.
+
+target = "x86_64-solace-linux-gnu"
+
+[[stage]]
+name = "cross"
+description = "cross toolchain built with the host's compilers (LFS ch. 5)"
+recipes_dir = "bootstrap/recipes"
+repo = "build/bootstrap/repo"
+toolchain = "cross"
+recipes = ["cross-binutils", "cross-gcc", "linux-headers", "glibc", "cross-libstdcxx"]
+
+[[stage]]
+name = "temp"
+description = "temporary tools, cross-compiled for Solace (LFS ch. 6)"
+recipes_dir = "bootstrap/recipes"
+repo = "build/bootstrap/repo"
+toolchain = "cross"
+base = ["cross-binutils", "cross-gcc", "cross-libstdcxx", "linux-headers", "glibc"]
+recipes = [
+    "m4", "ncurses", "bash", "coreutils", "diffutils", "file", "findutils",
+    "gawk", "grep", "gzip", "make", "patch", "sed", "tar", "xz",
+    "binutils", "gcc",
+]

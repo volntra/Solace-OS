@@ -1,0 +1,22 @@
+# LFS 6.14.
+name = "sed"
+version = "4.10~bootstrap"
+release = 1
+summary = "GNU sed (bootstrap)"
+license = "GPL-3.0-or-later"
+
+[[source]]
+url = "https://ftp.gnu.org/gnu/sed/sed-4.10.tar.xz"
+sha256 = "b8e72182b2ec96a3574e2998c47b7aaa64cc20ce000d8e9ac313cc07cecf28c7"
+
+[build]
+system = "custom"
+configure = '''
+./configure --prefix=/usr --host="$SOL_TGT" --build="$(./build-aux/config.guess)"
+'''
+compile = '''
+make
+'''
+install = '''
+make DESTDIR="$DESTDIR" install
+'''

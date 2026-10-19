@@ -1,0 +1,27 @@
+# LFS 5.2. Runs on the build host, produces code for $SOL_TGT. The target
+# sysroot is "/" because the build sandbox mounts the sysroot at /usr.
+name = "cross-binutils"
+version = "2.46~bootstrap"
+release = 1
+summary = "Cross binutils targeting Solace (bootstrap stage 0)"
+license = "GPL-3.0-or-later"
+
+[[source]]
+url = "https://ftp.gnu.org/gnu/binutils/binutils-with-gold-2.46.tar.bz2"
+sha256 = "b8c9a3d796dc0b0e8ea935dc24c5c8d6f345eb177ada5ac6a5b1122c77d62158"
+dir = "binutils-with-gold-2.46"
+
+[build]
+system = "custom"
+configure = '''
+mkdir -v build && cd build
+../configure --prefix=/usr/cross --with-sysroot=/ --target="$SOL_TGT" \
+  --disable-nls --enable-gprofng=no --disable-gold --disable-werror \
+  --enable-new-dtags --enable-default-hash-style=gnu
+'''
+compile = '''
+make -C build
+'''
+install = '''
+make -C build DESTDIR="$DESTDIR" install
+'''

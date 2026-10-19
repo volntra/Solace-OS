@@ -39,10 +39,11 @@
           zstd
           perl
           gnum4
-
-          # Brand assets: tools/brand/gen-logo.py + SVG rendering (resvg is
-          # also the icon engine's renderer, CLAUDE.md 6.9)
+          bison
           python3
+
+          # Brand assets: tools/brand/gen-logo.py (python3, above) + SVG
+          # rendering (resvg is also the icon engine's renderer, CLAUDE.md 6.9)
           resvg
 
           # Images and boot (Phase 2+): QEMU + UEFI firmware, ESP + btrfs tooling

@@ -27,13 +27,15 @@ system = "autotools"        # autotools | cmake | make | custom
 configure_args = ["--disable-static"]
 make_args = []
 install_args = []
-# Optional shell snippets. Each runs with `set -euo pipefail` in the
-# source directory and overrides that phase of `system`:
+# Optional shell snippets. Each runs in its own subshell with
+# `set -euo pipefail`, starting in the source directory, and overrides that
+# phase of `system`:
 # prepare = "patch -p1 < $RECIPE/fix.patch"
 # configure = "..."
 # compile = "..."
 # install = "make DESTDIR=$DESTDIR install"
 # post_install = "rm -rf $DESTDIR/usr/share/doc"
+# toolchain = "native"      # host | cross | native; default: the stage's
 
 [[split]]                   # optional extra packages carved out of the output
 name = "liblzma"

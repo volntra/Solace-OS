@@ -1,0 +1,30 @@
+# LFS 6.7.
+name = "file"
+version = "5.48~bootstrap"
+release = 1
+summary = "File type identification (bootstrap)"
+license = "BSD-2-Clause"
+
+[[source]]
+url = "https://astron.com/pub/file/file-5.48.tar.gz"
+sha256 = "ed14656883b23a364b4057c05595d93252da9bc473d30106519519d0da141283"
+
+[build]
+system = "custom"
+prepare = '''
+# Cross-building file needs a build-machine file of the same version.
+mkdir build
+(cd build && ../configure --disable-bzlib --disable-libseccomp --disable-xzlib --disable-zlib && make)
+'''
+configure = '''
+./configure --prefix=/usr --host="$SOL_TGT" --build="$(./config.guess)"
+'''
+compile = '''
+make FILE_COMPILE="$(pwd)/build/src/file"
+'''
+install = '''
+make DESTDIR="$DESTDIR" install
+'''
+post_install = '''
+rm -fv "$DESTDIR/usr/lib/libmagic.la"
+'''

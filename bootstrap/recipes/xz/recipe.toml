@@ -1,0 +1,25 @@
+# LFS 6.16.
+name = "xz"
+version = "5.8.4~bootstrap"
+release = 1
+summary = "XZ tools and liblzma (bootstrap)"
+license = "0BSD AND GPL-2.0-or-later"
+
+[[source]]
+url = "https://github.com/tukaani-project/xz/releases/download/v5.8.4/xz-5.8.4.tar.xz"
+sha256 = "4ce24038fd4221e0d13bc1a2de7a4db56e90b92b3bf75321f6c14be73f65de4b"
+
+[build]
+system = "custom"
+configure = '''
+./configure --prefix=/usr --host="$SOL_TGT" --build="$(build-aux/config.guess)" --disable-static --disable-doc
+'''
+compile = '''
+make
+'''
+install = '''
+make DESTDIR="$DESTDIR" install
+'''
+post_install = '''
+rm -fv "$DESTDIR/usr/lib/liblzma.la"
+'''

@@ -1,0 +1,32 @@
+# LFS 6.3.
+name = "ncurses"
+version = "6.6~bootstrap"
+release = 1
+summary = "Terminal handling library (bootstrap)"
+license = "MIT"
+
+[[source]]
+url = "https://invisible-island.net/archives/ncurses/ncurses-6.6.tar.gz"
+sha256 = "355b4cbbed880b0381a04c46617b7656e362585d52e9cf84a67e2009b749ff11"
+
+[build]
+system = "custom"
+prepare = '''
+# tic for the build machine, used to install the terminfo database.
+mkdir build
+(cd build && ../configure AWK=gawk && make -C include && make -C progs tic)
+'''
+configure = '''
+./configure --prefix=/usr --host="$SOL_TGT" --build="$(./config.guess)" \
+  --mandir=/usr/share/man --with-manpage-format=normal --with-shared \
+  --without-normal --with-cxx-shared --without-debug --without-ada \
+  --disable-stripping AWK=gawk
+'''
+compile = '''
+make
+'''
+install = '''
+make DESTDIR="$DESTDIR" TIC_PATH="$(pwd)/build/progs/tic" install
+ln -sv libncursesw.so "$DESTDIR/usr/lib/libncurses.so"
+sed -e 's/^#if.*XOPEN.*$/#if 1/' -i "$DESTDIR/usr/include/curses.h"
+'''

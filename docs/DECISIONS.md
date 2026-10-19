@@ -249,3 +249,35 @@ entry names a recipe that does not exist.
 - **Why:** the human asked for it, and it is the reference look for the
   "Clear" adaptive-icon mode (CLAUDE.md 6.9: frosted-glass background,
   white foreground).
+
+### 2026-10-19: Bootstrap design (Phase 2)
+
+- **Decision:** the bootstrap follows Linux From Scratch chapters 5-8 as
+  spk stages in `bootstrap/plan.toml`, run by `spk bootstrap`:
+  1. `cross` (LFS 5): cross binutils + GCC (prefix `/usr/cross`), Linux
+     headers, glibc, libstdc++, built with the host's compilers for target
+     `x86_64-solace-linux-gnu` (deliberately not the host's triple, so
+     nothing builds natively against the host by accident).
+  2. `temp` (LFS 6): temporary tools cross-compiled for Solace.
+  3. `native` stages (LFS 7-8): the sandbox contains **only** our own
+     packages (no `/nix`), and the final system is built there.
+- **Toolchain modes** `host` / `cross` / `native` are a recipe/stage
+  property (docs/formats/bootstrap-plan.md). Inside the sandbox the
+  target sysroot is mounted at `/usr`, so the cross tools use
+  `--with-sysroot=/`; this also makes LFS's libtool edit unnecessary.
+- **Temporary packages** are versioned `X~bootstrap` and keep the final
+  package's name. `~` sorts first, so once `X` is built it replaces the
+  temporary package in every later sysroot automatically; no special
+  casing in the solver.
+- **Layout:** libraries and the dynamic loader live in `/usr/lib`; the
+  ELF interpreter stays the standard `/lib64/ld-linux-x86-64.so.2`
+  (needed by NVIDIA userspace and Steam) and resolves through a
+  `/lib64 -> usr/lib` link. `/usr/sbin` stays a real directory.
+- **Recipe phases** each run in their own subshell from the source
+  directory, so a `cd` in one phase cannot leak into the next.
+- **Why:** CLAUDE.md 6.3 requires an LFS-style bootstrap driven entirely
+  by spk recipes. Expressing it as ordinary signed packages means the
+  bootstrap gets the same sandbox, verification, and rebuild-skipping as
+  everything else.
+- Bootstrap recipes (`bootstrap/recipes/`) never ship, so they need no
+  justification lines; the final recipes that replace them do.

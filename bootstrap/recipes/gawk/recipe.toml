@@ -1,0 +1,25 @@
+# LFS 6.9.
+name = "gawk"
+version = "5.4.1~bootstrap"
+release = 1
+summary = "GNU awk (bootstrap)"
+license = "GPL-3.0-or-later"
+
+[[source]]
+url = "https://ftp.gnu.org/gnu/gawk/gawk-5.4.1.tar.xz"
+sha256 = "07f6f7342b7febe4313fc2c2542ad93d64fe20ad8717200109f105a826f5fd37"
+
+[build]
+system = "custom"
+prepare = '''
+sed -i 's/extras//' Makefile.in
+'''
+configure = '''
+./configure --prefix=/usr --host="$SOL_TGT" --build="$(build-aux/config.guess)"
+'''
+compile = '''
+make
+'''
+install = '''
+make DESTDIR="$DESTDIR" install
+'''

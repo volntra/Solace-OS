@@ -1,0 +1,22 @@
+# LFS 6.2.
+name = "m4"
+version = "1.4.21~bootstrap"
+release = 1
+summary = "GNU m4 macro processor (bootstrap)"
+license = "GPL-3.0-or-later"
+
+[[source]]
+url = "https://ftp.gnu.org/gnu/m4/m4-1.4.21.tar.bz2"
+sha256 = "dc487e11d2f0c9e01555bb1af26be4eae983ec8f0726746505b4327186eb21fc"
+
+[build]
+system = "custom"
+configure = '''
+./configure --prefix=/usr --host="$SOL_TGT" --build="$(build-aux/config.guess)"
+'''
+compile = '''
+make
+'''
+install = '''
+make DESTDIR="$DESTDIR" install
+'''

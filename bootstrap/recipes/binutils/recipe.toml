@@ -1,0 +1,32 @@
+# LFS 6.17 (binutils pass 2). LFS's ltmain.sh edit is not needed: our
+# sandbox's /usr *is* the target sysroot, so there are no host libraries to
+# link by mistake.
+name = "binutils"
+version = "2.46~bootstrap"
+release = 1
+summary = "GNU binutils, native for Solace (bootstrap)"
+license = "GPL-3.0-or-later"
+
+[[source]]
+url = "https://ftp.gnu.org/gnu/binutils/binutils-with-gold-2.46.tar.bz2"
+sha256 = "b8c9a3d796dc0b0e8ea935dc24c5c8d6f345eb177ada5ac6a5b1122c77d62158"
+dir = "binutils-with-gold-2.46"
+
+[build]
+system = "custom"
+configure = '''
+mkdir -v build && cd build
+../configure --prefix=/usr --build="$(../config.guess)" --host="$SOL_TGT" \
+  --disable-nls --enable-shared --enable-gprofng=no --disable-gold \
+  --disable-werror --enable-64-bit-bfd --enable-new-dtags \
+  --enable-default-hash-style=gnu
+'''
+compile = '''
+make -C build
+'''
+install = '''
+make -C build DESTDIR="$DESTDIR" install
+'''
+post_install = '''
+rm -fv "$DESTDIR"/usr/lib/lib{bfd,ctf,ctf-nobfd,opcodes,sframe}.{a,la}
+'''

@@ -80,10 +80,30 @@ pub enum BuildSystem {
     Custom,
 }
 
+/// Where a build's compilers and tools come from (docs/formats/recipe.md,
+/// "Build environment").
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ToolchainMode {
+    /// The host's (Nix devShell's) tools, with the sysroot's headers and
+    /// libraries added to the search paths. Phase 1 scaffolding.
+    Host,
+    /// The host's tools for the *build* machine plus a cross toolchain
+    /// installed in the sysroot (`/usr/cross/bin`); no sysroot search
+    /// flags. Bootstrap stages 0 and 1.
+    Cross,
+    /// Only our own packages: the sandbox has no `/nix`, and every tool
+    /// comes from the sysroot. Everything that ships is built this way.
+    Native,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Build {
     pub system: BuildSystem,
+    /// Overrides the build stage's default toolchain mode.
+    #[serde(default)]
+    pub toolchain: Option<ToolchainMode>,
     #[serde(default)]
     pub configure_args: Vec<String>,
     #[serde(default)]
@@ -313,7 +333,9 @@ impl Recipe {
             if body.trim().is_empty() {
                 format!("# {name}: (none)\n")
             } else {
-                format!("echo '==> {name}'\n{}\n", body.trim_end())
+                // Each phase starts in the source dir: a `cd` in one phase
+                // must not leak into the next.
+                format!("echo '==> {name}'\n(\nset -euo pipefail\n{}\n)\n", body.trim_end())
             }
         };
         let mut s = String::from("set -euo pipefail\n");

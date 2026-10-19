@@ -21,13 +21,19 @@ spk:
 # Build every recipe into build/repo (sandboxed; unchanged recipes are skipped)
 build-recipes: spk
     @test -f build/keys/dev.key || target/release/spk key gen dev --dir build/keys
-    target/release/spk build --all
+    target/release/spk build --all --toolchain host
 
 # Run a hostile recipe that must fail to escape the build sandbox
 sandbox-probe: spk
     @test -f build/keys/dev.key || target/release/spk key gen dev --dir build/keys
-    target/release/spk build --force --recipes-dir tools/sandbox-probe --repo-dir build/probe-repo --work build/probe-work probe
+    target/release/spk build --force --toolchain host --recipes-dir tools/sandbox-probe --repo-dir build/probe-repo --work build/probe-work probe
     @grep -h "ok:" build/probe-work/probe/build.log
+
+# Build the system from source, stage by stage (bootstrap/plan.toml).
+# First run takes hours; finished recipes are skipped on later runs.
+bootstrap *ARGS: spk
+    @test -f build/keys/dev.key || target/release/spk key gen dev --dir build/keys
+    target/release/spk bootstrap {{ARGS}}
 
 # Fill build/sources from the Nix binary cache where nixpkgs pins the same hash
 seed-sources:

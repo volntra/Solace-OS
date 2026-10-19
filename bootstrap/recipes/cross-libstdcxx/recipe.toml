@@ -1,0 +1,33 @@
+# LFS 5.6.
+name = "cross-libstdcxx"
+version = "16.2.0~bootstrap"
+release = 1
+summary = "libstdc++ for the cross compiler (bootstrap stage 0)"
+license = "GPL-3.0-or-later WITH GCC-exception-3.1"
+
+[[source]]
+url = "https://ftp.gnu.org/gnu/gcc/gcc-16.2.0/gcc-16.2.0.tar.xz"
+sha256 = "e6738e29597f733270731aa90600f37ffdc045079dfc27ec7e8192cc81085c3e"
+dir = "gcc-16.2.0"
+
+[deps]
+build = ["cross-binutils", "cross-gcc", "linux-headers", "glibc"]
+
+[build]
+system = "custom"
+configure = '''
+mkdir -v build && cd build
+../libstdc++-v3/configure --host="$SOL_TGT" --build="$(../config.guess)" \
+  --prefix=/usr --libdir=/usr/lib --disable-multilib --disable-nls \
+  --disable-libstdcxx-pch \
+  --with-gxx-include-dir="/usr/cross/$SOL_TGT/include/c++/16.2.0"
+'''
+compile = '''
+make -C build
+'''
+install = '''
+make -C build DESTDIR="$DESTDIR" install
+'''
+post_install = '''
+rm -fv "$DESTDIR"/usr/lib/lib{stdc++{,exp,fs},supc++}.la
+'''

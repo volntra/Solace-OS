@@ -1,0 +1,56 @@
+# LFS 5.3 (GCC pass 1). gmp, mpfr, and mpc are built in-tree.
+name = "cross-gcc"
+version = "16.2.0~bootstrap"
+release = 1
+summary = "Cross GCC targeting Solace, C and C++, no libc yet (bootstrap stage 0)"
+license = "GPL-3.0-or-later WITH GCC-exception-3.1"
+
+[[source]]
+url = "https://ftp.gnu.org/gnu/gcc/gcc-16.2.0/gcc-16.2.0.tar.xz"
+sha256 = "e6738e29597f733270731aa90600f37ffdc045079dfc27ec7e8192cc81085c3e"
+dir = "gcc-16.2.0"
+
+[[source]]
+url = "https://ftp.gnu.org/gnu/gmp/gmp-6.3.0.tar.bz2"
+sha256 = "ac28211a7cfb609bae2e2c8d6058d66c8fe96434f740cf6fe2e47b000d1c20cb"
+
+[[source]]
+url = "https://www.mpfr.org/mpfr-4.2.2/mpfr-4.2.2.tar.xz"
+sha256 = "b67ba0383ef7e8a8563734e2e889ef5ec3c3b898a01d00fa0a6869ad81c6ce01"
+
+[[source]]
+url = "https://ftp.gnu.org/gnu/mpc/mpc-1.4.1.tar.xz"
+sha256 = "91204cd32f164bd3b7c992d4a6a8ce6519511aadab30f78b6982d0bf8d73e931"
+
+[deps]
+build = ["cross-binutils"]
+
+[build]
+system = "custom"
+prepare = '''
+mv -v ../gmp-6.3.0 gmp
+mv -v ../mpfr-4.2.2 mpfr
+mv -v ../mpc-1.4.1 mpc
+# 64-bit libraries go in lib, not lib64 (CLAUDE.md section 4).
+sed -e '/m64=/s/lib64/lib/' -i gcc/config/i386/t-linux64
+'''
+configure = '''
+mkdir -v build && cd build
+../configure --target="$SOL_TGT" --prefix=/usr/cross --with-glibc-version=2.44 \
+  --with-sysroot=/ --with-newlib --without-headers \
+  --enable-default-pie --enable-default-ssp --disable-nls --disable-shared \
+  --disable-multilib --disable-threads --disable-libatomic --disable-libgomp \
+  --disable-libquadmath --disable-libssp --disable-libvtv --disable-libstdcxx \
+  --enable-languages=c,c++
+'''
+compile = '''
+make -C build
+'''
+install = '''
+make -C build DESTDIR="$DESTDIR" install
+'''
+post_install = '''
+# A full limits.h, as the libc headers will expect (LFS 5.3).
+inc="$DESTDIR/usr/cross/lib/gcc/$SOL_TGT/16.2.0/include"
+cat gcc/limitx.h gcc/glimits.h gcc/limity.h > "$inc/limits.h"
+'''

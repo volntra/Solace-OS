@@ -32,10 +32,10 @@ step "Seeding the source cache from Nix (hash-checked; skips what it cannot matc
 tools/seed-sources-from-nix.sh build/sources 2>/dev/null | sed 's/^/  /'
 
 step "Building every recipe (sandboxed, unprivileged, no network)"
-"$SPK" build --all --repo-dir "$REPO" --key "$KEY.key"
+"$SPK" build --all --toolchain host --repo-dir "$REPO" --key "$KEY.key"
 
 step "Sandbox probe: a hostile recipe tries to escape (every attempt must fail)"
-"$SPK" build --force --recipes-dir tools/sandbox-probe --repo-dir build/probe-repo \
+"$SPK" build --force --toolchain host --recipes-dir tools/sandbox-probe --repo-dir build/probe-repo \
   --work build/probe-work --key "$KEY.key" probe
 grep -h "ok:" build/probe-work/probe/build.log
 

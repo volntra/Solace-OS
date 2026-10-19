@@ -1,0 +1,28 @@
+# LFS 6.4.
+name = "bash"
+version = "5.3~bootstrap"
+release = 1
+summary = "GNU Bourne-Again shell (bootstrap)"
+license = "GPL-3.0-or-later"
+
+[[source]]
+url = "https://ftp.gnu.org/gnu/bash/bash-5.3.tar.gz"
+sha256 = "0d5cd86965f869a26cf64f4b71be7b96f90a3ba8b3d74e27e8e9d9d5550f31ba"
+
+[deps]
+build = ["ncurses"]
+
+[build]
+system = "custom"
+configure = '''
+./configure --prefix=/usr --host="$SOL_TGT" --build="$(sh support/config.guess)" --without-bash-malloc
+'''
+compile = '''
+make
+'''
+install = '''
+make DESTDIR="$DESTDIR" install
+'''
+post_install = '''
+ln -sv bash "$DESTDIR/usr/bin/sh"
+'''
