@@ -104,15 +104,9 @@ Phase 1's demo still works: `just demo`.
 - **Phase 2 is not finished.** The final system packages are still
   building, so the image has not been booted yet and the 5 s target is
   unmeasured.
-- **GRUB is not built by our recipes yet.** Its source cannot be fetched
-  from the cloud build environment (GNU mirrors blocked; nixpkgs builds
-  it from git + gnulib on savannah, also blocked). Until then
-  `image/build.sh` uses the dev shell's `grub-mkimage` and marks the
-  image `grub = "dev-workbench (not shippable)"`. Fix: allow
-  `ftp.gnu.org` in the environment's network settings, or build on the
-  NixOS host; then `recipes/grub` (with the "GNU GRUB" text patched out).
 - The GRUB theme package uses the host toolchain (`grub-mkfont` from the
-  workbench) for the same reason; its output is data from our sources.
+  workbench; ours is built without FreeType). Its output is data from our
+  sources.
 - No KVM in the cloud container: QEMU there is software-emulated, so boot
   times measured there are not representative. Measure on the NixOS host.
 - PAM is deferred (shadow is built `--without-libpam`); sched_ext is
@@ -159,5 +153,4 @@ Phase 1's demo still works: `just demo`.
 1. Let `just bootstrap` finish (chroot + system stages); fix any recipe
    that fails.
 2. `just image`, `just qemu-test`; fix whatever the first boot finds.
-3. `recipes/grub` once its source is reachable.
-4. Then the Phase 2 demo, and Phase 3 (system transactions + rollback).
+3. Then the Phase 2 demo, and Phase 3 (system transactions + rollback).

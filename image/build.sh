@@ -98,22 +98,8 @@ step "ESP: GRUB, theme, grub.cfg, kernel"
 esp=$work/esp
 mkdir -p "$esp/EFI/BOOT" "$esp/grub"
 cp -r "$sys/share/sol/grub/themes" "$sys/share/sol/grub/fonts" "$esp/grub/"
-grub_source=solace
-if [ -f "$sys/lib/sol/boot/grubx64.efi" ]; then
-  cp "$sys/lib/sol/boot/grubx64.efi" "$esp/EFI/BOOT/BOOTX64.EFI"
-else
-  # DEV FALLBACK (docs/STATUS.md): our GRUB recipe cannot fetch its source
-  # from this environment yet, so the bootloader binary comes from the dev
-  # workbench. Theme, fonts and grub.cfg are ours either way.
-  grub_source="dev-workbench (not shippable)"
-  echo "WARNING: no grubx64.efi package; using the dev shell's GRUB (not shippable)" >&2
-  [ -n "${GRUB_EFI_LIB:-}" ] || die "GRUB_EFI_LIB unset (run inside 'nix develop')"
-  grub-mkimage -O x86_64-efi -d "$GRUB_EFI_LIB" -p /grub \
-    -o "$esp/EFI/BOOT/BOOTX64.EFI" \
-    part_gpt fat normal configfile search search_fs_uuid echo test true \
-    linux gzio all_video efi_gop gfxterm gfxterm_background gfxmenu png \
-    font keystatus chain sleep reboot halt
-fi
+[ -f "$sys/lib/sol/boot/grubx64.efi" ] || die "no grubx64.efi: is the grub package installed?"
+cp "$sys/lib/sol/boot/grubx64.efi" "$esp/EFI/BOOT/BOOTX64.EFI"
 serial=$(od -An -N4 -tx4 /dev/urandom | tr -d ' \n' | tr a-f A-F)
 esp_uuid=${serial:0:4}-${serial:4:4}
 cat >"$work/systems.toml" <<EOF
@@ -152,7 +138,6 @@ disk = "solace.img"
 version = "$VERSION_ID"
 esp_uuid = "$esp_uuid"
 root_uuid = "$root_uuid"
-grub = "$grub_source"
 dev_root_password = true
 EOF
 rm -rf "$work"

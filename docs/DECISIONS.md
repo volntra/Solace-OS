@@ -379,12 +379,11 @@ entry names a recipe that does not exist.
   per snapshot. QEMU images set a root password (`solace`, override with
   `SOL_ROOT_PASSWORD`) in `@etc`; installs (Phase 12) create real users.
 
-### 2026-10-19: Temporary GRUB binary from the workbench
+### 2026-10-19: GRUB built by our recipe
 
-- **Decision:** until `recipes/grub` can fetch the GRUB 2.14 release
-  tarball (GNU mirrors are blocked in the cloud build environment, and
-  nixpkgs builds GRUB from git + gnulib, also blocked), `image/build.sh`
-  makes `BOOTX64.EFI` with the dev shell's `grub-mkimage` and records
-  `grub = "dev-workbench (not shippable)"` in `build/image/image.toml`.
-  Theme, fonts, and grub.cfg are ours. This is a known gap, listed in
-  STATUS.md, not a design choice.
+- **Decision:** `recipes/grub` builds GRUB 2.14 from the signed GNU
+  release (signature checked against the GNU keyring before pinning the
+  hash) and ships `usr/lib/sol/boot/grubx64.efi`; the image builder copies
+  it to `EFI/BOOT/BOOTX64.EFI` and refuses to build without it. A
+  workbench fallback existed briefly while GNU mirrors were blocked in the
+  cloud environment; it was removed once network access was opened.
