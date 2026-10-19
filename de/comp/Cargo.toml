@@ -20,6 +20,7 @@ path = "src/bin/sol-comp.rs"
 smithay = { version = "0.7.0", default-features = false, features = ["backend_winit", "wayland_frontend", "desktop"] }
 bitflags = "2"
 png = "0.17"
+wayland-protocols-plasma = { version = "0.3", features = ["server"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 

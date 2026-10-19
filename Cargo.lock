@@ -2228,6 +2228,7 @@ dependencies = [
  "smithay",
  "tracing",
  "tracing-subscriber",
+ "wayland-protocols-plasma",
 ]
 
 [[package]]
@@ -2240,6 +2241,15 @@ dependencies = [
  "signal-hook",
  "tempfile",
  "toml",
+]
+
+[[package]]
+name = "sol-testclient"
+version = "0.1.0"
+dependencies = [
+ "wayland-client",
+ "wayland-protocols",
+ "wayland-protocols-plasma",
 ]
 
 [[package]]
@@ -2778,6 +2788,7 @@ dependencies = [
  "wayland-client",
  "wayland-protocols",
  "wayland-scanner",
+ "wayland-server",
 ]
 
 [[package]]

@@ -43,6 +43,7 @@ pub struct Comp {
     pub seat_state: SeatState<Comp>,
     pub data_device_state: DataDeviceState,
     pub popups: PopupManager,
+    pub blur_state: crate::blur::BlurManagerState,
 
     pub seat: Seat<Self>,
 }
@@ -68,6 +69,7 @@ impl Comp {
         let mut seat_state = SeatState::new();
         let data_device_state = DataDeviceState::new::<Self>(&dh);
         let popups = PopupManager::default();
+        let blur_state = crate::blur::BlurManagerState::new::<Self>(&dh);
 
         // A seat is a group of keyboards, pointer and touch devices.
         // A seat typically has a pointer and maintains a keyboard focus and a pointer focus.
@@ -108,6 +110,7 @@ impl Comp {
             seat_state,
             data_device_state,
             popups,
+            blur_state,
             seat,
         })
     }

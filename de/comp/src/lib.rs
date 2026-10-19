@@ -2,7 +2,9 @@
 //! screen, the Wayland protocols, input and rendering; window management
 //! policy moves to the separate sol-wm process in Phase 5.
 
+pub mod backdrop;
 pub mod backend;
+pub mod blur;
 mod grabs;
 mod handlers;
 mod input;

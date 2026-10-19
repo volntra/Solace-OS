@@ -4,7 +4,11 @@
 //! what changed.
 
 use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::path::Path;
+
+use crate::backdrop::{self, Backdrop, BlurShaders, Clip};
+use crate::blur::surface_blur;
 
 use smithay::{
     backend::{
@@ -183,6 +187,7 @@ void main() {
 pub struct Shaders {
     rounded: GlesTexProgram,
     shadow: GlesPixelProgram,
+    blur: BlurShaders,
 }
 
 impl Shaders {
@@ -207,7 +212,12 @@ impl Shaders {
                 UniformName::new("color", UniformType::_4f),
             ],
         )?;
-        Ok(Shaders { rounded, shadow })
+        let blur = BlurShaders::compile(renderer)?;
+        Ok(Shaders {
+            rounded,
+            shadow,
+            blur,
+        })
     }
 }
 
@@ -216,8 +226,9 @@ impl Shaders {
 pub struct Rounded {
     inner: WaylandSurfaceRenderElement<GlesRenderer>,
     program: GlesTexProgram,
-    /// The window's rectangle in output pixels.
-    geo: Rectangle<f64, Physical>,
+    /// The window's rounded rectangle, relative to this element's
+    /// geometry (so it follows the element when drawn offscreen).
+    clip: Rectangle<f64, Physical>,
     radius: f32,
     fb_height: f32,
 }
@@ -269,21 +280,14 @@ impl RenderElement<GlesRenderer> for Rounded {
         damage: &[Rectangle<i32, Physical>],
         opaque_regions: &[Rectangle<i32, Physical>],
     ) -> Result<(), GlesError> {
-        #[allow(clippy::cast_possible_truncation)]
-        let geo = [
-            self.geo.loc.x as f32,
-            self.geo.loc.y as f32,
-            self.geo.size.w as f32,
-            self.geo.size.h as f32,
-        ];
-        frame.override_default_tex_program(
-            self.program.clone(),
-            vec![
-                Uniform::new("geo", geo),
-                Uniform::new("radius", self.radius),
-                Uniform::new("fb_y", fb_y(frame.transformation(), self.fb_height)),
-            ],
+        let uniforms = clip_uniforms(
+            frame.transformation(),
+            dst.loc,
+            self.clip,
+            self.radius,
+            self.fb_height,
         );
+        frame.override_default_tex_program(self.program.clone(), uniforms.into());
         let drawn = self.inner.draw(frame, src, dst, damage, opaque_regions);
         frame.clear_tex_program_override();
         drawn
@@ -307,18 +311,46 @@ pub fn fb_y(transform: Transform, fb_height: f32) -> [f32; 2] {
     }
 }
 
+/// The rounded-clip shader's uniforms for an element drawn at `dst`
+/// whose clip rectangle is `clip` relative to it.
+pub fn clip_uniforms(
+    transform: Transform,
+    dst: Point<i32, Physical>,
+    clip: Rectangle<f64, Physical>,
+    radius: f32,
+    fb_height: f32,
+) -> [Uniform<'static>; 3] {
+    let loc = clip.loc + dst.to_f64();
+    #[allow(clippy::cast_possible_truncation)]
+    let geo = [
+        loc.x as f32,
+        loc.y as f32,
+        clip.size.w as f32,
+        clip.size.h as f32,
+    ];
+    [
+        Uniform::new("geo", geo),
+        Uniform::new("radius", radius),
+        Uniform::new("fb_y", fb_y(transform, fb_height)),
+    ]
+}
+
 smithay::backend::renderer::element::render_elements! {
     /// Everything sol-comp draws on an output, front to back.
     pub OutputElement<=GlesRenderer>;
     Window=Rounded,
+    Backdrop=Backdrop,
     Shadow=PixelShaderElement,
     Wallpaper=MemoryRenderBufferRenderElement<GlesRenderer>,
 }
 
 /// The shadow element of a window, kept between frames so its id is
-/// stable and only real changes count as damage.
+/// stable and only real changes count as damage; with the window size
+/// and style its uniforms were made for (they do not depend on position).
 #[derive(Default)]
-struct ShadowCache(RefCell<Option<PixelShaderElement>>);
+struct ShadowCache(RefCell<Option<CachedShadow>>);
+
+type CachedShadow = (PixelShaderElement, Size<f64, Logical>, ShadowStyle);
 
 fn is_focused(window: &Window) -> bool {
     window.toplevel().is_some_and(|t| {
@@ -358,8 +390,8 @@ pub fn shadow_layout(
 }
 
 /// Builds the output's elements, front to back: each window (its rounded
-/// surfaces, then its shadow) from the top of the stack down, then the
-/// wallpaper.
+/// surfaces, its blurred backdrop if it asked for one, its shadow) from
+/// the top of the stack down, then the wallpaper.
 pub fn output_elements(
     renderer: &mut GlesRenderer,
     shaders: &Shaders,
@@ -368,40 +400,93 @@ pub fn output_elements(
     output_size: Size<i32, Logical>,
     scale: f64,
 ) -> Vec<OutputElement> {
-    let mut out = Vec::new();
+    // Built from the bottom up, so that everything behind a blurred
+    // window is known when its backdrop is made.
+    let mut out: VecDeque<OutputElement> = VecDeque::new();
     let s = Scale::from(scale);
+    let output_px = output_size.to_physical_precise_round(s);
+    #[allow(clippy::cast_precision_loss)]
+    let fb_height = output_px.h as f32;
+    if let Some(wallpaper) = wallpaper
+        && let Ok(e) = wallpaper_element(renderer, wallpaper, output_size)
+    {
+        out.push_front(OutputElement::Wallpaper(e));
+    }
     #[allow(clippy::cast_possible_truncation)]
-    let fb_height = (f64::from(output_size.h) * scale) as f32;
-    for window in space.elements().rev() {
+    let radius = (WINDOW_RADIUS * scale) as f32;
+    for window in space.elements() {
         let Some(geo) = space.element_geometry(window) else {
             continue;
         };
         let geo_f = geo.to_f64();
-        let render_loc = (geo.loc - window.geometry().loc).to_physical_precise_round(s);
-        let surfaces: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
-            window.render_elements(renderer, render_loc, s, 1.0);
-        #[allow(clippy::cast_possible_truncation)]
-        let radius = (WINDOW_RADIUS * scale) as f32;
         let geo_px = geo_f.to_physical(s);
-        out.extend(surfaces.into_iter().map(|inner| {
-            OutputElement::Window(Rounded {
-                inner,
-                program: shaders.rounded.clone(),
-                geo: geo_px,
+        let origin = geo.loc - window.geometry().loc;
+        let blurred = blur_rects(window, origin, geo, s);
+        // The backdrop is made before the window's own shadow is added:
+        // a window does not see its shadow through itself.
+        let mut backdrops = Vec::new();
+        if !blurred.is_empty() {
+            let clip = Clip {
+                window: geo_px,
                 radius,
                 fb_height,
-            })
-        }));
-        out.push(OutputElement::Shadow(shadow_element(
+            };
+            match backdrop::backdrops(
+                renderer,
+                &shaders.blur,
+                &shaders.rounded,
+                window,
+                &blurred,
+                clip,
+                out.make_contiguous(),
+                output_px,
+                s,
+            ) {
+                Ok(b) => backdrops = b,
+                Err(e) => tracing::warn!("blur: {e:?}"),
+            }
+        }
+        out.push_front(OutputElement::Shadow(shadow_element(
             window, geo_f, shaders,
         )));
+        for b in backdrops {
+            out.push_front(OutputElement::Backdrop(b));
+        }
+        let surfaces: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
+            window.render_elements(renderer, origin.to_physical_precise_round(s), s, 1.0);
+        for inner in surfaces.into_iter().rev() {
+            let at = inner.geometry(s).loc.to_f64();
+            out.push_front(OutputElement::Window(Rounded {
+                inner,
+                program: shaders.rounded.clone(),
+                clip: Rectangle::new(geo_px.loc - at, geo_px.size),
+                radius,
+                fb_height,
+            }));
+        }
     }
-    if let Some(wallpaper) = wallpaper
-        && let Ok(e) = wallpaper_element(renderer, wallpaper, output_size)
-    {
-        out.push(OutputElement::Wallpaper(e));
-    }
-    out
+    out.into()
+}
+
+/// The blurred parts of a window's main surface, in output pixels,
+/// within the window.
+fn blur_rects(
+    window: &Window,
+    origin: Point<i32, Logical>,
+    geo: Rectangle<i32, Logical>,
+    scale: Scale<f64>,
+) -> Vec<Rectangle<i32, Physical>> {
+    let Some(toplevel) = window.toplevel() else {
+        return Vec::new();
+    };
+    let surface = toplevel.wl_surface();
+    let size = window.bbox().size;
+    surface_blur(surface)
+        .rects(size)
+        .into_iter()
+        .filter_map(|r| Rectangle::new(r.loc + origin, r.size).intersection(geo))
+        .map(|r| r.to_physical_precise_round(scale))
+        .collect()
 }
 
 fn shadow_element(
@@ -428,9 +513,13 @@ fn shadow_element(
     let area_i = area.to_i32_round();
     let cache = window.user_data().get_or_insert(ShadowCache::default);
     let mut slot = cache.0.borrow_mut();
-    if let Some(e) = slot.as_mut() {
+    if let Some((e, size, last)) = slot.as_mut() {
+        // Both only count as a change (damage) when something differs.
         e.resize(area_i, None);
-        e.update_uniforms(uniforms);
+        if *size != geo.size || *last != style {
+            e.update_uniforms(uniforms);
+            (*size, *last) = (geo.size, style);
+        }
         return e.clone();
     }
     let e = PixelShaderElement::new(
@@ -441,7 +530,7 @@ fn shadow_element(
         uniforms,
         Kind::Unspecified,
     );
-    *slot = Some(e.clone());
+    *slot = Some((e.clone(), geo.size, style));
     e
 }
 

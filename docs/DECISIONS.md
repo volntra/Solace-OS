@@ -496,3 +496,28 @@ entry names a recipe that does not exist.
 - **New windows take focus** (raised and activated), as users expect.
   The window manager (Phase 5) will own this policy.
 
+### 2026-10-19: Background blur (Phase 4, stage 2)
+
+- **Protocol:** clients ask for blur with KDE's `org_kde_kwin_blur`
+  (whole surface or a region, double-buffered with the surface). Qt and
+  KDE apps already speak it, and our own shell (Qt) will use it for its
+  materials. Alternatives: a private protocol (nothing else would use
+  it); `ext-background-effect-v1` (still a draft; add it when it lands).
+- **Algorithm:** dual-Kawase (Bjørge, ARM 2015), 3 passes with offset 4
+  (reach ~64 px), then a 1.35 saturation boost and light dithering on
+  the last pass (the HIG's "blur + tint + noise"; the tint is the
+  client's own translucent fill). Chosen over a separable Gaussian: the
+  same visual reach at a fraction of the texture reads, which is what
+  keeps the dock blur cheap at 165 Hz.
+- **Cost control:** only the blurred area plus the reach is rendered
+  offscreen, and the result is reused until an element behind it changes
+  (keyed by element id, commit and position). A window's own shadow is
+  not part of its backdrop.
+- **Shadows** update their uniforms only when the window's size or focus
+  style changes: updating them every frame counted as damage and forced a
+  redraw (and a re-blur) of every frame.
+- **Nested pacing:** with no damage nothing is presented, and the next
+  frame is checked a 60 Hz frame later rather than immediately.
+- **Test client:** `sol-testclient` (Rust, wayland-client), the seed of
+  stage 3's protocol and screenshot tests.
+

@@ -45,6 +45,7 @@ impl SeatHandler for Comp {
 }
 
 delegate_seat!(Comp);
+crate::delegate_blur!(Comp);
 
 //
 // Wl Data Device

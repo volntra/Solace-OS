@@ -89,6 +89,12 @@ qemu-test:
 comp *CLIENT:
     cargo run -p sol-comp -- --nested {{ if CLIENT != "" { "-- " + CLIENT } else { "" } }}
 
+# Phase 4 renderer demo: a striped window behind a frosted-glass one
+# (blur, rounded corners, shadows, wallpaper)
+comp-demo:
+    cargo build -p sol-comp -p sol-testclient
+    target/debug/sol-comp --nested -- sh -c 'target/debug/sol-testclient --stripes --size 640x400 & sleep 1; exec target/debug/sol-testclient --size 900x200 --color f4f1fa40 --blur --title Glass'
+
 # --- System updates (Phase 3) -----------------------------------------------
 
 # Build the demo update (solace-base 0.1.1) and the update disk carrying it

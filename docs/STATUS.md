@@ -6,8 +6,8 @@ Repository: https://github.com/volntra/Solace-OS (`main`).
 
 ## Current phase: 4 (compositor core): in progress
 
-Stages: 1 foundation ✓, 2 renderer (corners, shadows, wallpaper ✓;
-background blur in progress), 3 test client + screenshot tests, 4
+Stages: 1 foundation ✓, 2 renderer ✓ (corners, shadows, wallpaper,
+background blur), 3 test client (started) + screenshot tests, 4
 graphics base recipes (Mesa, libdrm, libinput, ...), 5 DRM backend on
 the QEMU image, then 165 Hz on the NVIDIA machine.
 
@@ -17,19 +17,26 @@ the QEMU image, then 165 Hz on the NVIDIA machine.
 nix develop
 just wallpapers            # build/wallpapers/dusk.png, the default wallpaper
 just comp weston-terminal  # any Wayland client; more with WAYLAND_DISPLAY=wayland-N
+just comp-demo             # a striped window behind a frosted-glass one
 ```
 
 ![sol-comp nested in Xvfb: wallpaper, rounded corners, shadows](design/img/comp-nested.png)
+![just comp-demo: background blur under a translucent window](design/img/comp-blur.png)
 
 What works: xdg-shell windows, placement (centred, cascading), focus on
 open and on click, move/resize grabs, rounded corners (12 px, antialiased
 in the shader), focus-dependent soft shadows (analytic Gaussian), the
-wallpaper (cover-cropped), damage tracking (only changed regions are
-redrawn and presented). Verified in the cloud container in Xvfb on
-llvmpipe; not yet on a real GPU.
+wallpaper (cover-cropped), background blur for windows that ask for it
+(`org_kde_kwin_blur`; dual-Kawase, cached until what is behind changes),
+damage tracking (only changed regions are redrawn and presented; an idle
+nested session uses almost no CPU). `sol-testclient` (de/comp/testclient)
+opens a coloured, striped or blurred window for tests. Verified in the
+cloud container in Xvfb on llvmpipe; not yet on a real GPU.
 
-Not yet: background blur, server-side titlebars (Phase 5, sol-wm), every
-protocol beyond xdg-shell, the DRM backend, screenshot tests.
+Not yet: server-side titlebars (Phase 5, sol-wm), every protocol beyond
+xdg-shell and blur, layer-shell (the dock and menu bar need it), the DRM
+backend, automated screenshot tests, measured frame times. Rotated
+outputs are not handled by the corner clip yet.
 
 ## Phase 3 (previous): demo works
 
