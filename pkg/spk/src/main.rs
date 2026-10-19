@@ -651,6 +651,7 @@ fn base_config(o: &BuildOpts, repo: PathBuf) -> Result<BuildConfig> {
         mode_override: None,
         dep_repos: Vec::new(),
         base_deps: Vec::new(),
+        stage: build::StageGraph::default(),
         target: build::TARGET.to_string(),
         keep_work: o.keep_work,
         jobs: o
@@ -714,6 +715,7 @@ fn bootstrap_cmd(a: &BootstrapArgs) -> Result<()> {
         cfg.dep_repos.clone_from(&st.dep_repos);
         cfg.base_deps.clone_from(&st.base);
         build::pin_base_deps(&mut cfg)?;
+        cfg.stage = build::StageGraph::from_recipes(&recipes);
         cfg.target.clone_from(&plan.target);
         // Each stage keeps its own build stamps.
         cfg.work = a.opts.work.join(&st.name);

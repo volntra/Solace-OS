@@ -110,12 +110,15 @@ pub struct BuildConfig {
     /// Forces a mode for every recipe (e.g. the Phase 1 demo's `host`).
     pub mode_override: Option<ToolchainMode>,
     /// Further repositories build deps may come from (e.g. the bootstrap
-    /// repo). Newest version wins, so final packages replace `~bootstrap`
-    /// ones as soon as they exist.
+    /// repo). Explicit build deps take the newest version across all
+    /// repos; the base set is pinned to these repos ([`pin_base_deps`]).
     pub dep_repos: Vec<PathBuf>,
     /// Installed into every sysroot of the stage: the compiler, make,
     /// shell...
     pub base_deps: Vec<DepSpec>,
+    /// How the stage's own packages relate (splits, runtime deps); see
+    /// [`merge_base`].
+    pub stage: StageGraph,
     /// `$SOL_TGT` in build scripts.
     pub target: String,
     /// Keep `build/` and `sysroot/` after a successful build (they can be
@@ -177,16 +180,80 @@ fn dep_locations(cfg: &BuildConfig) -> Vec<Location> {
         .collect()
 }
 
+/// The packages a stage's recipes produce: which split comes from which
+/// recipe, and each package's runtime deps (by name).
+#[derive(Clone, Debug, Default)]
+pub struct StageGraph {
+    pub split_parents: HashMap<String, String>,
+    pub runtime: HashMap<String, Vec<String>>,
+}
+
+impl StageGraph {
+    pub fn from_recipes(recipes: &[Recipe]) -> Self {
+        let mut g = StageGraph::default();
+        for r in recipes {
+            let names = |d: &[DepSpec]| d.iter().map(|d| d.name.clone()).collect::<Vec<_>>();
+            g.runtime.insert(r.name.clone(), names(&r.deps.runtime));
+            for s in &r.splits {
+                g.split_parents.insert(s.name.clone(), r.name.clone());
+                g.runtime.insert(s.name.clone(), names(&s.depends));
+            }
+        }
+        g
+    }
+
+    /// `roots` and everything they need at runtime, as far as the stage's
+    /// own packages are known.
+    fn closure<'a>(&'a self, roots: impl Iterator<Item = &'a str>) -> BTreeSet<&'a str> {
+        let mut seen = BTreeSet::new();
+        let mut todo: Vec<&str> = roots.collect();
+        while let Some(n) = todo.pop() {
+            if seen.insert(n) {
+                todo.extend(
+                    self.runtime
+                        .get(n)
+                        .into_iter()
+                        .flatten()
+                        .map(String::as_str),
+                );
+            }
+        }
+        seen
+    }
+}
+
 /// Everything installed into the sysroot for `recipe`.
 fn sysroot_deps(recipe: &Recipe, cfg: &BuildConfig) -> Vec<DepSpec> {
-    let mut deps = recipe.deps.build.clone();
     if mode_of(recipe, cfg) == ToolchainMode::Host {
         // Host builds use the host's tools; the stage's base set is for the
         // stage's own toolchain.
-        return deps;
+        return recipe.deps.build.clone();
     }
-    for b in &cfg.base_deps {
-        if !deps.iter().any(|d| d.name == b.name) {
+    merge_base(&recipe.deps.build, &cfg.base_deps, &cfg.stage)
+}
+
+/// A recipe's build deps plus the stage's base set. A base package the
+/// recipe names itself is dropped. When a build dep, or anything it needs
+/// at runtime, is a split (`liblzma` from `xz`), the base copy of its parent
+/// is swapped for the stage's own parent package: an unsplit base `xz`
+/// would carry the same files.
+fn merge_base(build: &[DepSpec], base: &[DepSpec], stage: &StageGraph) -> Vec<DepSpec> {
+    let needed = stage.closure(build.iter().map(|d| d.name.as_str()));
+    let parents: Vec<&String> = needed
+        .iter()
+        .filter_map(|n| stage.split_parents.get(*n))
+        .collect();
+    let mut deps = build.to_vec();
+    for b in base {
+        if deps.iter().any(|d| d.name == b.name) {
+            continue;
+        }
+        if parents.contains(&&b.name) {
+            deps.push(DepSpec {
+                name: b.name.clone(),
+                constraint: None,
+            });
+        } else {
             deps.push(b.clone());
         }
     }
@@ -1506,6 +1573,43 @@ system = "make"
             all,
             ["usr", "usr/lib"],
             "the link is listed, not its target's contents"
+        );
+    }
+
+    #[test]
+    fn a_split_build_dep_swaps_out_its_base_parent() {
+        let spec = |s: &str| DepSpec::parse(s).unwrap();
+        let base = [spec("xz=5.8.4~bootstrap-1"), spec("bash=5.3~bootstrap-1")];
+        let stage = StageGraph {
+            split_parents: HashMap::from([("liblzma".to_string(), "xz".to_string())]),
+            runtime: HashMap::from([
+                (
+                    "elfutils".to_string(),
+                    vec!["liblzma".to_string(), "zlib".to_string()],
+                ),
+                ("liblzma".to_string(), Vec::new()),
+            ]),
+        };
+        let names = |d: &[DepSpec]| d.iter().map(ToString::to_string).collect::<Vec<_>>();
+        // liblzma comes from xz: the stage's own xz, not the base one.
+        assert_eq!(
+            names(&merge_base(&[spec("liblzma")], &base, &stage)),
+            ["liblzma", "xz", "bash=5.3~bootstrap-1"]
+        );
+        // Also when liblzma only comes in at runtime (elfutils needs it).
+        assert_eq!(
+            names(&merge_base(&[spec("elfutils")], &base, &stage)),
+            ["elfutils", "xz", "bash=5.3~bootstrap-1"]
+        );
+        // A base package the recipe names itself is not added twice.
+        assert_eq!(
+            names(&merge_base(&[spec("bash")], &base, &stage)),
+            ["bash", "xz=5.8.4~bootstrap-1"]
+        );
+        // Unrelated deps keep the pinned base.
+        assert_eq!(
+            names(&merge_base(&[spec("zlib")], &base, &stage)),
+            ["zlib", "xz=5.8.4~bootstrap-1", "bash=5.3~bootstrap-1"]
         );
     }
 
