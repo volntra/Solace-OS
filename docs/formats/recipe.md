@@ -23,7 +23,7 @@ build = ["zlib"]            # installed into the build sysroot
 runtime = []                # added to the main package's `depends`
 
 [build]
-system = "autotools"        # autotools | cmake | make | custom
+system = "autotools"        # autotools | cmake | meson | make | custom
 configure_args = ["--disable-static"]
 make_args = []
 install_args = []
@@ -82,6 +82,7 @@ All presets build out of the unpacked source dir with `PREFIX=/usr`.
 |---|---|---|---|
 | `autotools` | `./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var --libdir=/usr/lib <configure_args>` | `make <make_args>` | `make DESTDIR=$DESTDIR install <install_args>` |
 | `cmake` | `cmake -S . -B _build -G Ninja -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_INSTALL_LIBDIR=lib -DCMAKE_BUILD_TYPE=Release <configure_args>` | `ninja -C _build` | `DESTDIR=$DESTDIR ninja -C _build install` |
+| `meson` | `meson setup _build --prefix=/usr --libdir=lib --sysconfdir=/etc --localstatedir=/var --buildtype=release --wrap-mode=nodownload -Db_lto=false <configure_args>` | `ninja -C _build` | `DESTDIR=$DESTDIR meson install -C _build --no-rebuild` |
 | `make` | (none) | `make PREFIX=/usr <make_args>` | `make PREFIX=/usr DESTDIR=$DESTDIR install <install_args>` |
 | `custom` | every phase must be given as a snippet | | |
 

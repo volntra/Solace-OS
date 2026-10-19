@@ -115,6 +115,7 @@ pub struct Deps {
 pub enum BuildSystem {
     Autotools,
     Cmake,
+    Meson,
     Make,
     Custom,
 }
@@ -398,6 +399,21 @@ impl Recipe {
                     join_args(&b.install_args)
                 ),
             ),
+            BuildSystem::Meson => (
+                // Subprojects are never downloaded: every dependency is a
+                // recipe of its own.
+                format!(
+                    "meson setup _build --prefix=/usr --libdir=lib --sysconfdir=/etc \
+                     --localstatedir=/var --buildtype=release --wrap-mode=nodownload \
+                     -Db_lto=false {}",
+                    join_args(&b.configure_args)
+                ),
+                format!("ninja -C _build {}", join_args(&b.make_args)),
+                format!(
+                    "DESTDIR=\"$DESTDIR\" meson install -C _build --no-rebuild {}",
+                    join_args(&b.install_args)
+                ),
+            ),
             BuildSystem::Make => (
                 String::new(),
                 format!("make PREFIX=/usr {}", join_args(&b.make_args)),
@@ -486,6 +502,22 @@ files = ["usr/lib/liblzma.so*"]
         assert!(s.starts_with("set -euo pipefail\n"));
         assert!(s.contains("--libdir=/usr/lib --disable-static 'CFLAGS=-O2 -g'"));
         assert!(s.contains("make DESTDIR=\"$DESTDIR\" install"));
+    }
+
+    #[test]
+    fn meson_preset() {
+        let r = parse(&GOOD.replace("system = \"autotools\"", "system = \"meson\"")).unwrap();
+        let s = r.build_script();
+        assert!(
+            s.contains("meson setup _build --prefix=/usr --libdir=lib"),
+            "{s}"
+        );
+        assert!(s.contains("--wrap-mode=nodownload"), "{s}");
+        assert!(s.contains("ninja -C _build"), "{s}");
+        assert!(
+            s.contains("DESTDIR=\"$DESTDIR\" meson install -C _build --no-rebuild"),
+            "{s}"
+        );
     }
 
     #[test]
