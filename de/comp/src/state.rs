@@ -14,7 +14,7 @@ use smithay::{
             protocol::wl_surface::WlSurface,
         },
     },
-    utils::{Logical, Point},
+    utils::{Logical, Point, SERIAL_COUNTER},
     wayland::{
         compositor::{CompositorClientState, CompositorState},
         output::OutputManagerState,
@@ -222,6 +222,33 @@ impl Comp {
             &taken,
         );
         self.space.map_element(window.clone(), (x, y), true);
+        // A new window comes to the front with focus.
+        self.focus(Some(window));
+    }
+
+    /// Raises and focuses `window` (or clears focus), updating every
+    /// window's activated state.
+    pub fn focus(&mut self, window: Option<&Window>) {
+        let Some(keyboard) = self.seat.get_keyboard() else {
+            return;
+        };
+        let serial = SERIAL_COUNTER.next_serial();
+        if let Some(window) = window {
+            self.space.raise_element(window, true);
+        } else {
+            for w in self.space.elements() {
+                w.set_activated(false);
+            }
+        }
+        let surface = window
+            .and_then(|w| w.toplevel())
+            .map(|t| t.wl_surface().clone());
+        keyboard.set_focus(self, surface, serial);
+        for w in self.space.elements() {
+            if let Some(t) = w.toplevel() {
+                t.send_pending_configure();
+            }
+        }
     }
 }
 

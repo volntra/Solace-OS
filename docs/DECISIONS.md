@@ -468,3 +468,31 @@ entry names a recipe that does not exist.
   3.2). EGL is not pointed at Mesa globally (`MESA_EGL_VENDOR_DIR` is only
   used by tests), so on the NixOS host the nested compositor uses the real
   driver (NVIDIA).
+
+### 2026-10-19: Our renderer (Phase 4, stage 2)
+
+- **Decision:** windows, shadows and the wallpaper are Smithay render
+  elements (`de/comp/src/render.rs`), drawn through
+  `OutputDamageTracker`, so damage tracking is Smithay's (proven) and our
+  effects stay small shaders.
+- **Rounded corners:** a custom texture shader replaces the default one
+  while a window's surfaces draw; it clips to the window's rounded
+  rectangle with a signed-distance function (one pixel of antialiasing).
+  Clipping happens in output pixels (`gl_FragCoord`), so subsurfaces
+  clip to the same rectangle as their parent. Rounded windows report no
+  opaque regions and are never scanned out directly.
+- **Shadows:** analytic Gaussian blur of a rounded rectangle (erf along
+  x, four samples along y; Evan Wallace's method), not a blurred texture:
+  no offscreen passes, resolution-independent. Masked out under the
+  window so translucent windows do not darken. Focused windows get the
+  larger, darker shadow. The element is cached per window, so an
+  unchanged shadow costs no damage.
+  Alternatives: nine-patch shadow textures (cheap, but fixed radii and
+  sizes); a real blur pass per window (expensive).
+- **Wallpaper:** PNG decoded once (`png` crate), drawn object-fit cover.
+  Found at `$SOL_WALLPAPER`, `/usr/share/sol/wallpapers/dusk.png`, or
+  `build/wallpapers/dusk.png`. A missing wallpaper falls back to the
+  plain background colour; it is not an error.
+- **New windows take focus** (raised and activated), as users expect.
+  The window manager (Phase 5) will own this policy.
+

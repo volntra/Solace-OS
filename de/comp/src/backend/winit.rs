@@ -2,22 +2,23 @@
 //! (X11 or Wayland), which is how it is developed. Adapted from Smithay's
 //! smallvil example (v0.7.0, MIT licence).
 
+use std::path::PathBuf;
 use std::time::Duration;
 
 use smithay::{
     backend::{
-        renderer::{
-            damage::OutputDamageTracker, element::surface::WaylandSurfaceRenderElement,
-            gles::GlesRenderer,
-        },
+        renderer::{damage::OutputDamageTracker, gles::GlesRenderer},
         winit::{self, WinitEvent},
     },
     output::{Mode, Output, PhysicalProperties, Subpixel},
     reexports::calloop::EventLoop,
-    utils::{Rectangle, Transform},
+    utils::Transform,
 };
 
-use crate::{Comp, LoopData};
+use crate::{
+    Comp, LoopData,
+    render::{self, Shaders, Wallpaper},
+};
 
 /// The desktop background until the wallpaper is drawn: the dusk palette's
 /// deepest tone.
@@ -55,6 +56,8 @@ pub fn init(
     output.set_preferred(mode);
     data.state.space.map_output(&output, (0, 0));
     let mut damage_tracker = OutputDamageTracker::from_output(&output);
+    let shaders = Shaders::compile(backend.renderer())?;
+    let wallpaper = load_wallpaper();
 
     event_loop
         .handle()
@@ -75,32 +78,37 @@ pub fn init(
                 WinitEvent::Input(event) => state.process_input_event(event),
                 WinitEvent::Redraw => {
                     let size = backend.window_size();
-                    let damage = Rectangle::from_size(size);
+                    let logical = size.to_logical(1);
+                    let age = backend.buffer_age().unwrap_or(0);
+                    let mut damage = None;
                     {
                         let Ok((renderer, mut framebuffer)) = backend.bind() else {
                             return;
                         };
-                        let frame = smithay::desktop::space::render_output::<
-                            _,
-                            WaylandSurfaceRenderElement<GlesRenderer>,
-                            _,
-                            _,
-                        >(
-                            &output,
+                        let elements = render::output_elements(
+                            renderer,
+                            &shaders,
+                            &state.space,
+                            wallpaper.as_ref(),
+                            logical,
+                            1.0,
+                        );
+                        match damage_tracker.render_output(
                             renderer,
                             &mut framebuffer,
-                            1.0,
-                            0,
-                            [&state.space],
-                            &[],
-                            &mut damage_tracker,
+                            age,
+                            &elements,
                             BACKGROUND,
-                        );
-                        if let Err(e) = frame {
-                            tracing::warn!("render: {e:?}");
+                        ) {
+                            Ok(result) => damage = result.damage.cloned(),
+                            Err(e) => tracing::warn!("render: {e:?}"),
                         }
                     }
-                    if let Err(e) = backend.submit(Some(&[damage])) {
+                    // Present only what changed; with no damage the frame
+                    // is skipped entirely.
+                    if let Some(damage) = damage
+                        && let Err(e) = backend.submit(Some(&damage))
+                    {
                         tracing::warn!("present: {e:?}");
                     }
                     state.space.elements().for_each(|window| {
@@ -121,4 +129,28 @@ pub fn init(
             }
         })?;
     Ok(())
+}
+
+/// The wallpaper: `SOL_WALLPAPER`, the installed default, or the
+/// development build's render (`just wallpapers`). Missing is not fatal.
+fn load_wallpaper() -> Option<Wallpaper> {
+    let candidates: Vec<PathBuf> = std::env::var_os("SOL_WALLPAPER")
+        .map(PathBuf::from)
+        .into_iter()
+        .chain([
+            PathBuf::from("/usr/share/sol/wallpapers/dusk.png"),
+            PathBuf::from("build/wallpapers/dusk.png"),
+        ])
+        .collect();
+    for path in &candidates {
+        if !path.exists() {
+            continue;
+        }
+        match render::load_wallpaper(path) {
+            Ok(w) => return Some(w),
+            Err(e) => tracing::warn!("wallpaper: {e}"),
+        }
+    }
+    tracing::info!("no wallpaper found; using the plain background");
+    None
 }

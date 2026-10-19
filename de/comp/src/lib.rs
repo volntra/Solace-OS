@@ -7,6 +7,7 @@ mod grabs;
 mod handlers;
 mod input;
 pub mod placement;
+pub mod render;
 pub mod spring;
 pub mod state;
 

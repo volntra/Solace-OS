@@ -11,7 +11,6 @@ use smithay::{
         keyboard::FilterResult,
         pointer::{AxisFrame, ButtonEvent, MotionEvent},
     },
-    reexports::wayland_server::protocol::wl_surface::WlSurface,
     utils::SERIAL_COUNTER,
 };
 
@@ -74,8 +73,7 @@ impl Comp {
     }
 
     fn on_button<I: InputBackend>(&mut self, event: &I::PointerButtonEvent) {
-        let (Some(pointer), Some(keyboard)) = (self.seat.get_pointer(), self.seat.get_keyboard())
-        else {
+        let Some(pointer) = self.seat.get_pointer() else {
             return;
         };
         let serial = SERIAL_COUNTER.next_serial();
@@ -87,21 +85,7 @@ impl Comp {
                 .space
                 .element_under(pointer.current_location())
                 .map(|(w, _)| w.clone());
-            if let Some(window) = clicked {
-                self.space.raise_element(&window, true);
-                let surface = window.toplevel().map(|t| t.wl_surface().clone());
-                keyboard.set_focus(self, surface, serial);
-            } else {
-                for window in self.space.elements() {
-                    window.set_activated(false);
-                }
-                keyboard.set_focus(self, Option::<WlSurface>::None, serial);
-            }
-            for window in self.space.elements() {
-                if let Some(t) = window.toplevel() {
-                    t.send_pending_configure();
-                }
-            }
+            self.focus(clicked.as_ref());
         }
         pointer.button(
             self,

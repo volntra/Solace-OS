@@ -4,7 +4,34 @@ _Last updated: 2026-10-19 (session 2)_
 
 Repository: https://github.com/volntra/Solace-OS (`main`).
 
-## Current phase: 3 (system transactions + rollback): demo works
+## Current phase: 4 (compositor core): in progress
+
+Stages: 1 foundation ✓, 2 renderer (corners, shadows, wallpaper ✓;
+background blur in progress), 3 test client + screenshot tests, 4
+graphics base recipes (Mesa, libdrm, libinput, ...), 5 DRM backend on
+the QEMU image, then 165 Hz on the NVIDIA machine.
+
+**Try it (nested in your desktop):**
+
+```sh
+nix develop
+just wallpapers            # build/wallpapers/dusk.png, the default wallpaper
+just comp weston-terminal  # any Wayland client; more with WAYLAND_DISPLAY=wayland-N
+```
+
+![sol-comp nested in Xvfb: wallpaper, rounded corners, shadows](design/img/comp-nested.png)
+
+What works: xdg-shell windows, placement (centred, cascading), focus on
+open and on click, move/resize grabs, rounded corners (12 px, antialiased
+in the shader), focus-dependent soft shadows (analytic Gaussian), the
+wallpaper (cover-cropped), damage tracking (only changed regions are
+redrawn and presented). Verified in the cloud container in Xvfb on
+llvmpipe; not yet on a real GPU.
+
+Not yet: background blur, server-side titlebars (Phase 5, sol-wm), every
+protocol beyond xdg-shell, the DRM backend, screenshot tests.
+
+## Phase 3 (previous): demo works
 
 **Milestone demo:**
 
