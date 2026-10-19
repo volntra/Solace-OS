@@ -18,6 +18,7 @@
 #   SOL_ROOT_PASSWORD  dev root password (default "solace"); dev images only
 #   ESP_MIB ROOT_MIB partition sizes (default 2048 and 4096)
 #   BOOT_TOML        boot settings for sol-bootgen (default image/boot-qemu.toml)
+#   SOL_IMAGE_DATE   snapshot date, unix seconds (default: the HEAD commit)
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -118,6 +119,9 @@ mkdir -p "$esp/EFI/BOOT" "$esp/grub"
 cp -r "$sys/share/sol/grub/themes" "$sys/share/sol/grub/fonts" "$esp/grub/"
 [ -f "$sys/lib/sol/boot/grubx64.efi" ] || die "no grubx64.efi: is the grub package installed?"
 cp "$sys/lib/sol/boot/grubx64.efi" "$esp/EFI/BOOT/BOOTX64.EFI"
+# The snapshot's date in the boot menu: the commit the image was built
+# from (reproducible), not SOURCE_DATE_EPOCH (the dev shell sets it to 1980).
+created=${SOL_IMAGE_DATE:-$(git -C "$repo_root" log -1 --format=%ct 2>/dev/null || date +%s)}
 serial=$(od -An -N4 -tx4 /dev/urandom | tr -d ' \n' | tr a-f A-F)
 esp_uuid=${serial:0:4}-${serial:4:4}
 cat >"$work/systems.toml" <<EOF
@@ -128,7 +132,7 @@ os_name = "$NAME"
 [[system]]
 id = "1"
 version = "$VERSION_ID"
-created = ${SOURCE_DATE_EPOCH:-$(date +%s)}
+created = $created
 subvol = "@snapshots/1"
 kernel = "$sys/lib/sol/boot/vmlinuz"
 initramfs = "$work/initramfs.img"
