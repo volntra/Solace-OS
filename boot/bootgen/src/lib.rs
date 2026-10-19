@@ -19,6 +19,12 @@ use sha2::{Digest, Sha256};
 pub const SOL_DIR: &str = "sol";
 pub const GRUB_CFG: &str = "grub/grub.cfg";
 pub const THEME: &str = "grub/themes/solace/theme.txt";
+/// Fonts the theme uses (boot/grub-theme/build.sh makes them).
+pub const FONTS: &[&str] = &[
+    "inter-regular-16.pf2",
+    "inter-regular-20.pf2",
+    "inter-semibold-24.pf2",
+];
 /// Kept free on the ESP after copying (firmware, other OSes, updates).
 pub const ESP_RESERVE: u64 = 32 << 20;
 
@@ -305,8 +311,9 @@ pub fn generate_cfg(p: &Params) -> Result<String> {
     let _ = writeln!(w, "set gfxmode=auto\nset gfxpayload=keep");
     if s.theme {
         let _ = writeln!(w, "terminal_output gfxterm");
-        let _ = writeln!(w, "loadfont ($root)/grub/fonts/inter-regular-20.pf2");
-        let _ = writeln!(w, "loadfont ($root)/grub/fonts/inter-semibold-24.pf2");
+        for font in FONTS {
+            let _ = writeln!(w, "loadfont ($root)/grub/fonts/{font}");
+        }
         let _ = writeln!(w, "set theme=($root)/{THEME}");
     } else {
         let _ = writeln!(w, "terminal_output console");

@@ -1,5 +1,5 @@
 # boot/grub-theme
 
-Our GRUB gfxmenu theme. Shares the palette and type of the design system; no GRUB branding.
-
-Status: empty until **Phase 2**. See `docs/STATUS.md`.
+Our GRUB gfxmenu theme. `gen-theme.py` writes theme.txt and the SVG
+pieces; `build.sh` renders them and makes the Inter fonts. Preview with
+`just grub-preview` (boots the real GRUB in QEMU and saves a screenshot).

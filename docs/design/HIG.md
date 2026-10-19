@@ -85,3 +85,14 @@ multiple of 16.
 | Sun gold | `#FFD58C` |
 | Sun ember | `#FFAA5C` |
 | Deep water | `#121338` |
+
+## Boot menu
+
+![The Solace boot menu, rendered by GRUB in QEMU](img/grub-menu.png)
+
+Our GRUB gfxmenu theme (`boot/grub-theme/`, `just grub-preview` boots it
+in QEMU and screenshots it): the blurred Dusk wallpaper, the glass logo
+and name, a centred list in Inter 20 with a translucent rounded
+highlight, and a countdown and hint line in Inter 16. GRUB's own title
+and help text never appear. With the default menu style ("hidden") none
+of this shows unless Shift is held.

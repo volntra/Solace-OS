@@ -2,6 +2,9 @@
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
+inter_url := "https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip"
+inter_sha := "9883fdd4a49d4fb66bd8177ba6625ef9a64aa45899767dde3d36aa425756b11e"
+
 # List recipes
 default:
     @just --list --unsorted
@@ -46,6 +49,24 @@ logo:
     resvg -w 128 assets/brand/solace-mark.svg assets/brand/solace-mark-128.png
     resvg -w 512 assets/brand/solace-icon-glass.svg assets/brand/solace-icon-glass-512.png
     resvg -w 1350 build/brand/glass-preview.svg docs/design/img/glass-preview.png
+
+# Render the wallpapers (assets/wallpapers/*.svg) to PNG under build/
+wallpapers:
+    python3 assets/wallpapers/gen-wallpapers.py
+    mkdir -p build/wallpapers
+    resvg -w 2560 assets/wallpapers/dusk.svg build/wallpapers/dusk.png
+    resvg -w 2560 assets/wallpapers/dusk-blurred.svg build/wallpapers/dusk-blurred.png
+
+# Build the GRUB theme and fonts into build/grub-theme (Inter is fetched and hash-checked)
+grub-theme:
+    @mkdir -p build/sources
+    @test -f build/sources/{{inter_sha}} || (curl -sSLf -o build/sources/{{inter_sha}}.part {{inter_url}} && echo "{{inter_sha}}  build/sources/{{inter_sha}}.part" | sha256sum -c --quiet && mv build/sources/{{inter_sha}}.part build/sources/{{inter_sha}})
+    cp build/sources/{{inter_sha}} build/Inter-4.1.zip
+    boot/grub-theme/build.sh build/grub-theme/theme build/grub-theme/fonts build/Inter-4.1.zip assets
+
+# Boot the real GRUB with our theme in QEMU and screenshot the menu
+grub-preview: grub-theme
+    tools/grub-preview.sh
 
 # Delete build outputs (keeps the source cache and signing key)
 clean-build:
