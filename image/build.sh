@@ -72,7 +72,10 @@ sys=$root/usr
 for b in sbin/sol-bootgen sbin/sol-mkinitramfs lib/sol/sol-init lib/sol/boot/vmlinuz; do
   [ -f "$sys/$b" ] || die "missing /usr/$b in the installed system"
 done
-. "$sys/lib/os-release"
+# Read (never source) the system's os-release: package content is data.
+osr() { sed -n "s/^$1=\"\{0,1\}\([^\"]*\)\"\{0,1\}\$/\1/p" "$sys/lib/os-release"; }
+NAME=$(osr NAME) VERSION_ID=$(osr VERSION_ID)
+[ -n "$NAME" ] && [ -n "$VERSION_ID" ] || die "os-release lacks NAME or VERSION_ID"
 
 step "initramfs (sol-init as /init)"
 "$sys/sbin/sol-mkinitramfs" "$sys/lib/sol/sol-init" "$work/initramfs.img"
