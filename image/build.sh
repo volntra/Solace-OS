@@ -64,9 +64,23 @@ repo_args=()
 for r in "${repos[@]}"; do repo_args+=(--repo "$r"); done
 mapfile -t pkgs < <(sed -e 's/#.*//' -e '/^[[:space:]]*$/d' image/packages.txt)
 "$SPK" --root "$root" "${repo_args[@]}" install "${pkgs[@]}"
-extra=$(find "$root" -mindepth 1 -maxdepth 1 ! -name usr -printf '%f ')
-[ -z "$extra" ] || die "packages wrote outside usr/: $extra"
+# Packages only ever hold usr/; spk's own trust store (etc/spk/keys) is
+# the one thing allowed beside it, and goes to @etc below.
+extra=$(cd "$root" && find . -mindepth 1 ! -path ./usr ! -path './usr/*' \
+  ! -path ./etc ! -path ./etc/spk ! -path ./etc/spk/keys ! -path './etc/spk/keys/*' -printf '%P ')
+[ -z "$extra" ] || die "unexpected files outside usr/: $extra"
 sys=$root/usr
+
+# Every shared library a binary needs must be in the system, in usr/lib
+# or beside the binary (glibc's gconv modules). readelf fails on scripts
+# and data, which need none.
+missing=$(find "$sys" -type f \( -perm -u+x -o -name '*.so*' \) -print0 |
+  { xargs -0 readelf -d 2>/dev/null || true; } |
+  awk -v sys="$sys" '/^File: /{d=$2; sub(/\/[^\/]*$/, "", d)}
+    /\(NEEDED\)/{l=$NF; gsub(/[][]/, "", l); print d, l}' | sort -u |
+  while read -r dir lib; do [ -e "$sys/lib/$lib" ] || [ -e "$dir/$lib" ] || echo "$lib"; done |
+  sort -u | tr '\n' ' ')
+[ -z "$missing" ] || die "libraries needed but not installed: $missing"
 
 # Our own tools from the packages just installed (static binaries).
 for b in sbin/sol-bootgen sbin/sol-mkinitramfs lib/sol/sol-init lib/sol/boot/vmlinuz; do
@@ -86,6 +100,7 @@ mkdir -p "$fs/@snapshots" "$fs/@var" "$fs/@users"
 mv "$sys" "$fs/@snapshots/1"
 sys=$fs/@snapshots/1
 cp -a "$sys/share/factory/etc" "$fs/@etc"
+cp -a "$root/etc/." "$fs/@etc/"
 hash=$(openssl passwd -6 -stdin <<<"$password")
 sed -i "s|^root:[^:]*:|root:$hash:|" "$fs/@etc/shadow"
 mkdir -p "$fs/@var"/{log,lib,cache,spool,tmp}

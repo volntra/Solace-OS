@@ -13,7 +13,7 @@ sha256 = "355b4cbbed880b0381a04c46617b7656e362585d52e9cf84a67e2009b749ff11"
 system = "custom"
 configure = '''
 ./configure --prefix=/usr --mandir=/usr/share/man --with-shared --without-debug \
-  --without-normal --with-cxx-shared --enable-pc-files \
+  --without-normal --without-cxx-binding --enable-pc-files \
   --with-pkg-config-libdir=/usr/lib/pkgconfig
 '''
 compile = '''
