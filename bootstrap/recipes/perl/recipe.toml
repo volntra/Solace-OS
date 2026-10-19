@@ -1,5 +1,6 @@
-# LFS 7.9. No man pages: the chroot has no man directories, so Configure
-# would otherwise install them at / (and this perl only runs build scripts).
+# LFS 7.9. Every man directory is set explicitly: the chroot has none, so
+# Configure would leave them blank and install pages at /. They are then
+# deleted (this perl only runs build scripts).
 name = "perl"
 version = "5.42.3~bootstrap"
 release = 1
@@ -17,11 +18,15 @@ sh Configure -des -D prefix=/usr -D vendorprefix=/usr -D useshrplib \
   -D privlib=/usr/lib/perl5/5.42/core_perl -D archlib=/usr/lib/perl5/5.42/core_perl \
   -D sitelib=/usr/lib/perl5/5.42/site_perl -D sitearch=/usr/lib/perl5/5.42/site_perl \
   -D vendorlib=/usr/lib/perl5/5.42/vendor_perl -D vendorarch=/usr/lib/perl5/5.42/vendor_perl \
-  -D man1dir=none -D man3dir=none
+  -D man1dir=/usr/share/man/man1 -D man3dir=/usr/share/man/man3 \
+  -D siteman1dir=/usr/share/man/man1 -D siteman3dir=/usr/share/man/man3 \
+  -D vendorman1dir=/usr/share/man/man1 -D vendorman3dir=/usr/share/man/man3 \
+  -D man1ext=1 -D man3ext=3pm
 '''
 compile = '''
 make
 '''
 install = '''
 make DESTDIR="$DESTDIR" install
+rm -rf "$DESTDIR/usr/share/man"
 '''
