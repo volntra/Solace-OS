@@ -56,7 +56,7 @@ recipes = [
     "linux-headers", "glibc", "zlib", "bzip2", "xz", "lz4", "zstd", "file",
     "m4", "flex", "ncurses", "readline", "bc", "bash", "coreutils",
     "diffutils", "gawk", "findutils", "grep", "gzip", "sed", "tar", "make",
-    "patch", "less", "libxcrypt", "shadow", "util-linux", "elfutils", "linux",
+    "patch", "less", "pkgconf", "libxcrypt", "shadow", "util-linux", "elfutils", "linux",
     "sol-init", "sol-bootgen", "solace-base", "solace-grub-theme", "grub",
     # Then the self-hosting toolchain and the remaining libraries.
     "binutils", "gmp", "mpfr", "mpc", "gcc",

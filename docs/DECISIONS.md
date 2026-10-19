@@ -38,6 +38,7 @@ entry names a recipe that does not exist.
 - `readline`: line editing for bash and gawk.
 - `sed`: needed by builds and scripts.
 - `shadow`: user/group/password tools and the text-console login.
+- `pkgconf`: pkg-config for builds (shadow needs it; so will Mesa, Wayland, Qt).
 - `tar`: unpacking sources; archives.
 - `util-linux`: mount, agetty, fdisk, lsblk, and libmount/libblkid.
 - `sol-init`: ours (init/): PID 1, service manager, solctl, sol-log.
@@ -343,8 +344,11 @@ entry names a recipe that does not exist.
 
 - **Decision:** `bc` 7.0.3 and `shadow` 4.20.2 are pinned from their
   official GitHub release assets, trust-on-first-use (nixpkgs packages a
-  different bc and builds shadow from a git archive). Every other final
-  source matches nixpkgs' pinned hash byte for byte.
+  different bc and builds shadow from a git archive). `pkgconf` 3.0.10
+  (nixpkgs builds a git archive) is the release tarball, its hash
+  cross-checked against Alpine's pinned sha512; `grub` is checked against
+  its GNU signature. Every other final source matches nixpkgs' pinned
+  hash byte for byte.
 
 ### 2026-10-19: Our Rust tools are built with the host's rustc, linked by us
 

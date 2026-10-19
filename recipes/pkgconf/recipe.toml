@@ -1,0 +1,28 @@
+# LFS 8.25. pkg-config implementation; shadow requires it, and most of
+# the graphics and desktop stack (Mesa, Wayland, Qt) finds libraries
+# through it. Hash cross-checked against Alpine's pinned sha512 (no
+# upstream signature is published).
+name = "pkgconf"
+version = "3.0.10"
+release = 1
+summary = "Library metadata lookup (pkg-config)"
+license = "ISC"
+homepage = "https://github.com/pkgconf/pkgconf"
+
+[[source]]
+url = "https://distfiles.ariadne.space/pkgconf/pkgconf-3.0.10.tar.xz"
+sha256 = "9371b2f6372da574d4c6dc96fe9b1463037bcf6afcb6671c1555afde7b17e2de"
+
+[build]
+system = "custom"
+configure = '''
+./configure --prefix=/usr --disable-static
+'''
+compile = '''
+make
+'''
+install = '''
+make DESTDIR="$DESTDIR" install
+ln -s pkgconf "$DESTDIR/usr/bin/pkg-config"
+ln -s pkgconf.1 "$DESTDIR/usr/share/man/man1/pkg-config.1"
+'''
