@@ -113,6 +113,31 @@ impl Db {
         Ok(Db { conn, path })
     }
 
+    /// Opens the database of `root` for reading only: what queries use, and
+    /// the only way to read a sealed (read-only) system's database.
+    ///
+    /// # Errors
+    /// A missing database, SQLite errors, or an unsupported schema.
+    pub fn open_read_only(root: &Path) -> Result<Self> {
+        let path = root.join(DB_PATH);
+        let conn = Connection::open_with_flags(
+            &path,
+            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )?;
+        let v: Option<String> = conn
+            .query_row("SELECT value FROM meta WHERE key='schema'", [], |r| {
+                r.get(0)
+            })
+            .optional()?;
+        if v.as_deref().map(str::parse::<i64>) != Some(Ok(SCHEMA_VERSION)) {
+            return Err(Error::invalid(format!(
+                "{}: unsupported database schema {v:?}",
+                path.display()
+            )));
+        }
+        Ok(Db { conn, path })
+    }
+
     pub fn path(&self) -> &Path {
         &self.path
     }
@@ -370,6 +395,31 @@ mod tests {
             // dropped without commit
         }
         assert!(db.get("demo").unwrap().is_none());
+    }
+
+    #[test]
+    fn read_only_open_reads_and_never_writes() {
+        let root = tempfile::tempdir().unwrap();
+        assert!(Db::open_read_only(root.path()).is_err(), "no database yet");
+        {
+            let mut db = Db::open(root.path()).unwrap();
+            let tx = db.begin().unwrap();
+            tx.put_package(&sample(), true, 1).unwrap();
+            tx.commit().unwrap();
+        }
+        let ro = Db::open_read_only(root.path()).unwrap();
+        assert!(ro.get("demo").unwrap().unwrap().explicit);
+        assert!(
+            ro.conn.execute("DELETE FROM meta", []).is_err(),
+            "read-only connection wrote"
+        );
+        drop(ro);
+        let db = Db::open(root.path()).unwrap();
+        db.conn
+            .execute("UPDATE meta SET value='99' WHERE key='schema'", [])
+            .unwrap();
+        drop(db);
+        assert!(Db::open_read_only(root.path()).is_err());
     }
 
     #[test]

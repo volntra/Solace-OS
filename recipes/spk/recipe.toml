@@ -1,0 +1,24 @@
+# Our own: pkg/ in this repository. On a running Solace it makes every
+# system change a new snapshot (docs/formats/system.md).
+name = "spk"
+version = "0.1.0"
+release = 1
+summary = "The Solace package manager"
+license = "GPL-3.0-or-later"
+
+[[source]]
+local = "."
+# The Cargo workspace only: other changes in the repo do not rebuild it.
+include = ["Cargo.toml", "Cargo.lock", "init", "boot/bootgen", "pkg", "tools/solcheck"]
+
+[build]
+system = "custom"
+toolchain = "rust"
+cargo = true
+# --target keeps build scripts and proc-macros out of the static link.
+compile = '''
+cargo build --release --locked --offline --target x86_64-unknown-linux-gnu -p spk
+'''
+install = '''
+install -Dm755 /build/target/x86_64-unknown-linux-gnu/release/spk "$DESTDIR/usr/bin/spk"
+'''

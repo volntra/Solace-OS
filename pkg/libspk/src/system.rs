@@ -452,6 +452,11 @@ impl Live {
     }
 }
 
+/// A unix time as shown in the boot menu (`2026-10-19 09:30`, UTC).
+pub fn format_date(secs: u64) -> String {
+    bootgen::format_date(secs)
+}
+
 /// `@snapshots/7` -> 7.
 fn subvol_id(subvol: &str) -> Option<u64> {
     subvol

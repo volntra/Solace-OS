@@ -16,6 +16,7 @@ use libspk::package::VerifiedPackage;
 use libspk::repo::Repo;
 use libspk::sign::{ADMIN_KEY_DIR, Keyring, PublicKey, SecretKey};
 use libspk::solve::Request;
+use libspk::system::Live;
 use libspk::tx::{self, Event, Root, Sources};
 use libspk::version::DepSpec;
 use owo_colors::OwoColorize;
@@ -61,8 +62,14 @@ enum Cmd {
     History,
     /// Check installed files against the package database
     Verify,
-    /// Make a previous system snapshot the default (Phase 3)
-    Rollback,
+    /// List the bootable systems (on a running Solace)
+    Systems,
+    /// Boot a previous system from now on (default: the one before the
+    /// current default); it takes effect on the next boot
+    Rollback {
+        /// System id (see `spk systems`)
+        id: Option<String>,
+    },
     /// Build recipes into signed packages in a local repository
     Build(BuildArgs),
     /// Build the whole system from source, stage by stage (bootstrap/plan.toml)
@@ -229,10 +236,8 @@ fn run(cli: Cli) -> Result<()> {
         Cmd::List => list(&cli.root),
         Cmd::History => history(&cli.root),
         Cmd::Verify => verify(&cli.root),
-        Cmd::Rollback => bail!(
-            "rollback switches between system snapshots, which arrive in Phase 3 \
-             (not implemented yet)"
-        ),
+        Cmd::Systems => systems(&cli.root),
+        Cmd::Rollback { id } => rollback(&cli.root, id.as_deref()),
         Cmd::Build(args) => build_cmd(args),
         Cmd::Bootstrap(args) => bootstrap_cmd(&args),
         Cmd::RepoAdd {
@@ -346,58 +351,80 @@ fn guard_host_root(root: &Path) -> Result<()> {
     )
 }
 
+/// Progress display for package transactions.
+#[derive(Default)]
+struct Progress {
+    fetch_bar: Option<ProgressBar>,
+    spin: Option<ProgressBar>,
+}
+
+impl Progress {
+    fn start() -> Self {
+        Progress {
+            fetch_bar: None,
+            spin: Some(spinner("Resolving")),
+        }
+    }
+
+    fn on(&mut self, ev: Event) {
+        match ev {
+            Event::Resolving => {}
+            Event::Planned { install, remove } => {
+                self.clear();
+                for i in &install {
+                    anstream::println!("  {} {i}", "+".green().bold());
+                }
+                for r in &remove {
+                    anstream::println!("  {} {r}", "-".red().bold());
+                }
+            }
+            Event::Fetching { name, index, total } => {
+                let b = self.fetch_bar.get_or_insert_with(|| {
+                    let b = ProgressBar::new(total as u64);
+                    b.set_style(bar_style());
+                    b.set_prefix("Verifying");
+                    b
+                });
+                b.set_position(index as u64);
+                b.set_message(name);
+            }
+            Event::Extracting { name } => {
+                if let Some(b) = self.fetch_bar.take() {
+                    b.finish_and_clear();
+                }
+                let s = self.spin.get_or_insert_with(|| spinner("Unpacking"));
+                s.set_message(name);
+            }
+            Event::Applying => {
+                self.clear();
+                self.spin = Some(spinner("Applying"));
+            }
+            Event::Done => self.clear(),
+        }
+    }
+
+    fn clear(&mut self) {
+        if let Some(s) = self.spin.take() {
+            s.finish_and_clear();
+        }
+        if let Some(b) = self.fetch_bar.take() {
+            b.finish_and_clear();
+        }
+    }
+}
+
 fn transact(root_path: &Path, req: &Request, sources: &Sources) -> Result<()> {
+    // On a running Solace, every change is a new system snapshot.
+    if let Some(live) = Live::detect(root_path)? {
+        return system_transact(&live, req, sources);
+    }
     guard_host_root(root_path)?;
     std::fs::create_dir_all(root_path)
         .with_context(|| format!("creating {}", root_path.display()))?;
     let mut root = Root::open(root_path)?;
-    let mut fetch_bar: Option<ProgressBar> = None;
-    let mut spin: Option<ProgressBar> = Some(spinner("Resolving"));
-    let plan = tx::run(&mut root, req, sources, &mut |ev| match ev {
-        Event::Resolving => {}
-        Event::Planned { install, remove } => {
-            if let Some(s) = spin.take() {
-                s.finish_and_clear();
-            }
-            for i in &install {
-                anstream::println!("  {} {i}", "+".green().bold());
-            }
-            for r in &remove {
-                anstream::println!("  {} {r}", "-".red().bold());
-            }
-        }
-        Event::Fetching { name, index, total } => {
-            let b = fetch_bar.get_or_insert_with(|| {
-                let b = ProgressBar::new(total as u64);
-                b.set_style(bar_style());
-                b.set_prefix("Verifying");
-                b
-            });
-            b.set_position(index as u64);
-            b.set_message(name);
-        }
-        Event::Extracting { name } => {
-            if let Some(b) = fetch_bar.take() {
-                b.finish_and_clear();
-            }
-            let s = spin.get_or_insert_with(|| spinner("Unpacking"));
-            s.set_message(name);
-        }
-        Event::Applying => {
-            if let Some(s) = spin.take() {
-                s.finish_and_clear();
-            }
-            spin = Some(spinner("Applying"));
-        }
-        Event::Done => {
-            if let Some(s) = spin.take() {
-                s.finish_and_clear();
-            }
-        }
-    });
-    if let Some(s) = spin.take() {
-        s.finish_and_clear();
-    }
+    let mut ui = Progress::start();
+    let plan = tx::run(&mut root, req, sources, &mut |ev| ui.on(ev));
+    ui.clear();
     let plan = plan?;
     if plan.install.is_empty() && plan.remove.is_empty() {
         anstream::println!("{} nothing to do", "✓".green());
@@ -412,6 +439,89 @@ fn transact(root_path: &Path, req: &Request, sources: &Sources) -> Result<()> {
     Ok(())
 }
 
+fn system_transact(live: &Live, req: &Request, sources: &Sources) -> Result<()> {
+    anstream::println!(
+        "{} preparing a new system from system {} (the running system is not changed)",
+        "→".cyan().bold(),
+        live.booted_id()
+            .map_or_else(|| "?".into(), |i| i.to_string())
+    );
+    let mut ui = Progress::start();
+    let outcome = live.transact(req, sources, &mut |ev| ui.on(ev));
+    ui.clear();
+    let Some(o) = outcome? else {
+        anstream::println!("{} nothing to do", "✓".green());
+        return Ok(());
+    };
+    anstream::println!(
+        "{} system {} is ready ({}) and starts on the next boot; the previous system stays in the boot menu",
+        "✓".green(),
+        o.id.bold(),
+        o.summary
+    );
+    for p in &o.pruned {
+        anstream::println!("  {} removed old system {p}", "-".dimmed());
+    }
+    for w in &o.warnings {
+        anstream::eprintln!("{} {w}", "warning:".yellow().bold());
+    }
+    Ok(())
+}
+
+fn live_system(root: &Path) -> Result<Live> {
+    Live::detect(root)?.ok_or_else(|| {
+        anyhow!(
+            "{} is not a running Solace system (system snapshots exist only there)",
+            root.display()
+        )
+    })
+}
+
+fn systems(root: &Path) -> Result<()> {
+    let live = live_system(root)?;
+    anstream::println!(
+        "{:<5} {:<9} {:<17} {:<16} {}",
+        "ID".bold(),
+        "VERSION".bold(),
+        "CREATED".bold(),
+        "".bold(),
+        "CHANGES".bold()
+    );
+    for (m, booted, default) in live.overview()? {
+        let mut flags = Vec::new();
+        if booted {
+            flags.push("running");
+        }
+        if default {
+            flags.push("next boot");
+        }
+        anstream::println!(
+            "{:<5} {:<9} {:<17} {:<16} {}",
+            m.id,
+            m.version,
+            libspk::system::format_date(m.created),
+            flags.join(", "),
+            if m.summary.is_empty() {
+                "(first system)"
+            } else {
+                &m.summary
+            }
+        );
+    }
+    Ok(())
+}
+
+fn rollback(root: &Path, id: Option<&str>) -> Result<()> {
+    let live = live_system(root)?;
+    let target = live.rollback(id)?;
+    anstream::println!(
+        "{} system {} starts on the next boot (the others stay in the boot menu)",
+        "✓".green(),
+        target.bold()
+    );
+    Ok(())
+}
+
 fn open_db(root: &Path) -> Result<Db> {
     if !root.join(libspk::db::DB_PATH).exists() {
         bail!(
@@ -419,7 +529,7 @@ fn open_db(root: &Path) -> Result<Db> {
             root.display()
         );
     }
-    Ok(Db::open(root)?)
+    Ok(Db::open_read_only(root)?)
 }
 
 fn open_repos(root: &Path, repos: &[Location]) -> Result<(Vec<Repo>, tempfile::TempDir)> {
@@ -437,7 +547,7 @@ fn search(root: &Path, repos: &[Location], term: &str) -> Result<()> {
         bail!("no repositories given (use --repo)");
     }
     let installed = if root.join(libspk::db::DB_PATH).exists() {
-        Db::open(root)?.installed()?
+        Db::open_read_only(root)?.installed()?
     } else {
         Vec::new()
     };
@@ -509,7 +619,7 @@ fn info(root: &Path, repos: &[Location], what: &str) -> Result<()> {
         return Ok(());
     }
     if root.join(libspk::db::DB_PATH).exists()
-        && let Some(i) = Db::open(root)?.get(what)?
+        && let Some(i) = Db::open_read_only(root)?.get(what)?
     {
         let reason = if i.explicit {
             "explicitly"

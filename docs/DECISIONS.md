@@ -44,6 +44,7 @@ entry names a recipe that does not exist.
 - `util-linux`: mount, agetty, fdisk, lsblk, and libmount/libblkid.
 - `sol-init`: ours (init/): PID 1, service manager, solctl, sol-log.
 - `sol-bootgen`: ours (boot/bootgen/): grub.cfg, ESP kernels, initramfs.
+- `spk`: ours (pkg/): the package manager; system transactions on a running Solace.
 - `solace-base`: ours (image/base/): os-release, factory /etc, console units.
 - `solace-grub-theme`: ours (boot/grub-theme/): boot menu theme + Inter fonts for GRUB.
 - `bzip2`: bzip2 tool and libbz2; libarchive and pcre2grep read .bz2, and many upstream sources ship as .tar.bz2.

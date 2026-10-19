@@ -8,6 +8,7 @@ solace-base
 # Kernel and the boot tooling (bootgen also writes this image's ESP).
 linux
 sol-bootgen
+spk
 solace-grub-theme
 grub
 

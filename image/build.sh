@@ -84,7 +84,7 @@ missing=$(find "$sys" -type f \( -perm -u+x -o -name '*.so*' \) -print0 |
 [ -z "$missing" ] || die "libraries needed but not installed: $missing"
 
 # Our own tools from the packages just installed (static binaries).
-for b in sbin/sol-bootgen sbin/sol-mkinitramfs lib/sol/sol-init lib/sol/boot/vmlinuz; do
+for b in sbin/sol-bootgen sbin/sol-mkinitramfs lib/sol/sol-init lib/sol/boot/vmlinuz bin/spk; do
   [ -f "$sys/$b" ] || die "missing /usr/$b in the installed system"
 done
 # Read (never source) the system's os-release: package content is data.
@@ -92,8 +92,16 @@ osr() { sed -n "s/^$1=\"\{0,1\}\([^\"]*\)\"\{0,1\}\$/\1/p" "$sys/lib/os-release"
 NAME=$(osr NAME) VERSION_ID=$(osr VERSION_ID)
 [ -n "$NAME" ] && [ -n "$VERSION_ID" ] || die "os-release lacks NAME or VERSION_ID"
 
-step "initramfs (sol-init as /init)"
-"$sys/sbin/sol-mkinitramfs" "$sys/lib/sol/sol-init" "$work/initramfs.img"
+# The snapshot's date in the boot menu: the commit the image was built
+# from (reproducible), not SOURCE_DATE_EPOCH (the dev shell sets it to 1980).
+created=${SOL_IMAGE_DATE:-$(git -C "$repo_root" log -1 --format=%ct 2>/dev/null || date +%s)}
+
+# System 1 is laid out as a system transaction would leave it
+# (docs/formats/system.md): its initramfs and metadata inside it.
+step "initramfs (sol-init as /init) and system metadata"
+"$sys/sbin/sol-mkinitramfs" "$sys/lib/sol/sol-init" "$sys/lib/sol/boot/initramfs.img"
+printf 'id = "1"\nversion = "%s"\ncreated = %s\nparent = ""\nsummary = ""\n' \
+  "$VERSION_ID" "$created" >"$sys/lib/sol/system.toml"
 
 step "btrfs subvolumes"
 fs=$work/fs
@@ -102,6 +110,7 @@ mv "$sys" "$fs/@snapshots/1"
 sys=$fs/@snapshots/1
 cp -a "$sys/share/factory/etc" "$fs/@etc"
 cp -a "$root/etc/." "$fs/@etc/"
+install -Dm644 "$BOOT_TOML" "$fs/@etc/sol/boot.toml"
 hash=$(openssl passwd -6 -stdin <<<"$password")
 sed -i "s|^root:[^:]*:|root:$hash:|" "$fs/@etc/shadow"
 mkdir -p "$fs/@var"/{log,lib,cache,spool,tmp}
@@ -119,9 +128,6 @@ mkdir -p "$esp/EFI/BOOT" "$esp/grub"
 cp -r "$sys/share/sol/grub/themes" "$sys/share/sol/grub/fonts" "$esp/grub/"
 [ -f "$sys/lib/sol/boot/grubx64.efi" ] || die "no grubx64.efi: is the grub package installed?"
 cp "$sys/lib/sol/boot/grubx64.efi" "$esp/EFI/BOOT/BOOTX64.EFI"
-# The snapshot's date in the boot menu: the commit the image was built
-# from (reproducible), not SOURCE_DATE_EPOCH (the dev shell sets it to 1980).
-created=${SOL_IMAGE_DATE:-$(git -C "$repo_root" log -1 --format=%ct 2>/dev/null || date +%s)}
 serial=$(od -An -N4 -tx4 /dev/urandom | tr -d ' \n' | tr a-f A-F)
 esp_uuid=${serial:0:4}-${serial:4:4}
 cat >"$work/systems.toml" <<EOF
@@ -135,7 +141,7 @@ version = "$VERSION_ID"
 created = $created
 subvol = "@snapshots/1"
 kernel = "$sys/lib/sol/boot/vmlinuz"
-initramfs = "$work/initramfs.img"
+initramfs = "$sys/lib/sol/boot/initramfs.img"
 EOF
 "$sys/sbin/sol-bootgen" --esp "$esp" --inventory "$work/systems.toml" --settings "$BOOT_TOML"
 truncate -s "${ESP_MIB}M" "$work/esp.img"
