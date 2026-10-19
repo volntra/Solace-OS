@@ -42,7 +42,7 @@ console = []        # kernel consoles, e.g. ["tty0", "ttyS0,115200"]; last is /d
 ## Kernel command line
 
 Each entry boots `/sol/<id>/vmlinuz` with
-`sol.root=UUID=<root_uuid> sol.system=<subvol> rw` plus
+`sol.root=UUID=<root_uuid> sol.system=<subvol> sol.esp=UUID=<esp_uuid> rw` plus
 `quiet loglevel=3 ...` (graphical) or `sol.verbose loglevel=7` (verbose).
 sol-init in the initramfs reads `sol.root`/`sol.system` and assembles the
 root itself (it is not a single subvolume), so `rootflags=subvol=` is not

@@ -383,10 +383,11 @@ pub fn generate_cfg(p: &Params) -> Result<String> {
         let _ = writeln!(w, "  set gfxpayload=keep\n  insmod gzio");
         let _ = writeln!(
             w,
-            "  linux /{SOL_DIR}/{id}/vmlinuz sol.root=UUID={root} sol.system={subvol} rw {cmdline_extra}",
+            "  linux /{SOL_DIR}/{id}/vmlinuz sol.root=UUID={root} sol.system={subvol} sol.esp=UUID={esp} rw {cmdline_extra}",
             id = sys.id,
             root = p.root_uuid,
-            subvol = sys.subvol
+            subvol = sys.subvol,
+            esp = p.esp_uuid
         );
         let _ = writeln!(w, "  initrd /{SOL_DIR}/{}/initramfs.img", sys.id);
         let _ = writeln!(w, "}}");
@@ -604,8 +605,8 @@ mod tests {
             }
             assert!(cfg.contains(&format!("set default='sol-{n}'")));
             assert!(cfg.contains(&format!(
-                "linux /sol/{n}/vmlinuz sol.root=UUID={} sol.system=@snapshots/{n} rw",
-                p.root_uuid
+                "linux /sol/{n}/vmlinuz sol.root=UUID={} sol.system=@snapshots/{n} sol.esp=UUID={} rw",
+                p.root_uuid, p.esp_uuid
             )));
             assert!(!cfg.contains("GNU"), "no upstream branding");
         }

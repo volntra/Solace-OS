@@ -63,6 +63,7 @@ fn pid1_main() -> ! {
     // Ctrl-Alt-Del sends us SIGINT instead of rebooting immediately.
     let _ = rustix::system::reboot(rustix::system::RebootCommand::CadOff);
     pid1::seed_etc(Path::new("/"), &mut log);
+    pid1::mount_system_volumes(&cmdline, &mut log);
     pid1::set_hostname(&mut log);
     pid1::load_random_seed();
     pid1::apply_sysctl(&mut log);

@@ -7,6 +7,7 @@
 
 use std::fs;
 use std::io::{Read, Seek, SeekFrom};
+use std::os::unix::fs::DirBuilderExt;
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -28,6 +29,8 @@ pub struct Cmdline {
     pub root: Option<String>,
     /// `sol.system=<subvolume>`: the @system snapshot to boot.
     pub system: Option<String>,
+    /// `sol.esp=UUID=<FAT volume id>`: the ESP, mounted at /boot.
+    pub esp: Option<String>,
     /// `sol.verbose`: echo sol-log to the console.
     pub verbose: bool,
 }
@@ -40,6 +43,8 @@ impl Cmdline {
                 c.root = Some(v.to_string());
             } else if let Some(v) = w.strip_prefix("sol.system=") {
                 c.system = Some(v.to_string());
+            } else if let Some(v) = w.strip_prefix("sol.esp=") {
+                c.esp = Some(v.to_string());
             } else if w == "sol.verbose" {
                 c.verbose = true;
             }
@@ -140,15 +145,36 @@ pub fn btrfs_fsid(dev: &Path) -> Option<String> {
     ))
 }
 
-/// Finds the root device named by `sol.root=` (waiting up to 10 s for it
-/// to appear: devtmpfs creates nodes as drivers probe).
-pub fn find_root(spec: &str) -> Option<PathBuf> {
+/// Reads the volume id of a FAT12/16/32 filesystem as `XXXX-XXXX` (what
+/// GRUB, blkid and our bootgen call its UUID).
+pub fn fat_volume_id(dev: &Path) -> Option<String> {
+    let mut f = fs::File::open(dev).ok()?;
+    let mut bs = [0u8; 512];
+    f.read_exact(&mut bs).ok()?;
+    if bs[510..512] != [0x55, 0xAA] {
+        return None;
+    }
+    let at = if &bs[0x52..0x57] == b"FAT32" {
+        0x43
+    } else if &bs[0x36..0x39] == b"FAT" {
+        0x27
+    } else {
+        return None;
+    };
+    let id = u32::from_le_bytes([bs[at], bs[at + 1], bs[at + 2], bs[at + 3]]);
+    Some(format!("{:04X}-{:04X}", id >> 16, id & 0xFFFF))
+}
+
+/// Finds the block device named by `spec` (`UUID=<id>` as read by
+/// `probe`, or a path), waiting up to 10 s for it to appear: devtmpfs
+/// creates nodes as drivers probe.
+fn find_device(spec: &str, probe: fn(&Path) -> Option<String>) -> Option<PathBuf> {
     for _ in 0..100 {
         if let Some(uuid) = spec.strip_prefix("UUID=") {
             if let Ok(rd) = fs::read_dir("/sys/class/block") {
                 for e in rd.flatten() {
                     let dev = Path::new("/dev").join(e.file_name());
-                    if btrfs_fsid(&dev).is_some_and(|id| id.eq_ignore_ascii_case(uuid)) {
+                    if probe(&dev).is_some_and(|id| id.eq_ignore_ascii_case(uuid)) {
                         return Some(dev);
                     }
                 }
@@ -159,6 +185,57 @@ pub fn find_root(spec: &str) -> Option<PathBuf> {
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
     None
+}
+
+/// Finds the root device named by `sol.root=`.
+pub fn find_root(spec: &str) -> Option<PathBuf> {
+    find_device(spec, btrfs_fsid)
+}
+
+/// Where spk finds the btrfs top level (docs/formats/system.md).
+pub const BTRFS_TOP: &str = "/run/sol/btrfs";
+/// The booted system's subvolume, written at boot for spk.
+pub const BOOTED_FILE: &str = "/run/sol/booted";
+
+/// In the real root: mounts what system transactions need (the btrfs top
+/// level under the root-only /run/sol, the ESP at /boot) and records the
+/// booted system. Failures are logged; the system still boots.
+pub fn mount_system_volumes(c: &Cmdline, log: &mut LogStore) {
+    let mut note = |m: String| {
+        eprintln!("solace: {m}");
+        log.push("sol-init", "init", &m);
+    };
+    let _ = fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create("/run/sol");
+    if let Some(dev) = c.root.as_deref().and_then(find_root) {
+        let _ = fs::create_dir_all(BTRFS_TOP);
+        let o = opts("subvolid=5,compress=zstd:3");
+        let flags =
+            MountFlags::NOSUID | MountFlags::NODEV | MountFlags::NOEXEC | MountFlags::NOATIME;
+        if let Err(e) = mount(&dev, BTRFS_TOP, "btrfs", flags, Some(o.as_c_str())) {
+            note(format!("mount the system volume at {BTRFS_TOP}: {e}"));
+        }
+    } else {
+        note("no root device: system updates are unavailable".into());
+    }
+    if let Some(system) = &c.system
+        && let Err(e) = fs::write(BOOTED_FILE, system)
+    {
+        note(format!("{BOOTED_FILE}: {e}"));
+    }
+    match c.esp.as_deref().map(|s| (s, find_device(s, fat_volume_id))) {
+        Some((_, Some(dev))) => {
+            let o = opts("umask=0077,shortname=mixed,utf8");
+            let flags = MountFlags::NOSUID | MountFlags::NODEV | MountFlags::NOEXEC;
+            if let Err(e) = mount(&dev, "/boot", "vfat", flags, Some(o.as_c_str())) {
+                note(format!("mount the ESP at /boot: {e}"));
+            }
+        }
+        Some((spec, None)) => note(format!("ESP {spec} did not appear")),
+        None => note("no sol.esp= on the kernel command line".into()),
+    }
 }
 
 /// The directories and links of a Solace root (CLAUDE.md section 4).
@@ -419,7 +496,7 @@ pub fn finish(power: Power, log: &mut LogStore) -> ! {
             Ok(Some(_))
         ) {}
     }
-    for m in ["/Users", "/var", "/etc", "/boot", "/tmp"] {
+    for m in ["/Users", "/var", "/etc", "/boot", BTRFS_TOP, "/tmp"] {
         let _ = unmount(m, UnmountFlags::empty());
     }
     let _ = mount_remount("/usr", MountFlags::RDONLY, "");
@@ -441,6 +518,29 @@ mod tests {
     use super::*;
 
     #[test]
+    fn fat_volume_ids() {
+        let d = tempfile::tempdir().unwrap();
+        let write = |name: &str, fs_type_at: usize, fs_type: &[u8], id_at: usize| {
+            let mut bs = vec![0u8; 512];
+            bs[510] = 0x55;
+            bs[511] = 0xAA;
+            bs[fs_type_at..fs_type_at + fs_type.len()].copy_from_slice(fs_type);
+            bs[id_at..id_at + 4].copy_from_slice(&0x1234_ABCDu32.to_le_bytes());
+            let p = d.path().join(name);
+            fs::write(&p, bs).unwrap();
+            p
+        };
+        let fat32 = write("fat32", 0x52, b"FAT32   ", 0x43);
+        assert_eq!(fat_volume_id(&fat32).as_deref(), Some("1234-ABCD"));
+        let fat16 = write("fat16", 0x36, b"FAT16   ", 0x27);
+        assert_eq!(fat_volume_id(&fat16).as_deref(), Some("1234-ABCD"));
+        let none = write("none", 0x36, b"NTFS", 0x27);
+        assert_eq!(fat_volume_id(&none), None);
+        fs::write(d.path().join("short"), b"x").unwrap();
+        assert_eq!(fat_volume_id(&d.path().join("short")), None);
+    }
+
+    #[test]
     fn subvolume_data_holds_only_btrfs_options() {
         let (data, flags) = subvol_mount("@snapshots/1");
         assert_eq!(data, "subvol=@snapshots/1,compress=zstd:3");
@@ -456,10 +556,11 @@ mod tests {
     #[test]
     fn cmdline() {
         let c = Cmdline::parse(
-            "BOOT_IMAGE=/sol/a/vmlinuz quiet sol.root=UUID=abcd-1 sol.system=@snapshots/42 sol.verbose",
+            "BOOT_IMAGE=/sol/a/vmlinuz quiet sol.root=UUID=abcd-1 sol.system=@snapshots/42 sol.esp=UUID=12AB-34CD sol.verbose",
         );
         assert_eq!(c.root.as_deref(), Some("UUID=abcd-1"));
         assert_eq!(c.system.as_deref(), Some("@snapshots/42"));
+        assert_eq!(c.esp.as_deref(), Some("UUID=12AB-34CD"));
         assert!(c.verbose);
         assert_eq!(Cmdline::parse("quiet"), Cmdline::default());
     }
