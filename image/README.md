@@ -1,5 +1,15 @@
 # image
 
-Assembles the system image (btrfs subvolumes, ESP, GRUB, initramfs), the live installer image, and the QEMU runner behind `just qemu`.
+Assembles the Solace system image and boots it in QEMU.
 
-Status: empty until **Phase 2**. See `docs/STATUS.md`.
+| File | What it does |
+|---|---|
+| `build.sh` | `just image`: installs `packages.txt` from the system repo into a staging root, makes the initramfs, writes the btrfs filesystem (`@snapshots/1` read-only, `@etc`, `@var`, `@users`), the FAT32 ESP (GRUB, our theme, sol-bootgen's grub.cfg, kernel + initramfs), and joins them into `build/image/solace.img` (GPT). Runs unprivileged and only writes regular files. |
+| `packages.txt` | What goes into the image (dependencies come from the solver). |
+| `boot-qemu.toml` | Boot settings for dev images: menu shown for 3 s, console mirrored to serial. |
+| `qemu.sh` | `just qemu`: boots the image with OVMF (KVM when available). `--headless` for no window. |
+| `qemu-test.py` | `just qemu-test`: boots headless, logs in over serial, checks `solctl` and the read-only `/usr`, powers off. |
+| `base/` | Source of the `solace-base` package (os-release, factory `/etc`, console login units). |
+
+Dev images have the root password `solace`. The live installer image
+arrives in Phase 12.

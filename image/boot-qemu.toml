@@ -1,0 +1,8 @@
+# Boot settings for QEMU dev images (the boot settings domain,
+# docs/formats/bootgen.md). The menu stays visible so the theme can be
+# seen; the console is mirrored to the serial port for `just qemu-test`.
+menu = "always"
+timeout = 3
+theme = true
+verbose = false
+console = ["tty0", "ttyS0,115200"]

@@ -1,0 +1,22 @@
+# Packages in the QEMU system image (image/build.sh). Dependencies are
+# pulled in by the solver; list only what the image needs directly.
+
+# The system: init, console logins, os-release, factory /etc.
+solace-base
+# Kernel and the boot tooling (bootgen also writes this image's ESP).
+linux
+sol-bootgen
+solace-grub-theme
+
+# Everyday command-line tools for the text console.
+grep
+sed
+gawk
+findutils
+diffutils
+less
+tar
+gzip
+xz
+zstd
+file

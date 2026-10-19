@@ -68,6 +68,20 @@ grub-theme:
 grub-preview: grub-theme
     tools/grub-preview.sh
 
+# --- System image (Phase 2) -------------------------------------------------
+
+# Assemble build/image/solace.img from the system repo (no real disks touched)
+image *ARGS: spk
+    image/build.sh {{ARGS}}
+
+# Boot the image in QEMU (UEFI, our GRUB menu, console mirrored here)
+qemu *ARGS:
+    image/qemu.sh {{ARGS}}
+
+# Boot headless, log in over serial, check solctl and the sealed /usr
+qemu-test:
+    image/qemu-test.py
+
 # Delete build outputs (keeps the source cache and signing key)
 clean-build:
     rm -rf build/work build/repo build/scratch-root build/demo-* build/probe-*

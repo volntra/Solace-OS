@@ -355,3 +355,35 @@ entry names a recipe that does not exist.
   glibc, so nothing from the host remains in them.
 - **Why:** bootstrapping rustc is a large project of its own (it needs
   LLVM and a stage-0 compiler); the binaries we ship are independent of it.
+
+### 2026-10-19: The image builder needs no root and no loop devices
+
+- **Decision:** `image/build.sh` installs packages into a staging root,
+  lays out the subvolumes as directories, and lets `mkfs.btrfs --rootdir
+  --subvol ro:@snapshots/1 ...` write the filesystem straight into a file;
+  the ESP is `mkfs.fat` + `mcopy`, the disk is `sfdisk` + `dd` on a file.
+  It re-executes itself in a user namespace (`unshare --map-root-user`) so
+  files are root-owned in the image without real root.
+- **Alternatives:** loop mounts + `btrfs subvolume` (needs root and
+  touches the host's block layer); fakeroot (cannot see raw syscalls).
+- **Why:** packages only ever carry root-owned files, so a single-uid
+  namespace is enough, and nothing can reach a real disk (rule 8).
+
+### 2026-10-19: Dev images: initramfs on the ESP, dev root password
+
+- **Decision:** the initramfs is generated from the packaged sol-init by
+  the packaged `sol-mkinitramfs` and goes only to the ESP (via
+  sol-bootgen), not into `@snapshots/<id>`, so every file in the sealed
+  system still comes from a package. Phase 3 transactions regenerate it
+  per snapshot. QEMU images set a root password (`solace`, override with
+  `SOL_ROOT_PASSWORD`) in `@etc`; installs (Phase 12) create real users.
+
+### 2026-10-19: Temporary GRUB binary from the workbench
+
+- **Decision:** until `recipes/grub` can fetch the GRUB 2.14 release
+  tarball (GNU mirrors are blocked in the cloud build environment, and
+  nixpkgs builds GRUB from git + gnulib, also blocked), `image/build.sh`
+  makes `BOOTX64.EFI` with the dev shell's `grub-mkimage` and records
+  `grub = "dev-workbench (not shippable)"` in `build/image/image.toml`.
+  Theme, fonts, and grub.cfg are ours. This is a known gap, listed in
+  STATUS.md, not a design choice.
