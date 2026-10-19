@@ -640,20 +640,31 @@ fn build_stamp(recipe: &Recipe, cfg: &BuildConfig, keyring: &Keyring) -> Result<
 /// The repo packages a set of build deps pulls in (transitively), as
 /// sorted `name version sha256` lines. Follows names (and `provides`)
 /// only: the local repo holds one version of each package.
+/// The packages a sysroot for `roots` would contain: for each dep, the
+/// newest entry that satisfies it (as the solver picks), then its deps.
+/// Versions that no dep would select (an older `~bootstrap` build, or a
+/// final build next to a pinned base package) do not enter the stamp.
 fn dep_closure(index: &[repo::IndexEntry], roots: &[DepSpec]) -> Vec<String> {
-    let mut todo: Vec<&str> = roots.iter().map(|d| d.name.as_str()).collect();
-    let mut seen: BTreeSet<&str> = BTreeSet::new();
+    let mut todo: Vec<&DepSpec> = roots.iter().collect();
+    let mut seen: BTreeSet<String> = BTreeSet::new();
     let mut out = BTreeSet::new();
-    while let Some(name) = todo.pop() {
-        if !seen.insert(name) {
+    while let Some(dep) = todo.pop() {
+        if !seen.insert(dep.to_string()) {
             continue;
         }
-        for e in index
+        let by_name = index
             .iter()
-            .filter(|e| e.name == name || e.provides.iter().any(|p| p.name == name))
-        {
+            .filter(|e| dep.matches(&e.name, &e.pkg_version()))
+            .max_by_key(|e| e.pkg_version());
+        let chosen = by_name.or_else(|| {
+            index
+                .iter()
+                .filter(|e| e.provides.iter().any(|p| p.name == dep.name))
+                .max_by_key(|e| e.pkg_version())
+        });
+        if let Some(e) = chosen {
             out.insert(format!("{} {} {}", e.name, e.pkg_version(), e.sha256));
-            todo.extend(e.depends.iter().map(|d| d.name.as_str()));
+            todo.extend(&e.depends);
         }
     }
     out.into_iter().collect()
@@ -1504,6 +1515,32 @@ system = "make"
         ];
         let got = dep_closure(&idx, &[DepSpec::parse("a").unwrap()]);
         assert_eq!(got, ["a 1-1 aa", "b 1-1 bb", "c 1-1 cc"]);
+    }
+
+    #[test]
+    fn stamp_closure_follows_constraints_not_every_version() {
+        let entry = |name: &str, ver: &str| repo::IndexEntry {
+            name: name.into(),
+            version: crate::version::Version::parse(ver).unwrap(),
+            release: 1,
+            arch: "x86_64".into(),
+            summary: String::new(),
+            depends: vec![],
+            provides: vec![],
+            conflicts: vec![],
+            replaces: vec![],
+            file: String::new(),
+            size: 0,
+            sha256: format!("{name}{ver}"),
+            installed_size: 0,
+        };
+        let idx = vec![entry("bash", "5.3~bootstrap"), entry("bash", "5.3")];
+        // A pinned base package: building the final bash must not change it.
+        let pinned = dep_closure(&idx, &[DepSpec::parse("bash=5.3~bootstrap-1").unwrap()]);
+        assert_eq!(pinned, ["bash 5.3~bootstrap-1 bash5.3~bootstrap"]);
+        // Unpinned: the newest, as the solver picks.
+        let newest = dep_closure(&idx, &[DepSpec::parse("bash").unwrap()]);
+        assert_eq!(newest, ["bash 5.3-1 bash5.3"]);
     }
 
     #[test]
