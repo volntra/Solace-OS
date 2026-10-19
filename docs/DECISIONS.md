@@ -99,11 +99,16 @@ entry names a recipe that does not exist.
 - **Why:** catches "works in my target/ dir" problems, and sets the
   pattern for later crates.
 
-### 2026-10-18: GitHub connection deferred; local repo only
+### 2026-10-19: Repository and license
 
-- **Decision:** work continues in a local git repo in the session
-  container until the human attaches a GitHub repository.
-- **Why:** no repository is attached to this session yet.
+- **Decision:** the project lives at https://github.com/volntra/Solace-OS,
+  `main` branch. Our code is licensed **GPL-3.0-or-later** (the human's
+  repository ships the GPL v3 text; "or later" was the recommended default
+  since the human did not pick between -only and -or-later).
+- **Note:** switching to GPL-3.0-only is a one-line change in
+  `Cargo.toml` while we are the only copyright holders.
+- Upstream packages built by `recipes/` keep their own licenses (recorded
+  per recipe and per package manifest).
 
 ### 2026-10-18: spk database location
 

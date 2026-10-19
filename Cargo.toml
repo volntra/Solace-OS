@@ -5,6 +5,8 @@ members = ["tools/solcheck", "pkg/libspk", "pkg/spk"]
 [workspace.package]
 edition = "2024"
 rust-version = "1.89"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/volntra/Solace-OS"
 publish = false
 
 [workspace.lints.rust]

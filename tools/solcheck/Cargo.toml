@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "Repository invariant checks for Solace (run by `just check`)"
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
 publish.workspace = true
 
 [lints]

@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "spk package manager library: recipes, packages, signatures, solver, database"
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
 publish.workspace = true
 
 [dependencies]

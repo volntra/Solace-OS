@@ -1,6 +1,8 @@
 # Status
 
-_Last updated: 2026-10-18 (session 1)_
+_Last updated: 2026-10-19 (session 1)_
+
+Repository: https://github.com/volntra/Solace-OS (`main`).
 
 ## Current phase: 1 (spk core): complete
 
@@ -97,10 +99,8 @@ lint), `just sandbox-probe`, `just build-recipes`, `just seed-sources`,
 
 1. **Desktop name:** recorded as DE = Koi, release label "SolOS 1: Koi",
    OS = Solace. Is "SolOS" meant to replace "Solace"?
-2. **License** for our code (none chosen yet).
-3. **Git remote:** commits exist only in this session's container until a
-   GitHub repo is attached (connect at https://claude.ai/connect-github,
-   then give me `owner/repo`).
+2. GPL-3.0-or-later was chosen as the default; say if you want
+   GPL-3.0-only instead.
 
 ## Next: Phase 2 (base bootstrap + sol-init + GRUB + sol-bootgen + image)
 

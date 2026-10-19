@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "The Solace package manager"
 edition.workspace = true
 rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
 publish.workspace = true
 
 [dependencies]

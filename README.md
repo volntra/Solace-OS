@@ -12,3 +12,9 @@ nix develop      # or: direnv allow
 just             # list recipes
 just check       # fmt, clippy -D warnings, tests, repo lint
 ```
+
+## License
+
+Solace's own code is licensed under the GNU General Public License v3.0 or
+later; see [`LICENSE`](LICENSE). Upstream packages built from `recipes/`
+keep their own licenses.
