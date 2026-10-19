@@ -33,6 +33,12 @@ sandbox-probe: spk
 seed-sources:
     tools/seed-sources-from-nix.sh build/sources
 
+# Regenerate the logo SVGs and their PNG renders in assets/brand/
+logo:
+    python3 tools/brand/gen-logo.py
+    resvg -w 512 assets/brand/solace-icon.svg assets/brand/solace-icon-512.png
+    resvg -w 128 assets/brand/solace-mark.svg assets/brand/solace-mark-128.png
+
 # Delete build outputs (keeps the source cache and signing key)
 clean-build:
     rm -rf build/work build/repo build/scratch-root build/demo-* build/probe-*

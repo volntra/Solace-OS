@@ -40,6 +40,11 @@
           perl
           gnum4
 
+          # Brand assets: tools/brand/gen-logo.py + SVG rendering (resvg is
+          # also the icon engine's renderer, CLAUDE.md 6.9)
+          python3
+          resvg
+
           # Images and boot (Phase 2+): QEMU + UEFI firmware, ESP + btrfs tooling
           qemu
           OVMF

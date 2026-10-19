@@ -1,3 +1,5 @@
+<p align="center"><img src="assets/brand/solace-icon-512.png" width="160" alt="Solace"></p>
+
 # Solace
 
 A macOS-style operating system on a minimal Linux base. The desktop is

@@ -224,3 +224,18 @@ entry names a recipe that does not exist.
   unless `/usr/lib/os-release` says `ID=solace`.
 - **Why:** during development spk runs on NixOS and in containers, where
   the default root would be the host itself (CLAUDE.md rule 8 spirit).
+
+### 2026-10-19: Logo
+
+- **Decision:** the Solace logo is a half-set sun over still water with its
+  reflection as tapered ripples, on our n=5 superellipse plate with a dusk
+  gradient (night indigo to horizon coral). A single-colour mark (half sun
+  + three ripples) on a 4-unit grid serves the menu bar, boot splash, and
+  GRUB theme. Both are generated from `tools/brand/gen-logo.py`.
+- **Alternatives:** a koi fish (ties to the desktop name but competes with
+  it, and reads poorly at 16 px); a monogram "S" (generic).
+- **Why:** "Solace" = sol + calm; the image is calm, warm, and original
+  (rule 9), survives reduction to a 16 px single-colour glyph, and its
+  palette gives the design system a starting point. The human asked for
+  the familiar desktop-icon look: squircle plate, rich gradient, soft
+  depth.
