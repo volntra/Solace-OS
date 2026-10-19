@@ -125,7 +125,7 @@ def main():
         for name in (b"Applications", b"Users", b"System", b"Volumes", b"usr", b"etc"):
             if name not in listing:
                 fail(f"/{name.decode()} missing from the root")
-        ok("macOS-style root layout")
+        ok("Solace root layout (Applications, Users, System, Volumes)")
         start = c.pos
         c.run("findmnt -n -o FSTYPE,OPTIONS /usr", "findmnt")
         if re.search(rb"btrfs\s+ro,", c.buf[start : c.pos]) is None:
