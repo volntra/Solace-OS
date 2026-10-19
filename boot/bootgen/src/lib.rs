@@ -99,6 +99,10 @@ pub struct Settings {
     /// Show entries for other operating systems.
     #[serde(default = "default_true")]
     pub other_os: bool,
+    /// Kernel consoles (`console=`), e.g. `["tty0", "ttyS0,115200"]`; the
+    /// last one is /dev/console. Empty: the kernel's default.
+    #[serde(default)]
+    pub console: Vec<String>,
 }
 
 fn default_timeout() -> u32 {
@@ -121,6 +125,7 @@ impl Default for Settings {
             default: None,
             keep: default_keep(),
             other_os: true,
+            console: Vec::new(),
         }
     }
 }
@@ -179,6 +184,16 @@ fn valid_uuid(s: &str) -> bool {
     !s.is_empty() && s.len() <= 64 && s.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-')
 }
 
+/// A kernel console spec: `tty0`, `ttyS0,115200n8`, `hvc0`.
+fn valid_console(c: &str) -> bool {
+    let (dev, opts) = c.split_once(',').unwrap_or((c, ""));
+    !dev.is_empty()
+        && dev.len() <= 16
+        && dev.bytes().all(|b| b.is_ascii_alphanumeric())
+        && opts.len() <= 16
+        && opts.bytes().all(|b| b.is_ascii_alphanumeric())
+}
+
 /// Quotes a string for grub.cfg (single quotes; `'` becomes `'\''`).
 /// Control characters are dropped.
 pub fn grub_quote(s: &str) -> String {
@@ -203,6 +218,11 @@ impl Params {
         }
         if self.settings.timeout > 300 {
             return bad("timeout must be at most 300 seconds".into());
+        }
+        for c in &self.settings.console {
+            if !valid_console(c) {
+                return bad(format!("bad console {c:?}"));
+            }
         }
         let mut ids = BTreeSet::new();
         for s in &self.systems {
@@ -339,11 +359,14 @@ pub fn generate_cfg(p: &Params) -> Result<String> {
             let _ = writeln!(w, "set timeout_style=hidden\nset timeout=0");
         }
     }
-    let cmdline_extra = if s.verbose {
+    let mut cmdline_extra = String::from(if s.verbose {
         "sol.verbose loglevel=7"
     } else {
         "quiet loglevel=3 rd.udev.log_level=3 vt.global_cursor_default=0"
-    };
+    });
+    for c in &s.console {
+        let _ = write!(cmdline_extra, " console={c}");
+    }
     for sys in p.kept() {
         let title = format!(
             "{} {} \u{2014} {}",
@@ -615,6 +638,25 @@ mod tests {
         p.settings.menu = MenuStyle::Never;
         let c = generate_cfg(&p).unwrap();
         assert!(c.contains("set timeout=0") && !c.contains("keystatus"));
+    }
+
+    #[test]
+    fn consoles_go_on_the_kernel_line_and_are_validated() {
+        let d = tempfile::tempdir().unwrap();
+        let mut p = params(1, d.path());
+        p.settings.console = vec!["tty0".into(), "ttyS0,115200".into()];
+        let c = generate_cfg(&p).unwrap();
+        assert!(c.contains(" console=tty0 console=ttyS0,115200\n"));
+        for bad in [
+            "",
+            "tty0 init=/bin/sh",
+            "ttyS0,1;reboot",
+            "tty0\nlinux",
+            "../x",
+        ] {
+            p.settings.console = vec![bad.into()];
+            assert!(generate_cfg(&p).is_err(), "{bad:?} accepted");
+        }
     }
 
     #[test]

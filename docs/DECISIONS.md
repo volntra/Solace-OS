@@ -42,6 +42,7 @@ entry names a recipe that does not exist.
 - `sol-init`: ours (init/): PID 1, service manager, solctl, sol-log.
 - `sol-bootgen`: ours (boot/bootgen/): grub.cfg, ESP kernels, initramfs.
 - `solace-base`: ours (image/base/): os-release, factory /etc, console units.
+- `solace-grub-theme`: ours (boot/grub-theme/): boot menu theme + Inter fonts for GRUB.
 - `bzip2`: bzip2 tool and libbz2; libarchive and pcre2grep read .bz2, and many upstream sources ship as .tar.bz2.
 - `expat`: XML parser required by dbus-daemon, fontconfig, Mesa, and wayland-scanner.
 - `libarchive`: archive library Flatpak requires (it unpacks OCI/bundle layers); provides bsdtar.

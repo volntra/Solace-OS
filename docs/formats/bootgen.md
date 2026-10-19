@@ -36,6 +36,7 @@ verbose = false     # kernel/init messages instead of the splash
 default = "1"       # system id; default: the newest
 keep = 3            # previous systems kept bootable
 other_os = true
+console = []        # kernel consoles, e.g. ["tty0", "ttyS0,115200"]; last is /dev/console
 ```
 
 ## Kernel command line
