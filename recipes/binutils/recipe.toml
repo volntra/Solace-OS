@@ -11,7 +11,8 @@ sha256 = "b8c9a3d796dc0b0e8ea935dc24c5c8d6f345eb177ada5ac6a5b1122c77d62158"
 dir = "binutils-with-gold-2.46"
 
 [deps]
-build = ["zlib"]
+# bzip2: the source is .tar.bz2, unpacked inside the sandbox.
+build = ["zlib", "bzip2"]
 runtime = ["zlib"]
 
 [build]

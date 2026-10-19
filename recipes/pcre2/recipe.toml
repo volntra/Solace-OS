@@ -10,7 +10,8 @@ url = "https://github.com/PCRE2Project/pcre2/releases/download/pcre2-10.48/pcre2
 sha256 = "b6c68fdf6f3ac31388b50aa89ff0fc49c00c987c16e7b5146491d12003f2c8ed"
 
 [deps]
-build = ["zlib", "libbz2"]
+# bzip2: the source is .tar.bz2, unpacked inside the sandbox.
+build = ["zlib", "libbz2", "bzip2"]
 runtime = ["zlib", "libbz2"]
 
 [build]

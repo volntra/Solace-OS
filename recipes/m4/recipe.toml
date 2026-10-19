@@ -8,6 +8,10 @@ license = "GPL-3.0-or-later"
 url = "https://ftp.gnu.org/gnu/m4/m4-1.4.21.tar.bz2"
 sha256 = "dc487e11d2f0c9e01555bb1af26be4eae983ec8f0726746505b4327186eb21fc"
 
+[deps]
+# bzip2: the source is .tar.bz2, unpacked inside the sandbox.
+build = ["bzip2"]
+
 [build]
 system = "custom"
 configure = '''
