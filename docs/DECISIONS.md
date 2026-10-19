@@ -39,6 +39,7 @@ entry names a recipe that does not exist.
 - `sed`: needed by builds and scripts.
 - `shadow`: user/group/password tools and the text-console login.
 - `pkgconf`: pkg-config for builds (shadow needs it; so will Mesa, Wayland, Qt).
+- `openssl`: TLS/crypto; the kernel's certificate tool needs libcrypto, and so will networking.
 - `tar`: unpacking sources; archives.
 - `util-linux`: mount, agetty, fdisk, lsblk, and libmount/libblkid.
 - `sol-init`: ours (init/): PID 1, service manager, solctl, sol-log.

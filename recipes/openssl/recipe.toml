@@ -1,0 +1,29 @@
+# LFS 8.48. 3.5 is an LTS series. The hash matches upstream's published
+# .sha256 and nixpkgs' pin.
+name = "openssl"
+version = "3.5.8"
+release = 1
+summary = "TLS and cryptography library"
+license = "Apache-2.0"
+homepage = "https://www.openssl.org/"
+
+[[source]]
+url = "https://github.com/openssl/openssl/releases/download/openssl-3.5.8/openssl-3.5.8.tar.gz"
+sha256 = "a8f84a39918ec6415ce765d9b429d313ba97b8143169c172e734b9514464f5b2"
+
+[deps]
+build = ["zlib"]
+runtime = ["zlib"]
+
+[build]
+system = "custom"
+configure = '''
+./config --prefix=/usr --openssldir=/etc/ssl --libdir=lib shared zlib-dynamic
+'''
+compile = '''
+make
+'''
+install = '''
+sed -i '/INSTALL_LIBS/s/libcrypto.a libssl.a//' Makefile
+make DESTDIR="$DESTDIR" MANSUFFIX=ssl install_sw install_ssldirs
+'''

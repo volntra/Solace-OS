@@ -16,7 +16,9 @@ dir = "linux-7.2"
 local = "boot/kernel"
 
 [deps]
-build = ["bc", "flex", "elfutils"]
+# openssl + pkgconf: certs/extract-cert (the system keyring is forced on
+# by wireless regulatory signatures).
+build = ["bc", "flex", "elfutils", "openssl", "pkgconf"]
 
 [build]
 system = "custom"
@@ -31,7 +33,8 @@ while IFS= read -r line; do
   case "$line" in ''|'#'*) continue ;; esac
   key=${line%%=*}; val=${line#*=}
   if [ "$val" = n ]; then
-    grep -qE "^# $key is not set|^$key=n" .config || { echo "config lost: $line"; exit 1; }
+    # Off, or not even offered by this configuration: both are fine.
+    ! grep -qE "^$key=[ym]" .config || { echo "config not disabled: $line"; exit 1; }
   else
     grep -qxF "$line" .config || { echo "config lost: $line"; exit 1; }
   fi
