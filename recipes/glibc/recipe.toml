@@ -23,7 +23,8 @@ compile = '''
 make -C build
 '''
 install = '''
-make -C build DESTDIR="$DESTDIR" install
+# Serial: glibc's parallel install can race on libc.so.6.
+make -j1 -C build DESTDIR="$DESTDIR" install
 '''
 post_install = '''
 sed '/RTLDLIST=/s@/usr@@g' -i "$DESTDIR/usr/bin/ldd"
