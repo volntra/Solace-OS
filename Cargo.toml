@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["tools/solcheck", "pkg/libspk", "pkg/spk", "init", "boot/bootgen"]
+members = ["tools/solcheck", "pkg/libspk", "pkg/spk", "init", "boot/bootgen", "de/comp"]
 
 [workspace.package]
 edition = "2024"

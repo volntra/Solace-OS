@@ -82,6 +82,13 @@ qemu *ARGS:
 qemu-test:
     image/qemu-test.py
 
+# --- Compositor (Phase 4) ---------------------------------------------------
+
+# Run sol-comp nested in your desktop, optionally with a client:
+# `just comp weston-terminal`
+comp *CLIENT:
+    cargo run -p sol-comp -- --nested {{ if CLIENT != "" { "-- " + CLIENT } else { "" } }}
+
 # --- System updates (Phase 3) -----------------------------------------------
 
 # Build the demo update (solace-base 0.1.1) and the update disk carrying it

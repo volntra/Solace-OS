@@ -1,0 +1,26 @@
+[package]
+name = "sol-comp"
+version = "0.1.0"
+description = "Solace's compositor core"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lib]
+name = "solcomp"
+path = "src/lib.rs"
+
+[[bin]]
+name = "sol-comp"
+path = "src/bin/sol-comp.rs"
+
+[dependencies]
+smithay = { version = "0.7.0", default-features = false, features = ["backend_winit", "wayland_frontend", "desktop"] }
+bitflags = "2"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[lints]
+workspace = true

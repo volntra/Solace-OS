@@ -451,3 +451,20 @@ entry names a recipe that does not exist.
   recipes directory produces if a `--dep-repo` has them (names read from
   the signed index). Needed to rebuild one recipe outside the full set
   (the Phase 3 demo update).
+
+### 2026-10-19: Compositor foundation (Phase 4, stage 1)
+
+- **Decision:** sol-comp is built on Smithay 0.7.0 (the locked stack), with
+  only the features in use (`wayland_frontend`, `desktop`,
+  `backend_winit` for nested development; DRM/libinput/libseat come with
+  the DRM backend). Input routing and the move/resize grabs are adapted
+  from Smithay's `smallvil` example (MIT; attribution in each file), with
+  every `unwrap` in event handling replaced by early returns: a panicking
+  compositor takes every app down with it.
+- **Animation:** `spring.rs`, closed-form damped harmonic oscillator
+  (frame-rate independent), presets from the HIG (critically damped).
+- **Development without a GPU:** the dev shell carries Xvfb and Mesa; the
+  cloud container runs sol-comp nested in Xvfb on Mesa's llvmpipe (GLES
+  3.2). EGL is not pointed at Mesa globally (`MESA_EGL_VENDOR_DIR` is only
+  used by tests), so on the NixOS host the nested compositor uses the real
+  driver (NVIDIA).

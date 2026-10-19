@@ -55,7 +55,33 @@
           btrfs-progs
           cryptsetup
           util-linux
+
+          # Compositor (Phase 4): what Smithay links (xkbcommon) or loads at
+          # run time (EGL via libglvnd, the X11/Wayland client libraries for
+          # nested mode), plus a virtual X server and Mesa's software GL so
+          # nested runs and screenshot tests work without a GPU.
+          libxkbcommon
+          wayland
+          libglvnd
+          mesa
+          xorg-server
         ];
+
+        # Libraries the nested compositor opens with dlopen. EGL comes from
+        # libglvnd, which finds the host's driver (NVIDIA or Mesa) itself;
+        # tests select Mesa's software renderer explicitly (tools/xvfb-run).
+        LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath (with pkgs; [
+          libxkbcommon
+          wayland
+          libglvnd
+          libx11
+          libxcursor
+          libxi
+          libxrandr
+          libxcb
+        ]);
+        # For tests on machines without a GPU (the cloud container).
+        MESA_EGL_VENDOR_DIR = "${pkgs.mesa}/share/glvnd/egl_vendor.d";
 
         # Paths the image/ scripts need without guessing at store paths.
         OVMF_FV = "${pkgs.OVMF.fd}/FV";
