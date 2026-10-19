@@ -235,6 +235,7 @@ mod tests {
             mirrors: vec![],
             extract: true,
             dir: None,
+            local: None,
         };
         assert_eq!(fetch_source(&src, d.path()).unwrap(), d.path().join(&sha));
 

@@ -638,6 +638,7 @@ fn base_config(o: &BuildOpts, repo: PathBuf) -> Result<BuildConfig> {
     Ok(BuildConfig {
         work: o.work.clone(),
         sources: o.sources.clone(),
+        repo_root: PathBuf::from("."),
         repo,
         repo_name: "solace-local".into(),
         key: load_key(&o.key)?,

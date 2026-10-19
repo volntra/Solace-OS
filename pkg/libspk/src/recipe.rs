@@ -41,8 +41,16 @@ pub struct Recipe {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Source {
+    /// Upstream source: `https://` URL + sha256.
+    #[serde(default)]
     pub url: String,
+    #[serde(default)]
     pub sha256: String,
+    /// Or our own code: a directory relative to the repository root,
+    /// copied in as `/build/src/<basename>` (no hash: it is part of the
+    /// repo, and its contents are hashed into the build stamp).
+    #[serde(default)]
+    pub local: Option<String>,
     #[serde(default)]
     pub mirrors: Vec<String>,
     #[serde(default = "default_true")]
@@ -56,10 +64,31 @@ fn default_true() -> bool {
 }
 
 impl Source {
-    /// The file name the source is stored under in the work dir.
+    /// The file name the source is stored under in the work dir (for a
+    /// local source, the directory name).
     pub fn file_name(&self) -> &str {
-        self.url.rsplit('/').next().unwrap_or("source")
+        match &self.local {
+            Some(l) => l
+                .trim_end_matches('/')
+                .rsplit('/')
+                .next()
+                .unwrap_or("source"),
+            None => self.url.rsplit('/').next().unwrap_or("source"),
+        }
     }
+
+    pub fn is_local(&self) -> bool {
+        self.local.is_some()
+    }
+}
+
+/// A local source path: relative, normalised, no `..`.
+fn valid_local(p: &str) -> bool {
+    !p.is_empty()
+        && !p.starts_with('/')
+        && p.trim_end_matches('/')
+            .split('/')
+            .all(|c| !c.is_empty() && c != "." && c != ".." && !c.contains('\\'))
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -208,6 +237,19 @@ impl Recipe {
             return Err(Error::invalid("at least one [[source]] is required"));
         }
         for s in &self.sources {
+            if let Some(l) = &s.local {
+                if !s.url.is_empty() || !s.sha256.is_empty() || !s.mirrors.is_empty() {
+                    return Err(Error::invalid(format!(
+                        "source {l}: a local source has no url, sha256, or mirrors"
+                    )));
+                }
+                if !valid_local(l) {
+                    return Err(Error::invalid(format!(
+                        "local source {l:?} must be a relative path inside the repository"
+                    )));
+                }
+                continue;
+            }
             for url in std::iter::once(&s.url).chain(&s.mirrors) {
                 if !url.starts_with("https://") {
                     return Err(Error::invalid(format!(
@@ -418,6 +460,26 @@ files = ["usr/lib/liblzma.so*"]
             let err = parse(&text).unwrap_err().to_string();
             assert!(err.contains(want), "{want}: {err}");
         }
+    }
+
+    #[test]
+    fn local_sources() {
+        let ok = GOOD.replace(
+            "[[source]]\nurl",
+            "[[source]]\nlocal = \"boot/grub-theme\"\n\n[[source]]\nurl",
+        );
+        let r = parse(&ok).unwrap();
+        assert!(r.sources[0].is_local());
+        assert_eq!(r.sources[0].file_name(), "grub-theme");
+        for bad in ["../etc", "/abs", "a/../b", ""] {
+            let t = GOOD.replace(
+                "[[source]]\nurl",
+                &format!("[[source]]\nlocal = \"{bad}\"\n\n[[source]]\nurl"),
+            );
+            assert!(parse(&t).is_err(), "{bad}");
+        }
+        let both = GOOD.replace("[[source]]\nurl", "[[source]]\nlocal = \"x\"\nurl");
+        assert!(parse(&both).is_err());
     }
 
     #[test]

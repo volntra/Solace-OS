@@ -94,6 +94,8 @@ pub struct BuildConfig {
     pub work: PathBuf,
     /// Content-addressed source cache.
     pub sources: PathBuf,
+    /// Local sources (`[[source]] local = ...`) are relative to this.
+    pub repo_root: PathBuf,
     /// Local repository: build deps come from it, results go into it.
     pub repo: PathBuf,
     pub repo_name: String,
@@ -178,6 +180,11 @@ fn dep_locations(cfg: &BuildConfig) -> Vec<Location> {
 /// Everything installed into the sysroot for `recipe`.
 fn sysroot_deps(recipe: &Recipe, cfg: &BuildConfig) -> Vec<DepSpec> {
     let mut deps = recipe.deps.build.clone();
+    if mode_of(recipe, cfg) == ToolchainMode::Host {
+        // Host builds use the host's tools; the stage's base set is for the
+        // stage's own toolchain.
+        return deps;
+    }
     for b in &cfg.base_deps {
         if !deps.iter().any(|d| d.name == b.name) {
             deps.push(b.clone());
@@ -218,13 +225,17 @@ pub fn build(recipe: &Recipe, cfg: &BuildConfig, on: &mut dyn FnMut(BuildEvent))
 
     // 1. Sources (verified against the recipe's sha256).
     let mut fetched = Vec::new();
-    for s in &recipe.sources {
+    for s in recipe.sources.iter().filter(|s| !s.is_local()) {
         on(BuildEvent::Fetching { url: s.url.clone() });
         fetched.push((s.clone(), fetch::fetch_source(s, &cfg.sources)?));
     }
 
     // 2. Fresh work dir.
     let (sysroot, bdir, log_path) = prepare_workdir(&work, recipe, &fetched)?;
+    for s in recipe.sources.iter().filter(|s| s.is_local()) {
+        let src = local_path(&cfg.repo_root, s)?;
+        copy_tree(&src, &bdir.join("src").join(s.file_name()))?;
+    }
 
     // 3. Build deps into the sysroot, through the verified install path.
     prepare_sysroot(recipe, cfg, host, &sysroot, on)?;
@@ -323,6 +334,67 @@ fn publish(
     Ok(published)
 }
 
+/// Resolves a local source, refusing anything outside the repository.
+fn local_path(repo_root: &Path, s: &Source) -> Result<PathBuf> {
+    let rel = s.local.as_deref().unwrap_or_default();
+    let root = repo_root.canonicalize().at(repo_root)?;
+    let joined = root.join(rel);
+    let resolved = joined.canonicalize().at(&joined)?;
+    if !resolved.starts_with(&root) || !resolved.is_dir() {
+        return Err(Error::Build(format!(
+            "local source {rel} must be a directory inside the repository"
+        )));
+    }
+    Ok(resolved)
+}
+
+/// Directories never copied from a local source.
+const LOCAL_SKIP: &[&str] = &[".git", "target", "build", "result", ".direnv"];
+
+/// Copies a local source tree: regular files and directories only (no
+/// symlinks followed or copied), skipping build outputs.
+fn copy_tree(src: &Path, dst: &Path) -> Result<()> {
+    let walk = walkdir::WalkDir::new(src)
+        .follow_links(false)
+        .sort_by_file_name()
+        .into_iter()
+        .filter_entry(|e| e.depth() == 0 || !LOCAL_SKIP.iter().any(|s| e.file_name() == *s));
+    for e in walk {
+        let e = e.map_err(|e| Error::Build(e.to_string()))?;
+        let rel = e.path().strip_prefix(src).unwrap_or(e.path());
+        let to = dst.join(rel);
+        if e.file_type().is_dir() {
+            fs::create_dir_all(&to).at(&to)?;
+        } else if e.file_type().is_file() {
+            fs::copy(e.path(), &to).at(&to)?;
+        }
+    }
+    Ok(())
+}
+
+/// sha256 over a local source tree (paths and contents), for stamps.
+fn tree_hash(dir: &Path) -> Result<String> {
+    let mut text = String::new();
+    let walk = walkdir::WalkDir::new(dir)
+        .follow_links(false)
+        .sort_by_file_name()
+        .into_iter()
+        .filter_entry(|e| e.depth() == 0 || !LOCAL_SKIP.iter().any(|s| e.file_name() == *s));
+    for e in walk {
+        let e = e.map_err(|e| Error::Build(e.to_string()))?;
+        if e.file_type().is_file() {
+            let rel = e
+                .path()
+                .strip_prefix(dir)
+                .unwrap_or(e.path())
+                .to_string_lossy();
+            let data = fs::read(e.path()).at(e.path())?;
+            let _ = writeln!(text, "{} {rel}", hash::sha256_hex(&data));
+        }
+    }
+    Ok(hash::sha256_hex(text.as_bytes()))
+}
+
 /// Wipes and recreates `<work>/`: `sysroot/`, `build/{src,dest,home,
 /// sources,recipe}`; copies the verified sources and the recipe dir in.
 fn prepare_workdir(
@@ -363,6 +435,14 @@ fn build_stamp(recipe: &Recipe, cfg: &BuildConfig, keyring: &Keyring) -> Result<
         let _ = writeln!(s, "host {}", h.id());
     }
     let _ = writeln!(s, "epoch {SOURCE_DATE_EPOCH}");
+    for src in recipe.sources.iter().filter(|s| s.is_local()) {
+        let _ = writeln!(
+            s,
+            "local {} {}",
+            src.file_name(),
+            tree_hash(&local_path(&cfg.repo_root, src)?)?
+        );
+    }
     let deps = sysroot_deps(recipe, cfg);
     if !deps.is_empty() {
         let tmp = tempfile::tempdir().at(std::env::temp_dir())?;
@@ -1298,6 +1378,41 @@ system = "make"
     }
 
     #[test]
+    fn local_sources_stay_inside_the_repo() {
+        let repo = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        fs::create_dir_all(repo.path().join("code/target")).unwrap();
+        fs::write(repo.path().join("code/a.rs"), "a").unwrap();
+        fs::write(repo.path().join("code/target/junk"), "j").unwrap();
+        std::os::unix::fs::symlink(outside.path(), repo.path().join("escape")).unwrap();
+        std::os::unix::fs::symlink(outside.path(), repo.path().join("code/link")).unwrap();
+        let src = |p: &str| Source {
+            url: String::new(),
+            sha256: String::new(),
+            mirrors: vec![],
+            extract: false,
+            dir: None,
+            local: Some(p.into()),
+        };
+        assert!(local_path(repo.path(), &src("escape")).is_err());
+        let code = local_path(repo.path(), &src("code")).unwrap();
+        let dst = tempfile::tempdir().unwrap();
+        copy_tree(&code, &dst.path().join("code")).unwrap();
+        assert!(dst.path().join("code/a.rs").is_file());
+        assert!(
+            !dst.path().join("code/target").exists(),
+            "build outputs skipped"
+        );
+        assert!(
+            !dst.path().join("code/link").exists(),
+            "symlinks not copied"
+        );
+        let h1 = tree_hash(&code).unwrap();
+        fs::write(repo.path().join("code/a.rs"), "b").unwrap();
+        assert_ne!(h1, tree_hash(&code).unwrap());
+    }
+
+    #[test]
     fn scripts_quote_file_names() {
         let src = Source {
             url: "https://e.org/a b;rm -rf.tar.gz".into(),
@@ -1305,6 +1420,7 @@ system = "make"
             mirrors: vec![],
             extract: true,
             dir: None,
+            local: None,
         };
         let s = extract_script(&[(src, PathBuf::new())]);
         assert!(s.contains("'a b;rm -rf.tar.gz'"), "{s}");

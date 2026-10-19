@@ -59,7 +59,7 @@ post_install = []
 | `name`, `version`, `release` | yes | identity; the main package has this name |
 | `summary`, `license` | yes | shown by `spk info`; license is an SPDX expression |
 | `homepage` | no | |
-| `source[]` | yes, ≥1 | `url` (`https://` only) + `sha256`; extra mirrors via `mirrors = [...]` |
+| `source[]` | yes, ≥1 | `url` (`https://` only) + `sha256`; extra mirrors via `mirrors = [...]`. Or, for our own code, `local = "dir/in/repo"`: copied in as `/build/src/<basename>` (no symlinks, no `target/` or `build/`), must resolve inside the repository, and its contents are hashed into the build stamp |
 | `deps.build` | no | dependency specs installed into the sysroot before building |
 | `deps.runtime` | no | dependency specs of the main package |
 | `build.system` | yes | preset phases (below) |
