@@ -217,13 +217,13 @@ impl Unit {
     }
 }
 
-/// All units under `root`, by name. Later directories override earlier
-/// ones. A unit file that fails to parse is reported, not skipped.
-///
-/// # Errors
-/// I/O errors and malformed units.
-pub fn load_all(root: &Path) -> Result<BTreeMap<String, Unit>> {
+/// Loads every unit, later directories overriding earlier ones. A unit
+/// that cannot be read or parsed, or that requires a unit which does not
+/// exist (or was itself skipped), is left out and reported in the second
+/// list: PID 1 boots everything else rather than halting on one bad file.
+pub fn load_all(root: &Path) -> (BTreeMap<String, Unit>, Vec<String>) {
     let mut out = BTreeMap::new();
+    let mut problems = Vec::new();
     for dir in UNIT_DIRS {
         let dir = root.join(dir);
         let Ok(rd) = fs::read_dir(&dir) else { continue };
@@ -234,28 +234,45 @@ pub fn load_all(root: &Path) -> Result<BTreeMap<String, Unit>> {
             .collect();
         paths.sort();
         for p in paths {
-            let name = p
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .ok_or_else(|| Error::Unit(format!("{}: bad file name", p.display())))?
-                .to_string();
-            let text = fs::read_to_string(&p).map_err(|e| Error::io(&p, &e))?;
-            let mut u = Unit::parse(&name, &text)?;
-            u.path = p;
-            out.insert(name, u);
-        }
-    }
-    for u in out.values() {
-        for d in &u.requires {
-            if !out.contains_key(d) {
-                return Err(Error::Unit(format!(
-                    "{} requires {d}, which does not exist",
-                    u.name
-                )));
+            let loaded = (|| {
+                let name = p
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .ok_or_else(|| Error::Unit("bad file name".into()))?
+                    .to_string();
+                let text = fs::read_to_string(&p).map_err(|e| Error::io(&p, &e))?;
+                let mut u = Unit::parse(&name, &text)?;
+                u.path.clone_from(&p);
+                Ok::<_, Error>(u)
+            })();
+            match loaded {
+                Ok(u) => {
+                    out.insert(u.name.clone(), u);
+                }
+                Err(e) => problems.push(format!("{}: {e}", p.display())),
             }
         }
     }
-    Ok(out)
+    // Drop units whose requirements are missing, until none are.
+    loop {
+        let broken: Vec<(String, String)> = out
+            .values()
+            .filter_map(|u| {
+                u.requires
+                    .iter()
+                    .find(|d| !out.contains_key(*d))
+                    .map(|d| (u.name.clone(), d.clone()))
+            })
+            .collect();
+        if broken.is_empty() {
+            break;
+        }
+        for (name, dep) in broken {
+            out.remove(&name);
+            problems.push(format!("{name} requires {dep}, which does not exist"));
+        }
+    }
+    (out, problems)
 }
 
 /// Units that start at boot: `enabled = true` or listed in
@@ -400,20 +417,34 @@ cpu_weight = 50
         w("usr/lib/sol/units/README", "ignored");
         w("etc/sol/enabled/b", "");
         w("etc/sol/disabled/c", "");
-        let all = load_all(d.path()).unwrap();
+        let (all, problems) = load_all(d.path());
+        assert!(problems.is_empty(), "{problems:?}");
         assert_eq!(all["a"].description, "override");
         let en = enabled_set(d.path(), &all);
         assert_eq!(en.into_iter().collect::<Vec<_>>(), ["a", "b"]);
 
+        // A unit with a missing requirement is skipped, and so is one
+        // that requires it; a malformed file is skipped. The rest load.
         w(
             "usr/lib/sol/units/x.toml",
             &u("x", "requires = [\"missing\"]"),
         );
-        assert!(
-            load_all(d.path())
-                .unwrap_err()
-                .to_string()
-                .contains("missing")
-        );
+        w("usr/lib/sol/units/y.toml", &u("y", "requires = [\"x\"]"));
+        w("usr/lib/sol/units/Bad-Name.toml", &u("bad", ""));
+        let (all, problems) = load_all(d.path());
+        assert!(!all.contains_key("x") && !all.contains_key("y"));
+        assert!(all.contains_key("a") && all.contains_key("b"));
+        assert_eq!(problems.len(), 3, "{problems:?}");
+        assert!(problems.iter().any(|p| p.contains("missing")));
+        assert!(problems.iter().any(|p| p.contains("Bad-Name")));
+    }
+
+    /// Every unit shipped in the base image must load.
+    #[test]
+    fn shipped_units_are_valid() {
+        let base = Path::new(env!("CARGO_MANIFEST_DIR")).join("../image/base");
+        let (all, problems) = load_all(&base);
+        assert!(problems.is_empty(), "{problems:?}");
+        assert!(!all.is_empty(), "no units found under {}", base.display());
     }
 }

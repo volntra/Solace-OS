@@ -95,8 +95,15 @@ impl Runtime {
     ///
     /// # Errors
     /// Unit errors (malformed units, cycles) and I/O errors.
-    pub fn new(root: &Path, mode: Mode, log: LogStore) -> crate::Result<Self> {
-        let units = unit::load_all(root)?;
+    pub fn new(root: &Path, mode: Mode, mut log: LogStore) -> crate::Result<Self> {
+        let (units, problems) = unit::load_all(root);
+        for p in &problems {
+            let msg = format!("unit skipped: {p}");
+            log.push("sol-init", "init", &msg);
+            if mode == Mode::Pid1 {
+                eprintln!("solace: {msg}");
+            }
+        }
         let enabled = unit::enabled_set(root, &units);
         let mgr = Manager::new(units, enabled)?;
 

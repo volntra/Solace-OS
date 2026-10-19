@@ -103,8 +103,8 @@ def main():
         start = c.pos
         c.run("solctl status", "solctl status")
         out = c.buf[start : c.pos]
-        if b"getty-ttyS0" not in out:
-            fail("solctl status did not list getty-ttyS0")
+        if b"getty-serial" not in out:
+            fail("solctl status did not list getty-serial")
         ok("solctl status")
         start = c.pos
         c.run("solctl boot-time", "solctl boot-time")
