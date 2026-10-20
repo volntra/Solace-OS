@@ -6,9 +6,18 @@ Repository: https://github.com/volntra/Solace-OS (`main`).
 
 ## Current phase: 5 (window manager): in progress
 
-Phase 5 stages: 1 protocol + fern-wm process + crash recovery ✓; next 2
-spring animations, 3 titlebars with traffic lights, 4 tiling, 5 Spaces,
+Phase 5 stages: 1 protocol + fern-wm process + crash recovery ✓, 2 spring
+animations ✓; next 3 titlebars with traffic lights, 4 tiling, 5 Spaces,
 6 minimize, 7 Overview and the app switcher, 8 QEMU test and demo.
+
+Stage 2 (2026-10-20): the core animates every placement the window manager
+asks for on the HIG springs (instant, snappy, smooth, gentle): position,
+scale and opacity, frame-rate independent, drawn by the renderer (scaled
+windows keep rounded corners and a scaled shadow). A window told to hide
+while fading out stays drawn, but not hit, until the fade ends. New windows
+open from slightly lower, at 96 % and transparent, into place. Displays keep
+drawing while a spring moves and go idle when it rests. (Closing windows
+vanish without a fade: their buffers are gone when the client closes.)
 
 Stage 1 (2026-10-20): `fern_wm_v1` (docs/protocols/wm.md), fern-wm as a
 separate process that fern-comp starts and restarts; it places new

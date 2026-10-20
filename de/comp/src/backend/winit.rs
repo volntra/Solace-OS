@@ -153,6 +153,7 @@ impl Nested<'_> {
         };
         let logical = backend.window_size().to_logical(1);
         let age = backend.buffer_age().unwrap_or(0);
+        let animating = state.advance_animations();
         let mut damage = None;
         {
             let Ok((renderer, mut framebuffer)) = backend.bind() else {
@@ -165,6 +166,7 @@ impl Nested<'_> {
                 self.wallpaper.as_ref(),
                 Rectangle::from_size(logical),
                 1.0,
+                &|w| state.visual(w),
             );
             match self.damage_tracker.render_output(
                 renderer,
@@ -179,7 +181,7 @@ impl Nested<'_> {
         }
         // Present only what changed. With no damage the frame is skipped
         // and the next one checked a frame later.
-        let idle = damage.is_none();
+        let idle = damage.is_none() && !animating;
         if let Some(damage) = damage
             && let Err(e) = backend.submit(Some(&damage))
         {

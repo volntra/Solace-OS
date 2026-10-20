@@ -184,9 +184,8 @@ impl Comp {
                 // Without one: a click raises and focuses the window under
                 // the pointer, or clears focus on the desktop.
                 let clicked = self
-                    .space
-                    .element_under(pointer.current_location())
-                    .map(|(w, _)| w.clone());
+                    .window_under(pointer.current_location())
+                    .map(|(w, _)| w);
                 self.focus(clicked.as_ref());
             }
         }

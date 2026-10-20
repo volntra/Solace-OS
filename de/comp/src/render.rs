@@ -19,6 +19,7 @@ use smithay::{
                 AsRenderElements, Element, Id, Kind, RenderElement, UnderlyingStorage,
                 memory::{MemoryRenderBuffer, MemoryRenderBufferRenderElement},
                 surface::WaylandSurfaceRenderElement,
+                utils::RescaleRenderElement,
             },
             gles::{
                 GlesError, GlesFrame, GlesPixelProgram, GlesRenderer, GlesTexProgram, Uniform,
@@ -224,7 +225,9 @@ impl Shaders {
 /// A window surface element clipped to the window's rounded rectangle.
 #[derive(Debug)]
 pub struct Rounded {
-    inner: WaylandSurfaceRenderElement<GlesRenderer>,
+    /// The surface, scaled about the window's drawn origin (1.0 unless the
+    /// window manager shrinks it: Overview, minimize).
+    inner: RescaleRenderElement<WaylandSurfaceRenderElement<GlesRenderer>>,
     program: GlesTexProgram,
     /// The window's rounded rectangle, relative to this element's
     /// geometry (so it follows the element when drawn offscreen).
@@ -394,6 +397,33 @@ pub fn shadow_layout(
 /// to back: each window (its rounded surfaces, its blurred backdrop if it
 /// asked for one, its shadow) from the top of the stack down, then the
 /// wallpaper. Element positions are relative to the output.
+/// How a window is drawn relative to where it is in the space: the
+/// window manager's springs move, scale and fade it (`crate::wm`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Visual {
+    /// Offset of the drawn frame from the window's place, logical pixels.
+    pub dx: f64,
+    pub dy: f64,
+    /// 1.0: actual size.
+    pub scale: f64,
+    pub alpha: f32,
+}
+
+impl Visual {
+    pub const IDENTITY: Visual = Visual {
+        dx: 0.0,
+        dy: 0.0,
+        scale: 1.0,
+        alpha: 1.0,
+    };
+}
+
+impl Default for Visual {
+    fn default() -> Self {
+        Visual::IDENTITY
+    }
+}
+
 pub fn output_elements(
     renderer: &mut GlesRenderer,
     shaders: &Shaders,
@@ -401,6 +431,7 @@ pub fn output_elements(
     wallpaper: Option<&Wallpaper>,
     area: Rectangle<i32, Logical>,
     scale: f64,
+    visual: &dyn Fn(&Window) -> Visual,
 ) -> Vec<OutputElement> {
     let output_size = area.size;
     // Built from the bottom up, so that everything behind a blurred
@@ -415,18 +446,36 @@ pub fn output_elements(
     {
         out.push_front(OutputElement::Image(e));
     }
-    #[allow(clippy::cast_possible_truncation)]
-    let radius = (WINDOW_RADIUS * scale) as f32;
     for window in space.elements() {
         let Some(geo) = space.element_geometry(window) else {
             continue;
         };
-        // From here on, in output coordinates.
+        let v = visual(window);
+        if v.alpha <= 0.0 {
+            continue;
+        }
+        // From here on, in output coordinates, where the window is drawn.
         let geo = Rectangle::new(geo.loc - area.loc, geo.size);
-        let geo_f = geo.to_f64();
+        let geo_f: Rectangle<f64, Logical> = Rectangle::new(
+            (f64::from(geo.loc.x) + v.dx, f64::from(geo.loc.y) + v.dy).into(),
+            (
+                f64::from(geo.size.w) * v.scale,
+                f64::from(geo.size.h) * v.scale,
+            )
+                .into(),
+        );
         let geo_px = geo_f.to_physical(s);
-        let origin = geo.loc - window.geometry().loc;
-        let blurred = blur_rects(window, origin, geo, s);
+        #[allow(clippy::cast_possible_truncation)]
+        let radius = (WINDOW_RADIUS * scale * v.scale) as f32;
+        let origin_f = geo_f.loc - window.geometry().loc.to_f64().upscale(v.scale);
+        let moved = v.dx != 0.0 || v.dy != 0.0;
+        // Blur behind a window that is moving or scaled waits until it
+        // settles (the cache is keyed on where the window is).
+        let blurred = if moved || (v.scale - 1.0).abs() > 1e-6 {
+            Vec::new()
+        } else {
+            blur_rects(window, geo.loc - window.geometry().loc, geo, s)
+        };
         // The backdrop is made before the window's own shadow is added:
         // a window does not see its shadow through itself.
         let mut backdrops = Vec::new();
@@ -452,14 +501,16 @@ pub fn output_elements(
             }
         }
         out.push_front(OutputElement::Shadow(shadow_element(
-            window, geo_f, shaders,
+            window, geo_f, shaders, v.scale, v.alpha,
         )));
         for b in backdrops {
             out.push_front(OutputElement::Backdrop(b));
         }
+        let origin_px = origin_f.to_physical_precise_round(s);
         let surfaces: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
-            window.render_elements(renderer, origin.to_physical_precise_round(s), s, 1.0);
-        for inner in surfaces.into_iter().rev() {
+            window.render_elements(renderer, origin_px, s, v.alpha);
+        for surface in surfaces.into_iter().rev() {
+            let inner = RescaleRenderElement::from_element(surface, origin_px, v.scale);
             let at = inner.geometry(s).loc.to_f64();
             out.push_front(OutputElement::Window(Rounded {
                 inner,
@@ -498,11 +549,19 @@ fn shadow_element(
     window: &Window,
     geo: Rectangle<f64, Logical>,
     shaders: &Shaders,
+    zoom: f64,
+    alpha: f32,
 ) -> PixelShaderElement {
-    let style = if is_focused(window) {
+    let base = if is_focused(window) {
         SHADOW_FOCUSED
     } else {
         SHADOW_UNFOCUSED
+    };
+    // A scaled window casts a scaled shadow; a fading one a fainter one.
+    let style = ShadowStyle {
+        sigma: base.sigma * zoom,
+        offset_y: base.offset_y * zoom,
+        opacity: base.opacity * alpha,
     };
     let (area, win, caster) = shadow_layout(geo, style);
     #[allow(clippy::cast_possible_truncation)]
@@ -511,7 +570,7 @@ fn shadow_element(
     let uniforms = vec![
         Uniform::new("window", f(win)),
         Uniform::new("caster", f(caster)),
-        Uniform::new("radius", WINDOW_RADIUS as f32),
+        Uniform::new("radius", (WINDOW_RADIUS * zoom) as f32),
         Uniform::new("sigma", style.sigma as f32),
         Uniform::new("color", [0.0f32, 0.0, 0.0, style.opacity]),
     ];

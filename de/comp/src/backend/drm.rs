@@ -597,6 +597,7 @@ impl Drm {
             screen.state = LoopState::Stopped;
             return;
         };
+        let animating = state.advance_animations();
         let mut elements: Vec<OutputElement> = Vec::new();
         if let Some(pointer) = state.seat.get_pointer() {
             let at = pointer.current_location().to_i32_round();
@@ -622,6 +623,7 @@ impl Drm {
             self.wallpaper.as_ref(),
             Rectangle::new(area.loc, area.size),
             1.0,
+            &|w| state.visual(w),
         ));
         let queued = match screen.drm.render_frame(
             &mut self.renderer,
@@ -647,12 +649,16 @@ impl Drm {
         } else {
             LoopState::Idle
         };
+        let refresh = screen.refresh;
         if !queued && !screen.callbacks_pending {
             // Nothing new on screen. Clients waiting for a frame callback
             // get it a refresh period later, as if a frame had been shown.
             screen.callbacks_pending = true;
-            let refresh = screen.refresh;
             self.callbacks_after(refresh, crtc);
+        }
+        if !queued && animating {
+            // A spring moved less than a pixel: look again next refresh.
+            self.after(refresh, crtc);
         }
     }
 

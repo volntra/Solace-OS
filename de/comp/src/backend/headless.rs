@@ -154,6 +154,7 @@ impl Headless {
     /// Rendering failed.
     pub fn render(&mut self, state: &mut Comp) -> Result<bool, Box<dyn std::error::Error>> {
         let logical = self.size.to_logical(1);
+        let animating = state.advance_animations();
         let elements = render::output_elements(
             &mut self.renderer,
             &self.shaders,
@@ -161,6 +162,7 @@ impl Headless {
             self.wallpaper.as_ref(),
             Rectangle::from_size(logical),
             1.0,
+            &|w| state.visual(w),
         );
         // The texture keeps the previous frame, so after the first frame
         // only the damage needs redrawing.
@@ -173,7 +175,7 @@ impl Headless {
             &elements,
             BACKGROUND,
         )?;
-        let changed = result.damage.is_some_and(|d| !d.is_empty());
+        let changed = animating || result.damage.is_some_and(|d| !d.is_empty());
         self.frames += 1;
         state.frame_shown(&self.output);
         Ok(changed)

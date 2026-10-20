@@ -218,6 +218,10 @@ pub enum Cmd {
     },
 }
 
+/// A window opens from this far below its place, at this scale.
+const OPEN_DROP: i32 = 14;
+const OPEN_SCALE: f64 = 0.96;
+
 /// A rectangle in logical pixels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Rect {
@@ -447,13 +451,23 @@ impl Wm {
             win.y = y;
             win.visible = true;
         }
+        // Opening: from a little lower, smaller and transparent, up into
+        // place on the smooth spring.
+        out.push(Cmd::Place {
+            id,
+            x,
+            y: y + OPEN_DROP,
+            scale: OPEN_SCALE,
+            alpha: 0.0,
+            motion: motion::INSTANT,
+        });
         out.push(Cmd::Place {
             id,
             x,
             y,
             scale: 1.0,
             alpha: 1.0,
-            motion: motion::INSTANT,
+            motion: motion::SMOOTH,
         });
         out.push(Cmd::Visible { id, visible: true });
         self.stack.push(id);
@@ -579,13 +593,22 @@ mod tests {
     fn first_window_is_centred_a_little_high_and_focused() {
         let mut wm = wm_with_output();
         let cmds = open(&mut wm, 1, 800, 600);
+        // It springs up into place from a little lower, smaller, invisible.
+        assert!(cmds.contains(&Cmd::Place {
+            id: 1,
+            x: 880,
+            y: 336 + OPEN_DROP,
+            scale: OPEN_SCALE,
+            alpha: 0.0,
+            motion: motion::INSTANT
+        }));
         assert!(cmds.contains(&Cmd::Place {
             id: 1,
             x: 880,
             y: 336,
             scale: 1.0,
             alpha: 1.0,
-            motion: motion::INSTANT
+            motion: motion::SMOOTH
         }));
         assert!(cmds.contains(&Cmd::Visible {
             id: 1,

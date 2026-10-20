@@ -764,3 +764,22 @@ frame missed the next vblank (about 5 a second).
   gives us typed messages, fd passing and the event loop integration).
 - **Packaging:** fern-wm ships in the `fern-comp` package next to
   `/usr/bin/fern-comp`, which finds it there.
+
+### 2026-10-20: Springs live in the core (Phase 5, stage 2)
+
+- **Decision:** the window manager sends targets (`place`: position,
+  scale, alpha, and a spring preset); the core animates them with
+  `spring.rs` (closed form, frame-rate independent) and draws each window
+  at its place plus the spring's remaining offset. Input always uses the
+  target, so a click lands where the window is going. Scaling uses
+  Smithay's rescale element around the drawn origin, with the rounded clip,
+  radius and shadow scaled to match; blur behind a window waits until it
+  stops moving (the backdrop cache is keyed on its position).
+- **Why in the core:** frames are made there; the window manager would
+  otherwise have to stream positions every frame over a socket, and a
+  slow or crashed window manager would stall motion.
+- **Fade-out:** `visible(false)` with an alpha-0 non-instant `place` keeps
+  the window drawn (not hit) until the fade ends, so minimize and Spaces
+  can animate out without the window manager timing anything.
+- **Not done:** closing windows cannot fade (the client destroys its
+  buffers); that needs a snapshot of the last frame, later.

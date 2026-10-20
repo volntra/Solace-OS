@@ -37,6 +37,8 @@ use smithay::{
 
 use crate::{
     grabs::{MoveSurfaceGrab, ResizeSurfaceGrab},
+    render::Visual,
+    spring::{Spring, SpringState},
     state::{ClientState, Comp},
 };
 
@@ -79,6 +81,83 @@ impl Default for Place {
     }
 }
 
+/// A window's drawn position, scale and opacity on their way to its
+/// [`Place`], each on a spring.
+#[derive(Debug, Clone, Copy)]
+pub struct Anim {
+    pub x: SpringState,
+    pub y: SpringState,
+    pub scale: SpringState,
+    pub alpha: SpringState,
+    pub spring: Spring,
+    /// Set by the first placement (before it, nothing is drawn anywhere).
+    pub started: bool,
+}
+
+impl Default for Anim {
+    fn default() -> Self {
+        Anim {
+            x: SpringState::default(),
+            y: SpringState::default(),
+            scale: SpringState::default(),
+            alpha: SpringState::default(),
+            spring: Spring::SMOOTH,
+            started: false,
+        }
+    }
+}
+
+impl Anim {
+    /// At rest exactly at `place`.
+    pub fn at(place: &Place) -> Self {
+        let rest = |value| SpringState {
+            value,
+            velocity: 0.0,
+        };
+        Anim {
+            x: rest(f64::from(place.x)),
+            y: rest(f64::from(place.y)),
+            scale: rest(place.scale),
+            alpha: rest(place.alpha),
+            spring: preset(place.motion),
+            started: true,
+        }
+    }
+
+    /// Advances towards `place` by `dt` seconds; returns whether it is
+    /// still moving (it snaps to rest once closer than anyone can see).
+    fn step(&mut self, place: &Place, dt: f64) -> bool {
+        let sp = self.spring;
+        let mut moving = false;
+        for (s, target, eps) in [
+            (&mut self.x, f64::from(place.x), 0.05),
+            (&mut self.y, f64::from(place.y), 0.05),
+            (&mut self.scale, place.scale, 0.0005),
+            (&mut self.alpha, place.alpha, 0.002),
+        ] {
+            if (s.value - target).abs() < eps && s.velocity.abs() < eps * 10.0 {
+                *s = SpringState {
+                    value: target,
+                    velocity: 0.0,
+                };
+            } else {
+                *s = sp.step(*s, target, dt);
+                moving = true;
+            }
+        }
+        moving
+    }
+}
+
+/// The spring for a protocol `motion`.
+fn preset(motion: u32) -> Spring {
+    match motion {
+        1 => Spring::SNAPPY,
+        3 => Spring::GENTLE,
+        _ => Spring::SMOOTH,
+    }
+}
+
 /// What the core knows about one window.
 #[derive(Debug)]
 pub struct WinRecord {
@@ -91,6 +170,9 @@ pub struct WinRecord {
     /// Content size last reported; `None` until the first buffer.
     pub size: Option<(i32, i32)>,
     pub place: Place,
+    pub anim: Anim,
+    /// Hidden, but still drawn while it fades out; never hit.
+    pub leaving: bool,
 }
 
 /// Something the window manager draws above all windows.
@@ -183,6 +265,8 @@ pub struct WmHost {
     launcher: Option<WmLauncher>,
     restarts: VecDeque<Instant>,
     last_press: Option<(Instant, Point<f64, Logical>, u32)>,
+    /// When the animations last advanced.
+    last_tick: Option<Instant>,
 }
 
 impl std::fmt::Debug for WmHost {
@@ -370,6 +454,8 @@ impl Comp {
                 decorated: false,
                 size: None,
                 place: Place::default(),
+                anim: Anim::default(),
+                leaving: false,
             },
         );
         if let Some(r) = &self.wm.resource {
@@ -437,6 +523,7 @@ impl Comp {
             rec.visible = true;
             rec.place.x = x;
             rec.place.y = y;
+            rec.anim = Anim::at(&rec.place);
         }
         self.space.map_element(window.clone(), (x, y), false);
         self.focus(Some(&window));
@@ -488,8 +575,8 @@ impl Comp {
         let Some(r) = self.wm.resource.clone() else {
             return true;
         };
-        let (window, part) = match self.space.element_under(pos) {
-            Some((w, _)) => (win_id(w).unwrap_or(0), fern_wm_v1::Part::Content),
+        let (window, part) = match self.window_under(pos) {
+            Some((w, _)) => (win_id(&w).unwrap_or(0), fern_wm_v1::Part::Content),
             None if self.wm.grab_pointer => (0, fern_wm_v1::Part::Overlay),
             None => (0, fern_wm_v1::Part::None),
         };
@@ -603,11 +690,13 @@ impl Comp {
             .get_pointer()
             .map(|p| p.current_location())
             .unwrap_or_default();
+        // The window follows the pointer exactly; its spring rests there.
+        if let Some(rec) = self.wm.windows.get_mut(&id) {
+            rec.place.x = x;
+            rec.place.y = y;
+            rec.anim = Anim::at(&rec.place);
+        }
         if end {
-            if let Some(rec) = self.wm.windows.get_mut(&id) {
-                rec.place.x = x;
-                rec.place.y = y;
-            }
             r.move_end(id, x, y, p.x, p.y);
         } else {
             r.move_update(id, x, y, p.x, p.y);
@@ -626,6 +715,7 @@ impl Comp {
         if let Some(rec) = self.wm.windows.get_mut(&id) {
             rec.place.x = x;
             rec.place.y = y;
+            rec.anim = Anim::at(&rec.place);
         }
         r.resize_end(id, x, y, size.w, size.h);
     }
@@ -772,6 +862,11 @@ impl Comp {
             Pending::Place(id, place) => {
                 if let Some(rec) = self.wm.windows.get_mut(&id) {
                     rec.place = place;
+                    if place.motion == 0 || !rec.anim.started {
+                        rec.anim = Anim::at(&place);
+                    } else {
+                        rec.anim.spring = preset(place.motion);
+                    }
                 }
                 self.sync_mapping(id);
             }
@@ -887,20 +982,96 @@ impl Comp {
         }
     }
 
-    /// Puts a window in the space where its record says, or takes it out.
+    /// Puts a window in the space where its record says, or takes it out
+    /// (after its fade, when it is fading out).
     fn sync_mapping(&mut self, id: u32) {
         let Some(rec) = self.wm.windows.get(&id) else {
             return;
         };
         let window = rec.window.clone();
+        let mapped = self.space.elements().any(|w| *w == window);
+        let fades_out = rec.anim.started && rec.place.alpha <= 0.01 && rec.place.motion != 0;
         if rec.visible {
             let tb = self.titlebar_height(rec);
             let loc = (rec.place.x, rec.place.y + tb);
+            if let Some(rec) = self.wm.windows.get_mut(&id) {
+                rec.leaving = false;
+            }
             self.space.map_element(window, loc, false);
+        } else if mapped && fades_out {
+            if let Some(rec) = self.wm.windows.get_mut(&id) {
+                rec.leaving = true;
+            }
         } else {
             self.space.unmap_elem(&window);
         }
         self.request_redraw();
+    }
+
+    /// Moves every animation on by the time since the last call; returns
+    /// whether any is still moving (render again soon). Windows that have
+    /// finished fading out leave the space.
+    pub fn advance_animations(&mut self) -> bool {
+        let now = Instant::now();
+        // A long pause (idle display) is not a jump: at most one 1/30 s.
+        let dt = self
+            .wm
+            .last_tick
+            .map_or(0.0, |t| now.duration_since(t).as_secs_f64().min(1.0 / 30.0));
+        self.wm.last_tick = Some(now);
+        let mut moving = false;
+        let mut gone = Vec::new();
+        for rec in self.wm.windows.values_mut() {
+            if !rec.anim.started {
+                continue;
+            }
+            let m = rec.anim.step(&rec.place, dt);
+            moving |= m;
+            if rec.leaving && !m {
+                gone.push(rec.window.clone());
+                rec.leaving = false;
+            }
+        }
+        for w in gone {
+            self.space.unmap_elem(&w);
+        }
+        if !moving {
+            self.wm.last_tick = None;
+        }
+        moving
+    }
+
+    /// How a window is drawn now (see [`Visual`]).
+    pub fn visual(&self, window: &Window) -> Visual {
+        let Some(rec) = self.wm.record(window) else {
+            return Visual::IDENTITY;
+        };
+        if !rec.anim.started {
+            return Visual::IDENTITY;
+        }
+        // The spring's remaining way to its target: a window moved
+        // directly (a drag) is drawn where it is.
+        #[allow(clippy::cast_possible_truncation)]
+        Visual {
+            dx: rec.anim.x.value - f64::from(rec.place.x),
+            dy: rec.anim.y.value - f64::from(rec.place.y),
+            scale: rec.anim.scale.value.max(0.0),
+            alpha: rec.anim.alpha.value.clamp(0.0, 1.0) as f32,
+        }
+    }
+
+    /// The topmost window that takes input at `pos` (not one fading out),
+    /// and where its surface tree is drawn from.
+    pub fn window_under(&self, pos: Point<f64, Logical>) -> Option<(Window, Point<i32, Logical>)> {
+        use smithay::desktop::space::SpaceElement;
+        self.space.elements().rev().find_map(|w| {
+            if self.wm.record(w).is_some_and(|r| r.leaving) {
+                return None;
+            }
+            let at = self.space.element_location(w)? - w.geometry().loc;
+            w.is_in_input_region(&(pos - at.to_f64()))
+                .then(|| (w.clone(), at))
+        })
     }
 
     fn wm_begin_move(&mut self, id: u32) {
@@ -1041,5 +1212,77 @@ impl Dispatch<FernWmV1, ()> for Comp {
         if state.wm.resource.as_ref() == Some(resource) {
             state.wm_gone();
         }
+    }
+}
+
+#[cfg(test)]
+// Exact values are the point: a spring at rest is snapped to its target.
+#[allow(clippy::float_cmp)]
+mod tests {
+    use super::*;
+
+    fn run(anim: &mut Anim, place: &Place, seconds: f64) -> Vec<f64> {
+        let mut xs = Vec::new();
+        let mut t = 0.0;
+        while t < seconds {
+            t += 1.0 / 60.0;
+            anim.step(place, 1.0 / 60.0);
+            xs.push(anim.x.value);
+        }
+        xs
+    }
+
+    #[test]
+    fn a_placement_glides_there_without_overshoot_and_comes_to_rest() {
+        let from = Place {
+            x: 0,
+            y: 0,
+            ..Place::default()
+        };
+        let to = Place {
+            x: 400,
+            y: 100,
+            motion: 2,
+            ..Place::default()
+        };
+        let mut anim = Anim::at(&from);
+        anim.spring = preset(to.motion);
+        let xs = run(&mut anim, &to, 2.0);
+        assert!(xs[2] > 0.0 && xs[2] < 400.0, "moves gradually: {}", xs[2]);
+        assert!(
+            xs.windows(2).all(|w| w[1] >= w[0]),
+            "monotonic (critically damped)"
+        );
+        assert!(xs.iter().all(|&x| x <= 400.0), "no overshoot");
+        assert_eq!(anim.x.value, 400.0, "snapped to rest");
+        assert_eq!(anim.y.value, 100.0);
+        assert!(!anim.step(&to, 1.0 / 60.0), "at rest it reports no motion");
+    }
+
+    #[test]
+    fn scale_and_alpha_ride_the_same_spring() {
+        let from = Place {
+            scale: 0.96,
+            alpha: 0.0,
+            ..Place::default()
+        };
+        let to = Place {
+            motion: 1,
+            ..Place::default()
+        };
+        let mut anim = Anim::at(&from);
+        anim.spring = preset(to.motion);
+        anim.step(&to, 1.0 / 60.0);
+        assert!(anim.alpha.value > 0.0 && anim.alpha.value < 1.0);
+        assert!(anim.scale.value > 0.96 && anim.scale.value < 1.0);
+        run(&mut anim, &to, 1.0);
+        assert_eq!((anim.scale.value, anim.alpha.value), (1.0, 1.0));
+    }
+
+    #[test]
+    fn presets_follow_the_hig() {
+        assert_eq!(preset(1), Spring::SNAPPY);
+        assert_eq!(preset(2), Spring::SMOOTH);
+        assert_eq!(preset(3), Spring::GENTLE);
     }
 }
