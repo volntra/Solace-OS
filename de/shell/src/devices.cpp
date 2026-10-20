@@ -9,6 +9,7 @@
 #include <QDBusVariant>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QProcess>
 #include <QRegularExpression>
 #include <QStandardPaths>
@@ -174,11 +175,24 @@ void Devices::setBrightness(qreal b)
     if (m_backlight.isEmpty())
         return;
     b = std::clamp(b, 0.02, 1.0);
+    const uint raw = uint(qRound(b * m_maxBrightness));
     QFile f(m_backlight + QStringLiteral("/brightness"));
-    // Writable when the session may (the login session owns it, Phase 9).
     if (f.open(QIODevice::WriteOnly)) {
-        f.write(QByteArray::number(qRound(b * m_maxBrightness)));
-        m_brightness = b;
-        emit brightnessChanged();
+        f.write(QByteArray::number(raw));
+    } else {
+        // The usual way: the session asks elogind, which may write it.
+        QDBusMessage call = QDBusMessage::createMethodCall(
+            QStringLiteral("org.freedesktop.login1"), QStringLiteral("/org/freedesktop/login1/session/auto"),
+            QStringLiteral("org.freedesktop.login1.Session"), QStringLiteral("SetBrightness"));
+        call << QStringLiteral("backlight") << QFileInfo(m_backlight).fileName() << raw;
+        QDBusConnection::systemBus().asyncCall(call);
     }
+    m_brightness = b;
+    emit brightnessChanged();
+}
+
+void Devices::stepBrightness(int direction)
+{
+    // Sixteen steps, like volume.
+    setBrightness(std::round(m_brightness * 16 + direction) / 16);
 }

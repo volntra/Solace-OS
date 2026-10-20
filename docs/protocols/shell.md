@@ -56,3 +56,37 @@ XML: `de/protocols/fern-shell-v1.xml`.
   `key_binding(id)` and the focused app gets nothing. Shell shortcuts come
   before the window manager's; while the window manager holds the keyboard
   (Overview, the switcher) they do not fire. `unbind_key(id)` removes one.
+- `set_wallpaper(path)`: the desktop picture (a PNG the compositor reads
+  itself), crossfaded from the one before over 0.88 s. The shell picks the
+  light or dark one of the user's pair.
+- `set_color_temperature(kelvin)`: Night Shift. The DRM backend sets every
+  display's gamma ramps to the white point of a black body at that
+  temperature (`de/comp/src/nightshift.rs`), so it costs nothing per
+  frame; 0 or 6500 and above is neutral. The shell decides when, from the
+  `nightshift` settings (by hand, or a schedule: sunset is 19:00 to 7:00
+  until location services exist), and resends it after a restart. A
+  nested compositor has no ramps and stays neutral.
+- `app_menu(service, path)` (event): where the active window's menus are,
+  sent on bind and whenever it changes; empty strings when it has none.
+
+## The global menu
+
+Apps say where their menus are with KDE's `org_kde_kwin_appmenu`
+(offered to every client, for its own surfaces): a session-bus service
+and object path exporting `com.canonical.dbusmenu`. The compositor sends
+the active window's address as `app_menu`; the menu bar reads the layout
+(`GetLayout`), shows its top-level menus after the bold app name, sends
+`AboutToShow` before opening one and `Event(id, "clicked")` on a choice.
+Apps without one get our File and Window menus. The address is the app's
+claim: the shell bounds what it reads (6 levels, 200 entries a level) and
+never acts on a menu except by sending the app its own clicks. Left and
+Right move between the bar's menus, as do hover and click.
+
+## Status icons
+
+The shell is the session's `org.kde.StatusNotifierWatcher` and its only
+host. Items register by service name or object path (the caller's unique
+name is then the service); each shows in the menu bar from its icon
+name, icon theme path or pixmap (at most 1024x1024). A click opens the
+item's dbusmenu, or calls `Activate(x, y)` when it has none. Items leave
+when their owner leaves the bus.

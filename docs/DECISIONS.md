@@ -926,3 +926,105 @@ frame missed the next vblank (about 5 a second).
 - **Hidden windows' places are saved:** the core only knows where a window
   was drawn last, which for a window on another Space or in the dock is
   not where it belongs. fern-wm saves `at=x,y` for hidden windows.
+
+### 2026-10-20: fern-settingsd (Phase 6, stage 1)
+
+- **Decision:** one daemon binary, two instances. The user's runs on the
+  session bus (`~/.config/fern/<domain>.toml`); the system's runs on the
+  system bus, owns the `boot` domain (`/etc/fern/boot.toml`, the file
+  fern-bootgen reads through spk) and accepts `Set` from uid 0 only until
+  polkit arrives. Interface `org.fern.Settings1` (docs/protocols/
+  settings.md): typed schema per domain, validation on `Set`, `Changed`
+  signals, atomic writes.
+- **Boot settings apply or roll back:** after a boot change the daemon runs
+  `spk boot-menu`; if that fails (a full ESP) the old value is restored and
+  the caller gets the error.
+- **zbus (blocking API)** over hand-rolled D-Bus: proven, pure Rust, no
+  libdbus in the daemon.
+- **Alternatives:** dconf/GSettings (GLib schema compiler, binary db,
+  GNOME baggage), one file per key, a single big TOML (every component
+  would rewrite unrelated keys).
+
+### 2026-10-20: Shell surfaces: wlr-layer-shell plus fern_shell_v1 (Phase 6, stage 2)
+
+- **Decision:** the shell's bars and panels are standard wlr-layer-shell
+  surfaces, offered only to clients the core started (trusted, like the
+  window list). Exclusive zones make the work area, which the core sends
+  to fern-wm (`work_area`) so tiled and zoomed windows avoid the menu bar
+  and dock. What layer-shell lacks is our private `fern_shell_v1`:
+  rounded blur behind a rectangle of a surface, the wallpaper (crossfaded
+  by the core), global shortcuts ahead of the window manager's, Night
+  Shift, and the active window's menu address.
+- **The shell is started by the core** (`--shell`) over a socket pair and
+  restarted like the window manager (5 restarts in 30 s, 500 ms apart).
+- **Alternatives:** the shell as part of the compositor (a QML crash would
+  take every window down), ext-layer-shell (not yet in Qt's
+  LayerShellQt), a private protocol for everything (Qt has layer-shell
+  support through LayerShellQt; reusing it saves a client library).
+- **Smithay fix carried in third_party/smithay:** 0.7.0 checks a layer
+  surface's state in its pre-commit hook even after the layer is
+  destroyed and kills the client. We carry the upstream fix (skip the
+  check for dead layers) as a path patch until a release has it; see
+  third_party/README.md.
+
+### 2026-10-20: Qt in the image (Phase 6, stage 3)
+
+- **Decision:** Qt 6 from source recipes: qtbase (with its in-tree Wayland
+  client; qtwayland is no longer a separate module), qtshadertools, qtsvg,
+  qtdeclarative, plus KDE's extra-cmake-modules and layer-shell-qt.
+  Features we do not use are off (SQL drivers, printing, PCH) to keep build
+  time and disk down; `qml_python` stays on because qtdeclarative's build
+  needs it.
+- **The dev shell uses nixpkgs' Qt 6.11** for fast iteration; the image
+  builds 6.12 from our recipes. Both are Qt 6, and the QML we write uses
+  nothing newer than 6.8.
+
+### 2026-10-20: The design system: tokens in one QML singleton (Phase 6, stage 4)
+
+- **Decision:** `Fern.Design` (de/design) is a QML module with a C++
+  plugin: `Theme` holds every colour, size, radius, material and motion
+  token and follows the appearance settings live; controls read only from
+  it. `SettingsDomain` exposes a settingsd domain as a QML object (values
+  arrive before first paint; writes go through the daemon and roll back
+  when refused). `Motion` provides critically damped spring curves for Qt
+  animations (durations 368/617/882 ms for snappy/smooth/gentle).
+- **WCAG AA is a test:** tst_theme checks every text/background pair in
+  both modes and every accent preset.
+- **Symbols:** Lucide (ISC), bundled as SVG in assets/symbols and served
+  by our `image://symbol/NAME?color=` provider, plus our own fern-mark.
+  Phosphor was the other candidate in CLAUDE.md; Lucide's stroke style
+  sits closer to the HIG's thin, calm look.
+- **Not yet:** matching Qt (QStyle) and GTK themes for third-party apps;
+  they arrive with Flatpak support (Phase 11). Noted in STATUS.md.
+
+### 2026-10-20: Global menu and status icons over existing protocols (Phase 6, stage 5)
+
+- **Decision:** apps publish menus with `com.canonical.dbusmenu` and say
+  where with KDE's `org_kde_kwin_appmenu` (from wayland-protocols-plasma),
+  the convention KDE apps and Qt's own platform integration already
+  speak; the core forwards the active window's address to the shell
+  (`fern_shell_v1.app_menu`). Status icons use StatusNotifierItem, with
+  the shell as watcher and host. Our own apps will export their menus the
+  same way.
+- **Untrusted input:** both come from apps. The shell bounds menu depth
+  (6) and width (200), icon pixmaps (1024x1024) and never acts on a menu
+  except by sending the owning app its own clicks.
+- **Fallback:** apps without a menu get our File and Window menus, so the
+  bar never looks empty.
+- **Alternatives:** GTK's org.gtk.Menus (GTK apps; can be added later as a
+  second reader), a private menu protocol (no app would speak it).
+
+### 2026-10-20: Night Shift by gamma ramps (Phase 6, stage 5)
+
+- **Decision:** the core sets each display's gamma ramps to the white
+  point of a black body at the requested temperature (Tanner Helland's
+  fit, normalised so 6500 K is white). Zero cost per frame and no effect
+  on screenshots, as on macOS.
+- **Alternatives:** a colour-multiply pass in the renderer (a full-screen
+  extra pass every frame and breaks damage tracking), wlr-gamma-control
+  for an external tool (the shell would need gamma access every app could
+  ask for too).
+- **Limits:** virtio-gpu in QEMU has no gamma ramps, so the effect is only
+  visible on real hardware (Phase 6 hardware check); the e2e test checks
+  that the request reaches the core. "Sunset" is 19:00 to 7:00 until
+  location services exist.

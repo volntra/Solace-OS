@@ -2,8 +2,9 @@ import QtQuick
 import Fern.Design
 import Fern.Shell
 
-// The volume HUD: a dark rounded square near the bottom of the screen
-// with the level, after a volume key. Fades after a moment.
+// The volume and brightness HUD: a dark rounded square near the bottom of
+// the screen with the level, after a volume or brightness key. Fades
+// after a moment.
 ShellWindow {
     id: hud
     layer: ShellWindow.Overlay
@@ -16,7 +17,14 @@ ShellWindow {
     blurRadius: Theme.radiusPanel
     inputRect: Qt.rect(0, 0, 1, 1)
 
-    function show() {
+    // "volume" or "brightness".
+    property string kind: "volume"
+    readonly property bool isVolume: kind === "volume"
+    readonly property real level: isVolume ? (Devices.muted ? 0 : Devices.volume) : Devices.brightness
+    readonly property bool unavailable: isVolume ? !Devices.soundAvailable : !Devices.brightnessAvailable
+
+    function show(what) {
+        kind = what ?? "volume"
         Devices.refresh()
         open = true
         hide.restart()
@@ -32,11 +40,12 @@ ShellWindow {
             y: 40
             size: 64
             color: "#FFFFFF"
-            name: !Devices.soundAvailable ? "volume-x"
-                : Devices.muted || Devices.volume === 0 ? "volume-x" : Devices.volume < 0.5 ? "volume-1" : "volume-2"
+            name: !hud.isVolume ? (hud.level < 0.5 ? "sun-medium" : "sun")
+                : hud.unavailable || hud.level === 0 ? "volume-x" : hud.level < 0.5 ? "volume-1" : "volume-2"
         }
         // Sixteen steps, like the keys.
         Row {
+            visible: !hud.unavailable
             anchors.horizontalCenter: parent.horizontalCenter
             y: 140
             spacing: 2
@@ -47,15 +56,15 @@ ShellWindow {
                     width: 7
                     height: 6
                     radius: 1
-                    color: !Devices.muted && Devices.volume * 16 >= index + 0.5 ? "#FFFFFF" : Qt.alpha("#FFFFFF", 0.22)
+                    color: hud.level * 16 >= index + 0.5 ? "#FFFFFF" : Qt.alpha("#FFFFFF", 0.22)
                 }
             }
         }
         Label {
-            visible: !Devices.soundAvailable
+            visible: hud.unavailable
             anchors.horizontalCenter: parent.horizontalCenter
             y: 136
-            text: qsTr("No sound output")
+            text: hud.isVolume ? qsTr("No sound output") : qsTr("No adjustable display")
             color: "#FFFFFF"
             style: "callout"
         }

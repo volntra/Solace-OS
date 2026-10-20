@@ -2,8 +2,8 @@ import QtQuick
 import Fern.Design
 import Fern.Shell
 
-// The control center: Wi-Fi, Bluetooth, Do Not Disturb, light/dark, the
-// sound and brightness sliders, and what is playing.
+// The control center: Wi-Fi, Bluetooth, Do Not Disturb, light/dark, Night
+// Shift, the sound and brightness sliders, and what is playing.
 Material {
     id: cc
     required property QtObject shell
@@ -56,6 +56,14 @@ Material {
                 on: Theme.dark
                 status: Theme.mode === "auto" ? qsTr("Automatic") : qsTr("Appearance")
                 onToggled: Theme.appearance.theme = Theme.dark ? "light" : "dark"
+            }
+            ControlTile {
+                width: (column.width - 8) / 2
+                symbol: "sun-moon"
+                title: qsTr("Night Shift")
+                on: cc.shell.nightShiftOn
+                status: cc.shell.nightshift.manual ? qsTr("On") : on ? qsTr("Scheduled") : qsTr("Off")
+                onToggled: cc.shell.toggleNightShift()
             }
         }
 

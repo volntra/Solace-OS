@@ -503,6 +503,14 @@ impl Dispatch<FernShellV1, ()> for Comp {
                     Some((!path.is_empty()).then(|| std::path::PathBuf::from(path)));
                 state.request_redraw();
             }
+            R::SetColorTemperature { kelvin } => {
+                state.color_temperature = if kelvin >= crate::nightshift::NEUTRAL {
+                    0
+                } else {
+                    kelvin
+                };
+                state.request_redraw();
+            }
             R::BindKey {
                 id,
                 modifiers,

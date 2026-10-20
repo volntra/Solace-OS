@@ -42,6 +42,17 @@
       <arg name="path" type="string"/>
     </request>
 
+    <request name="set_color_temperature">
+      <description summary="Night Shift">
+        From now on every display shows colours as warm as a light of this
+        colour temperature in kelvin (1000 to 6500); 0 (or 6500 and above)
+        means neutral colours. The compositor changes the displays' gamma
+        ramps, so it costs nothing per frame; displays that have none (a
+        nested compositor) stay neutral.
+      </description>
+      <arg name="kelvin" type="uint"/>
+    </request>
+
     <request name="bind_key">
       <description summary="a global shortcut for the shell">
         Pressing keysym with exactly these modifiers (shift 1, ctrl 2, alt

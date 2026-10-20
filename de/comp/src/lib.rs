@@ -12,6 +12,7 @@ mod grabs;
 mod handlers;
 mod input;
 pub mod layers;
+pub mod nightshift;
 pub mod placement;
 pub mod render;
 pub mod spring;

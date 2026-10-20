@@ -48,6 +48,7 @@ public:
     Q_INVOKABLE void refresh();
     // Volume keys: one step up or down (1/16 of the range, like macOS).
     Q_INVOKABLE void stepVolume(int direction);
+    Q_INVOKABLE void stepBrightness(int direction);
 
     // wpctl's "Volume: 0.40 [MUTED]", public for tests.
     static bool parseVolume(const QString &out, qreal *volume, bool *muted);

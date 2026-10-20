@@ -15,6 +15,8 @@ use std::process::{Child, Command, ExitCode, Stdio};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use zbus::zvariant::Value;
+
 use ferncomp::{
     Comp, LoopData, backdrop,
     backend::headless::{Headless, Image},
@@ -1458,6 +1460,29 @@ fn wm_shell_desktop(h: &mut Harness) -> Result {
         "a click on the status icon did not reach the app",
         |_| saw("Activate"),
     )?;
+
+    // Night Shift, turned on in the settings: the shell asks the
+    // compositor for warm colours (warmth 60: 4020 K), and for neutral
+    // ones when it is turned off.
+    let set = |key: &str, value: Value<'_>| {
+        conn.call_method(
+            Some("org.fern.Settings"),
+            "/org/fern/Settings",
+            Some("org.fern.Settings1"),
+            "Set",
+            &("nightshift", key, value),
+        )
+        .map(|_| ())
+        .map_err(|e| format!("Set nightshift.{key}: {e}"))
+    };
+    set("manual", true.into())?;
+    wait_long(h, "Night Shift did not warm the colours", |h| {
+        h.data.state.color_temperature == 4020
+    })?;
+    set("manual", false.into())?;
+    wait_long(h, "Night Shift did not end", |h| {
+        h.data.state.color_temperature == 0
+    })?;
     Ok(())
 }
 

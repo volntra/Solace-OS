@@ -79,6 +79,9 @@ pub struct Comp {
     pub toplevels: crate::toplevels::Toplevels,
     /// Apps' menu addresses for the global menu (`crate::appmenu`).
     pub appmenus: crate::appmenu::AppMenus,
+    /// Night Shift's colour temperature, kelvin; 0 is neutral
+    /// (`crate::nightshift`). The DRM backend applies it.
+    pub color_temperature: u32,
     /// The shell's bindings and blur, and the work areas (`crate::layers`).
     pub shell: crate::layers::Shell,
     /// A wallpaper the shell asked for, for the backends to load and fade
@@ -179,6 +182,7 @@ impl Comp {
             wm: crate::wm::WmHost::default(),
             toplevels: crate::toplevels::Toplevels::default(),
             appmenus: crate::appmenu::AppMenus::default(),
+            color_temperature: 0,
             shell: crate::layers::Shell::default(),
             wallpaper_request: None,
         }

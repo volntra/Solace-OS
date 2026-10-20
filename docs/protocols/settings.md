@@ -7,7 +7,7 @@ Two instances run:
 
 | Instance | Bus | Name | Files | Domains |
 |---|---|---|---|---|
-| `fern-settingsd` | session | `org.fern.Settings` | `~/.config/fern/<domain>.toml` | appearance, wallpaper, dock, menubar, notifications |
+| `fern-settingsd` | session | `org.fern.Settings` | `~/.config/fern/<domain>.toml` | appearance, wallpaper, dock, menubar, notifications, nightshift |
 | `fern-settingsd --system` | system | `org.fern.Settings` | `/etc/fern/<domain>.toml` | boot |
 
 Object `/org/fern/Settings`, interface `org.fern.Settings1`.

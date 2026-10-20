@@ -35,6 +35,8 @@ Compositor::Compositor(QObject *parent)
                 m_ext->bind_key(uint32_t(id), uint32_t(mods), uint32_t(sym));
         if (m_ext->isActive() && m_wallpaperSet)
             m_ext->set_wallpaper(m_wallpaper);
+        if (m_ext->isActive() && m_kelvin > 0)
+            m_ext->set_color_temperature(uint32_t(m_kelvin));
         emit activeChanged();
     });
 }
@@ -87,6 +89,16 @@ void Compositor::setWallpaper(const QString &path)
     m_wallpaperSet = true;
     if (m_ext->isActive())
         m_ext->set_wallpaper(path);
+}
+
+void Compositor::setColorTemperature(int kelvin)
+{
+    kelvin = std::max(kelvin, 0);
+    if (kelvin == m_kelvin)
+        return;
+    m_kelvin = kelvin;
+    if (m_ext->isActive())
+        m_ext->set_color_temperature(uint32_t(kelvin));
 }
 
 void Compositor::bindKey(int id, int modifiers, int keysym)

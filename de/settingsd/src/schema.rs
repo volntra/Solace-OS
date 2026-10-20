@@ -262,6 +262,43 @@ pub static DOMAINS: &[Domain] = &[
             ),
         ],
     },
+    Domain {
+        name: "nightshift",
+        scope: Scope::User,
+        doc: "Night Shift: warmer display colours in the evening",
+        keys: &[
+            key(
+                "manual",
+                BOOL,
+                Default::Bool(false),
+                "On now, whatever the schedule",
+            ),
+            key(
+                "schedule",
+                Kind::Choice(&["off", "sunset", "custom"]),
+                Default::Text("off"),
+                "When it turns on by itself: never, sunset to sunrise, or from..to",
+            ),
+            key(
+                "from",
+                Kind::Int { min: 0, max: 1439 },
+                Default::Int(22 * 60),
+                "Custom schedule start, minutes after midnight",
+            ),
+            key(
+                "to",
+                Kind::Int { min: 0, max: 1439 },
+                Default::Int(7 * 60),
+                "Custom schedule end, minutes after midnight",
+            ),
+            key(
+                "warmth",
+                Kind::Int { min: 0, max: 100 },
+                Default::Int(60),
+                "How warm: 0 is barely, 100 is candlelight",
+            ),
+        ],
+    },
     // Read by fern-bootgen (through spk) as /etc/fern/boot.toml; the keys
     // mirror bootgen::Settings exactly, which refuses unknown ones.
     Domain {

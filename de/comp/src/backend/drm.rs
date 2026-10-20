@@ -122,6 +122,9 @@ struct Drm {
     libinput: Libinput,
     /// We hold the seat (false while another VT is shown).
     active: bool,
+    /// The colour temperature the displays' gamma ramps show (None: not
+    /// set since a display appeared or we came back from another VT).
+    gamma: Option<u32>,
 }
 
 /// Takes over the display.
@@ -179,6 +182,7 @@ pub fn init(
             screens: HashMap::new(),
             libinput: libinput.clone(),
             active: true,
+            gamma: None,
         })
     });
 
@@ -522,6 +526,7 @@ impl Drm {
             hz = millihertz / 1000,
             "display ready"
         );
+        self.gamma = None;
         self.screens.insert(
             crtc,
             Screen {
@@ -547,6 +552,23 @@ impl Drm {
             s.state = LoopState::Scheduled;
             self.after(Duration::ZERO, crtc);
         }
+    }
+
+    /// Night Shift: every display's gamma ramps for `kelvin` (0 neutral).
+    /// A display without ramps stays as it is.
+    fn apply_gamma(&mut self, kelvin: u32) {
+        let device = self.manager.device();
+        for crtc in self.screens.keys() {
+            let size = device.get_crtc(*crtc).map_or(0, |c| c.gamma_length());
+            if size == 0 {
+                continue;
+            }
+            let [r, g, b] = crate::nightshift::ramps(kelvin, size);
+            if let Err(e) = device.set_gamma(*crtc, &r, &g, &b) {
+                tracing::warn!(?crtc, "gamma ramps: {e}");
+            }
+        }
+        self.gamma = Some(kelvin);
     }
 
     /// Renders `crtc` after `delay`.
@@ -583,6 +605,9 @@ impl Drm {
     /// One turn of a display's loop: render, and queue the frame if
     /// anything changed; otherwise wait for a change.
     fn render(&mut self, crtc: crtc::Handle, state: &mut Comp) {
+        if self.active && self.gamma != Some(state.color_temperature) {
+            self.apply_gamma(state.color_temperature);
+        }
         let Some(screen) = self.screens.get_mut(&crtc) else {
             return;
         };
@@ -736,6 +761,7 @@ impl Drm {
             tracing::warn!("drm: {e}");
         }
         self.active = true;
+        self.gamma = None;
         self.scan(state);
         let crtcs: Vec<crtc::Handle> = self.screens.keys().copied().collect();
         for crtc in crtcs {

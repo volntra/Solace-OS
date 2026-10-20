@@ -19,6 +19,7 @@ qt_add_qml_module(fern-shell
         src/badges.h src/badges.cpp
         src/dbusmenu.h src/dbusmenu.cpp
         src/tray.h src/tray.cpp
+        src/nightshift.h src/nightshift.cpp
     QML_FILES
         qml/Main.qml
         qml/MenuBar.qml
@@ -58,6 +59,9 @@ if(FERN_BUILD_TESTS)
     qt_add_executable(tst_tray tests/tst_tray.cpp src/tray.cpp src/dbusmenu.cpp src/apps.cpp)
     target_include_directories(tst_tray PRIVATE src)
     target_link_libraries(tst_tray PRIVATE Qt6::Test Qt6::DBus Qt6::Qml Qt6::Gui)
+    qt_add_executable(tst_nightshift tests/tst_nightshift.cpp src/nightshift.cpp)
+    target_include_directories(tst_nightshift PRIVATE src)
+    target_link_libraries(tst_nightshift PRIVATE Qt6::Test)
     qt_add_executable(tst_apps tests/tst_apps.cpp src/apps.cpp)
     target_include_directories(tst_apps PRIVATE src)
     target_link_libraries(tst_apps PRIVATE Qt6::Test Qt6::Qml Qt6::Gui)

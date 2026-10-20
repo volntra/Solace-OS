@@ -56,6 +56,8 @@ public:
     Q_INVOKABLE void bindKey(int id, int modifiers, int keysym);
     // The wallpaper (the compositor crossfades to it).
     Q_INVOKABLE void setWallpaper(const QString &path);
+    // Night Shift: colours as warm as this many kelvin; 0 is neutral.
+    Q_INVOKABLE void setColorTemperature(int kelvin);
 
     static wl_surface *surfaceOf(QWindow *window);
 
@@ -69,5 +71,6 @@ private:
     QList<std::tuple<int, int, int>> m_bindings;
     QString m_wallpaper;
     QString m_menuService, m_menuPath;
+    int m_kelvin = 0;
     bool m_wallpaperSet = false;
 };
