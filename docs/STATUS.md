@@ -4,7 +4,21 @@ _Last updated: 2026-10-20_
 
 Repository: https://github.com/volntra/Solace-OS (`main`).
 
-## Current phase: 4 (compositor core): done (2026-10-20); next: 5 (fern-wm)
+## Current phase: 5 (window manager): in progress
+
+Phase 5 stages: 1 protocol + fern-wm process + crash recovery ✓; next 2
+spring animations, 3 titlebars with traffic lights, 4 tiling, 5 Spaces,
+6 minimize, 7 Overview and the app switcher, 8 QEMU test and demo.
+
+Stage 1 (2026-10-20): `fern_wm_v1` (docs/protocols/wm.md), fern-wm as a
+separate process that fern-comp starts and restarts; it places new
+windows where they cover others least (centred, a little high, first),
+focuses and raises on click and on open, refocuses when the focused
+window closes. Killing fern-wm leaves every window in place and a new one
+takes over the desktop as it was (`cargo test -p fern-comp --test render
+-- wm`). Not yet: titlebars, tiling, Spaces, Overview, switcher, springs.
+
+## Phase 4 (compositor core): done (2026-10-20)
 
 **Renamed 2026-10-20: Solace is now Fern** (prefix `fern`; logo a simple
 pine tree; green palette; Grove wallpaper; boot menu with a frosted panel,

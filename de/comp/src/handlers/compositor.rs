@@ -22,8 +22,6 @@ use smithay::{
     },
 };
 
-use super::xdg_shell;
-
 impl CompositorHandler for Comp {
     fn compositor_state(&mut self) -> &mut CompositorState {
         &mut self.compositor_state
@@ -44,18 +42,13 @@ impl CompositorHandler for Comp {
             while let Some(parent) = get_parent(&root) {
                 root = parent;
             }
-            let window = self
-                .space
-                .elements()
-                .find(|w| w.toplevel().is_some_and(|t| t.wl_surface() == &root))
-                .cloned();
-            if let Some(window) = window {
+            if let Some(window) = self.window_for(&root) {
                 window.on_commit();
-                self.place_new_window(&window);
+                self.wm_window_committed(&window);
             }
         }
 
-        xdg_shell::handle_commit(&mut self.popups, &self.space, surface);
+        self.xdg_commit(surface);
         resize_grab::handle_commit(&mut self.space, surface);
         self.request_redraw();
     }

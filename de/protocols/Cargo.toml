@@ -1,0 +1,23 @@
+[package]
+name = "fern-wm-proto"
+version = "0.1.0"
+description = "The private core <-> window manager Wayland protocol (fern_wm_v1)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[features]
+client = ["dep:wayland-client"]
+server = ["dep:wayland-server"]
+
+[dependencies]
+wayland-backend = "0.3"
+wayland-scanner = "0.31"
+bitflags = "2"
+wayland-client = { version = "0.31", optional = true }
+wayland-server = { version = "0.31", optional = true }
+
+[lints]
+workspace = true

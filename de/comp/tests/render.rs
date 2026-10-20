@@ -41,6 +41,54 @@ struct Harness {
 }
 
 impl Harness {
+    /// A compositor with fern-wm running on a thread (each start, after a
+    /// crash too, gets a new thread on a new socket pair).
+    fn with_wm(name: &'static str) -> Result<Self> {
+        let mut h = Self::new(name)?;
+        h.data.state.set_wm_launcher(Box::new(|| {
+            let (ours, theirs) = std::os::unix::net::UnixStream::pair()?;
+            std::thread::spawn(move || {
+                if let Ok(conn) = wayland_client::Connection::from_socket(theirs) {
+                    let _ = fernwm::run(&conn);
+                }
+            });
+            Ok(ours)
+        }));
+        h.wait_for_wm()?;
+        Ok(h)
+    }
+
+    fn wait_for_wm(&mut self) -> Result {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !self.data.state.wm.connected() {
+            if Instant::now() > deadline {
+                return Err("the window manager never connected".into());
+            }
+            self.turn()?;
+        }
+        self.settle()
+    }
+
+    fn location(&self, i: usize) -> (i32, i32) {
+        let p = self
+            .data
+            .state
+            .space
+            .element_location(&self.windows[i])
+            .unwrap_or_default();
+        (p.x, p.y)
+    }
+
+    fn focused(&self, i: usize) -> bool {
+        let surface = self.windows[i].toplevel().map(|t| t.wl_surface().clone());
+        self.data
+            .state
+            .seat
+            .get_keyboard()
+            .and_then(|k| k.current_focus())
+            .is_some_and(|f| Some(f) == surface)
+    }
+
     fn new(name: &'static str) -> Result<Self> {
         let event_loop: EventLoop<LoopData> = EventLoop::try_new().map_err(|e| e.to_string())?;
         let display: Display<Comp> = Display::new().map_err(|e| e.to_string())?;
@@ -358,6 +406,68 @@ fn idle_frames_have_no_damage(h: &mut Harness) -> Result {
 
 type Scenario = (&'static str, fn(&mut Harness) -> Result);
 
+/// Window `i`'s rectangle on screen.
+fn rect(h: &Harness, i: usize) -> fernwm::policy::Rect {
+    let (left, top) = h.location(i);
+    let size = h.windows[i].geometry().size;
+    fernwm::policy::Rect::new(left, top, size.w, size.h)
+}
+
+fn wm_places_and_focuses(h: &mut Harness) -> Result {
+    h.open("--color ff5a5fff --size 300x200")?;
+    h.open("--color 3a86ffff --size 300x200")?;
+    h.shot("placed")?;
+    let (a, b) = (rect(h, 0), rect(h, 1));
+    check(a.overlap(&b) == 0, || {
+        format!("windows overlap: {a:?} {b:?}")
+    })?;
+    check(h.focused(1), || "the new window does not have focus".into())?;
+    // A click on the first window focuses and raises it.
+    let (left, top) = h.location(0);
+    let at = smithay::utils::Point::from((f64::from(left) + 10.0, f64::from(top) + 10.0));
+    h.data.state.wm_button(at, 0x110, true);
+    h.data.state.wm_button(at, 0x110, false);
+    h.settle()?;
+    check(h.focused(0), || "a click did not move focus".into())?;
+    let top = h.data.state.space.elements().last().cloned();
+    check(top.as_ref() == Some(&h.windows[0]), || {
+        "a click did not raise".into()
+    })
+}
+
+fn wm_restart_keeps_windows(h: &mut Harness) -> Result {
+    h.open("--color ff5a5fff --size 300x200")?;
+    h.open("--color 3a86ffff --size 300x200")?;
+    let before = (h.location(0), h.location(1));
+    h.data.state.kill_wm();
+    // A few turns, well inside the restart delay.
+    for _ in 0..5 {
+        h.turn()?;
+    }
+    check(!h.data.state.wm.connected(), || {
+        "still connected after the kill".into()
+    })?;
+    check((h.location(0), h.location(1)) == before, || {
+        "windows moved when the WM died".into()
+    })?;
+    h.wait_for_wm()?;
+    check((h.location(0), h.location(1)) == before, || {
+        "windows moved when the WM came back".into()
+    })?;
+    check(h.focused(1), || "focus was lost across the restart".into())?;
+    // The new window manager knows the old windows: a third avoids them.
+    h.open("--color 2ec4b6ff --size 300x200")?;
+    h.shot("after-restart")?;
+    let c = rect(h, 2);
+    for i in 0..2 {
+        let o = rect(h, i);
+        check(c.overlap(&o) == 0, || {
+            format!("new window {c:?} covers {o:?}")
+        })?;
+    }
+    check(h.focused(2), || "the new window does not have focus".into())
+}
+
 const SCENARIOS: &[Scenario] = &[
     ("orientation", orientation),
     ("corners_and_shadow", corners_and_shadow),
@@ -365,6 +475,8 @@ const SCENARIOS: &[Scenario] = &[
     ("blur", blur),
     ("blur_region", blur_region),
     ("idle_frames_have_no_damage", idle_frames_have_no_damage),
+    ("wm_places_and_focuses", wm_places_and_focuses),
+    ("wm_restart_keeps_windows", wm_restart_keeps_windows),
 ];
 
 fn main() -> ExitCode {
@@ -393,7 +505,14 @@ fn main() -> ExitCode {
             continue;
         }
         ran += 1;
-        let result = Harness::new(name).and_then(|mut h| scenario(&mut h));
+        // Scenarios named wm_* run with fern-wm; the rest without (the
+        // core's fallback placement), so pixel checks do not depend on it.
+        let harness = if name.starts_with("wm_") {
+            Harness::with_wm(name)
+        } else {
+            Harness::new(name)
+        };
+        let result = harness.and_then(|mut h| scenario(&mut h));
         match result {
             Ok(()) => println!("test {name} ... ok"),
             Err(e) => {

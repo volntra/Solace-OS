@@ -3,9 +3,7 @@
 
 use smithay::{
     delegate_xdg_shell,
-    desktop::{
-        PopupKind, PopupManager, Space, Window, find_popup_root_surface, get_popup_toplevel_coords,
-    },
+    desktop::{PopupKind, Window, find_popup_root_surface, get_popup_toplevel_coords},
     input::{
         Seat,
         pointer::{Focus, GrabStartData as PointerGrabStartData},
@@ -31,6 +29,7 @@ use crate::{
     Comp,
     grabs::{MoveSurfaceGrab, ResizeSurfaceGrab},
 };
+use fern_wm_proto::server::fern_wm_v1::RequestKind;
 
 impl XdgShellHandler for Comp {
     fn xdg_shell_state(&mut self) -> &mut XdgShellState {
@@ -38,8 +37,53 @@ impl XdgShellHandler for Comp {
     }
 
     fn new_toplevel(&mut self, surface: ToplevelSurface) {
-        let window = Window::new_wayland_window(surface);
-        self.space.map_element(window, (0, 0), false);
+        // Mapped into the space when it is placed (by the window manager,
+        // or the core's fallback once it has a size).
+        self.wm_new_window(&Window::new_wayland_window(surface));
+    }
+
+    fn toplevel_destroyed(&mut self, surface: ToplevelSurface) {
+        if let Some(window) = self.window_for(surface.wl_surface()) {
+            self.wm_window_closed(&window);
+        }
+    }
+
+    fn title_changed(&mut self, surface: ToplevelSurface) {
+        if let Some(window) = self.window_for(surface.wl_surface()) {
+            self.wm_names_changed(&window);
+        }
+    }
+
+    fn app_id_changed(&mut self, surface: ToplevelSurface) {
+        if let Some(window) = self.window_for(surface.wl_surface()) {
+            self.wm_names_changed(&window);
+        }
+    }
+
+    fn maximize_request(&mut self, surface: ToplevelSurface) {
+        self.forward_request(&surface, RequestKind::Maximize);
+    }
+
+    fn unmaximize_request(&mut self, surface: ToplevelSurface) {
+        self.forward_request(&surface, RequestKind::Unmaximize);
+    }
+
+    fn fullscreen_request(
+        &mut self,
+        surface: ToplevelSurface,
+        _output: Option<smithay::reexports::wayland_server::protocol::wl_output::WlOutput>,
+    ) {
+        self.forward_request(&surface, RequestKind::Fullscreen);
+    }
+
+    fn unfullscreen_request(&mut self, surface: ToplevelSurface) {
+        self.forward_request(&surface, RequestKind::Unfullscreen);
+    }
+
+    fn minimize_request(&mut self, surface: ToplevelSurface) {
+        if let Some(window) = self.window_for(surface.wl_surface()) {
+            self.wm_client_request(&window, RequestKind::Minimize, 0);
+        }
     }
 
     fn new_popup(&mut self, surface: PopupSurface, _positioner: PositionerState) {
@@ -63,20 +107,23 @@ impl XdgShellHandler for Comp {
     }
 
     fn move_request(&mut self, surface: ToplevelSurface, seat: wl_seat::WlSeat, serial: Serial) {
-        let seat = Seat::from_resource(&seat).unwrap();
+        let Some(seat) = Seat::from_resource(&seat) else {
+            return;
+        };
 
         let wl_surface = surface.wl_surface();
 
         if let Some(start_data) = check_grab(&seat, wl_surface, serial) {
-            let pointer = seat.get_pointer().unwrap();
+            let Some(pointer) = seat.get_pointer() else {
+                return;
+            };
 
-            let window = self
-                .space
-                .elements()
-                .find(|w| w.toplevel().unwrap().wl_surface() == wl_surface)
-                .unwrap()
-                .clone();
-            let initial_window_location = self.space.element_location(&window).unwrap();
+            let Some(window) = self.window_for(wl_surface) else {
+                return;
+            };
+            let Some(initial_window_location) = self.space.element_location(&window) else {
+                return;
+            };
 
             let grab = MoveSurfaceGrab {
                 start_data,
@@ -95,20 +142,23 @@ impl XdgShellHandler for Comp {
         serial: Serial,
         edges: xdg_toplevel::ResizeEdge,
     ) {
-        let seat = Seat::from_resource(&seat).unwrap();
+        let Some(seat) = Seat::from_resource(&seat) else {
+            return;
+        };
 
         let wl_surface = surface.wl_surface();
 
         if let Some(start_data) = check_grab(&seat, wl_surface, serial) {
-            let pointer = seat.get_pointer().unwrap();
+            let Some(pointer) = seat.get_pointer() else {
+                return;
+            };
 
-            let window = self
-                .space
-                .elements()
-                .find(|w| w.toplevel().unwrap().wl_surface() == wl_surface)
-                .unwrap()
-                .clone();
-            let initial_window_location = self.space.element_location(&window).unwrap();
+            let Some(window) = self.window_for(wl_surface) else {
+                return;
+            };
+            let Some(initial_window_location) = self.space.element_location(&window) else {
+                return;
+            };
             let initial_window_size = window.geometry().size;
 
             surface.with_pending_state(|state| {
@@ -159,41 +209,53 @@ fn check_grab(
     Some(start_data)
 }
 
-/// Should be called on `WlSurface::commit`
-pub fn handle_commit(popups: &mut PopupManager, space: &Space<Window>, surface: &WlSurface) {
-    // Handle toplevel commits.
-    if let Some(window) = space
-        .elements()
-        .find(|w| w.toplevel().unwrap().wl_surface() == surface)
-        .cloned()
-    {
-        let initial_configure_sent = with_states(surface, |states| {
-            states
-                .data_map
-                .get::<XdgToplevelSurfaceData>()
-                .unwrap()
-                .lock()
-                .unwrap()
-                .initial_configure_sent
-        });
+impl Comp {
+    /// The window whose toplevel is `surface`, mapped or not.
+    pub fn window_for(&self, surface: &WlSurface) -> Option<Window> {
+        self.wm
+            .windows
+            .values()
+            .find(|r| {
+                r.window
+                    .toplevel()
+                    .is_some_and(|t| t.wl_surface() == surface)
+            })
+            .map(|r| r.window.clone())
+    }
 
-        if !initial_configure_sent {
-            window.toplevel().unwrap().send_configure();
+    fn forward_request(&mut self, surface: &ToplevelSurface, kind: RequestKind) {
+        let handled = self
+            .window_for(surface.wl_surface())
+            .is_some_and(|w| self.wm_client_request(&w, kind, 0));
+        // The protocol wants a configure in reply, even a refusal.
+        if !handled && surface.is_initial_configure_sent() {
+            surface.send_configure();
         }
     }
 
-    // Handle popup commits.
-    popups.commit(surface);
-    if let Some(popup) = popups.find_popup(surface) {
-        match popup {
-            PopupKind::Xdg(ref xdg) => {
-                if !xdg.is_initial_configure_sent() {
-                    // NOTE: This should never fail as the initial configure is always
-                    // allowed.
-                    xdg.send_configure().expect("initial configure failed");
-                }
+    /// Initial configures, and popups (on every commit).
+    pub fn xdg_commit(&mut self, surface: &WlSurface) {
+        if let Some(window) = self.window_for(surface)
+            && let Some(toplevel) = window.toplevel()
+        {
+            let initial_configure_sent = with_states(surface, |states| {
+                states
+                    .data_map
+                    .get::<XdgToplevelSurfaceData>()
+                    .and_then(|d| d.lock().ok())
+                    .is_some_and(|d| d.initial_configure_sent)
+            });
+            if !initial_configure_sent {
+                toplevel.send_configure();
             }
-            PopupKind::InputMethod(ref _input_method) => {}
+        }
+
+        self.popups.commit(surface);
+        if let Some(PopupKind::Xdg(ref xdg)) = self.popups.find_popup(surface)
+            && !xdg.is_initial_configure_sent()
+        {
+            // The initial configure is always allowed.
+            let _ = xdg.send_configure();
         }
     }
 }

@@ -47,6 +47,11 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client"] }
+fern-wm-proto = { path = "../protocols", features = ["server"] }
+
+[dev-dependencies]
+# The window manager, run on a thread by the pixel tests' WM scenarios.
+fern-wm = { path = "../wm" }
 
 [lints]
 workspace = true

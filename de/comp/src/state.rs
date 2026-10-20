@@ -67,6 +67,8 @@ pub struct Comp {
     pub seat: Seat<Self>,
     /// A request for the session owner (the DRM backend), set by input.
     pub session_request: Option<SessionRequest>,
+    /// The window manager and every window's record (`crate::wm`).
+    pub wm: crate::wm::WmHost,
 }
 
 /// Checks that the renderer can use a client's GPU buffer.
@@ -153,7 +155,9 @@ impl Comp {
             redraw: None,
             seat,
             session_request: None,
-        })
+            wm: crate::wm::WmHost::default(),
+        }
+        .with_wm_global())
     }
 
     fn init_wayland_listener(
@@ -220,6 +224,9 @@ impl Comp {
 #[derive(Debug, Default)]
 pub struct ClientState {
     pub compositor_state: CompositorClientState,
+    /// The window manager the core started: the only client that may bind
+    /// `fern_wm_v1`.
+    pub is_wm: bool,
 }
 
 impl std::fmt::Debug for Comp {
@@ -230,44 +237,10 @@ impl std::fmt::Debug for Comp {
     }
 }
 
-/// Marks a window that has been placed (on its first sized commit).
-struct Placed;
-
 impl Comp {
-    /// Places a new window once its size is known (its first commit with
-    /// a buffer), using [`crate::placement`].
-    pub fn place_new_window(&mut self, window: &Window) {
-        if window.user_data().get::<Placed>().is_some() {
-            return;
-        }
-        let size = window.geometry().size;
-        if size.w <= 0 || size.h <= 0 {
-            return;
-        }
-        window.user_data().insert_if_missing(|| Placed);
-        let Some(area) = self
-            .space
-            .outputs()
-            .next()
-            .and_then(|o| self.space.output_geometry(o))
-        else {
-            return;
-        };
-        let taken: Vec<(i32, i32)> = self
-            .space
-            .elements()
-            .filter(|w| *w != window)
-            .filter_map(|w| self.space.element_location(w))
-            .map(|p| (p.x, p.y))
-            .collect();
-        let (x, y) = crate::placement::place(
-            (area.loc.x, area.loc.y, area.size.w, area.size.h),
-            (size.w, size.h),
-            &taken,
-        );
-        self.space.map_element(window.clone(), (x, y), true);
-        // A new window comes to the front with focus.
-        self.focus(Some(window));
+    fn with_wm_global(mut self) -> Self {
+        self.init_wm();
+        self
     }
 
     /// Something on screen may have changed: render soon.

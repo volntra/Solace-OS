@@ -1,5 +1,7 @@
 # de/protocols
 
-Private Wayland protocol XML (the core-to-WM protocol and others). Prose specs live in `docs/protocols/`.
+Private Wayland protocol XML and its generated bindings (the
+`fern-wm-proto` crate: `server` for fern-comp, `client` for fern-wm).
 
-Status: empty until **Phase 4**. See `docs/STATUS.md`.
+- `fern-wm-v1.xml`: the core <-> window manager protocol; prose spec in
+  `docs/protocols/wm.md`

@@ -37,7 +37,8 @@ impl PointerGrab<Comp> for MoveSurfaceGrab {
         let delta = event.location - self.start_data.location;
         let new_location = self.initial_window_location.to_f64() + delta;
         data.space
-            .map_element(self.window.clone(), new_location.to_i32_round(), true);
+            .map_element(self.window.clone(), new_location.to_i32_round(), false);
+        data.wm_move_update(&self.window, false);
     }
 
     fn relative_motion(
@@ -65,6 +66,7 @@ impl PointerGrab<Comp> for MoveSurfaceGrab {
         if !handle.current_pressed().contains(&BTN_LEFT) {
             // No more buttons are pressed, release the grab.
             handle.unset_grab(self, data, event.serial, event.time, true);
+            data.wm_move_update(&self.window, true);
         }
     }
 

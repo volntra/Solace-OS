@@ -736,3 +736,31 @@ frame missed the next vblank (about 5 a second).
   toolchain (hours); they change with the next toolchain update. Neither
   is visible outside a compiler's `-dumpmachine`. The GitHub repository is
   still `volntra/Solace-OS` until the human renames it.
+
+### 2026-10-20: The window manager as a process (Phase 5, stage 1)
+
+- **Decision:** fern-wm is its own process speaking a private Wayland
+  protocol, `fern_wm_v1` (`de/protocols/fern-wm-v1.xml`, spec
+  docs/protocols/wm.md), with integer ids for windows and outputs and
+  every request applied at `commit`. The core starts it on a socket pair
+  (stdin, `WAYLAND_SOCKET=0`), so no other client can reach the global,
+  and restarts it after a crash (300 ms, at most 5 times in 30 s). On bind
+  the core re-describes the whole desktop including what the previous
+  window manager stored with `save`/`save_wm`: that is the whole crash
+  recovery contract, and nothing on screen moves meanwhile. Without a
+  window manager the core falls back to its own placement and
+  click-to-focus.
+- **Policy is a pure function:** `de/wm/src/policy.rs` turns events into
+  commands with no Wayland in it, so it is unit tested directly; the
+  compositor's pixel tests run the real fern-wm on a thread over a socket
+  pair (placement, focus, and a kill-and-restart that must leave windows
+  in place).
+- **Bindings generated, not hand-written:** `wayland-scanner` generates
+  both sides from the one XML (`fern-wm-proto`, features `server` and
+  `client`).
+- **Alternatives:** a WM library linked into the compositor (simplest,
+  but a crash in policy code takes every app down, which 6.5 forbids);
+  D-Bus or a custom socket format (a second IPC stack; Wayland already
+  gives us typed messages, fd passing and the event loop integration).
+- **Packaging:** fern-wm ships in the `fern-comp` package next to
+  `/usr/bin/fern-comp`, which finds it there.

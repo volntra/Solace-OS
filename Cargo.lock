@@ -718,6 +718,8 @@ name = "fern-comp"
 version = "0.1.0"
 dependencies = [
  "bitflags 2.13.2",
+ "fern-wm",
+ "fern-wm-proto",
  "png",
  "smithay",
  "tracing",
@@ -737,6 +739,27 @@ dependencies = [
  "signal-hook",
  "tempfile",
  "toml",
+]
+
+[[package]]
+name = "fern-wm"
+version = "0.1.0"
+dependencies = [
+ "fern-wm-proto",
+ "tracing",
+ "tracing-subscriber",
+ "wayland-client",
+]
+
+[[package]]
+name = "fern-wm-proto"
+version = "0.1.0"
+dependencies = [
+ "bitflags 2.13.2",
+ "wayland-backend",
+ "wayland-client",
+ "wayland-scanner",
+ "wayland-server",
 ]
 
 [[package]]

@@ -14,7 +14,16 @@ use smithay::{
     utils::{Logical, Point, SERIAL_COUNTER},
 };
 
-use crate::state::{Comp, SessionRequest};
+use crate::{
+    state::{Comp, SessionRequest},
+    wm::KeyAction,
+};
+
+/// What the keyboard filter decided for a key.
+enum KeyUse {
+    Session(SessionRequest),
+    Wm(KeyAction),
+}
 
 /// Scroll distance of one wheel notch, in logical pixels.
 const NOTCH: f64 = 15.0;
@@ -52,27 +61,35 @@ impl Comp {
         let Some(keyboard) = self.seat.get_keyboard() else {
             return;
         };
-        let request = keyboard.input::<SessionRequest, _>(
+        let pressed = event.state() == smithay::backend::input::KeyState::Pressed;
+        let request = keyboard.input::<KeyUse, _>(
             self,
             event.key_code(),
             event.state(),
             SERIAL_COUNTER.next_serial(),
             Event::time_msec(event),
-            |_, modifiers, keysym| {
-                if event.state() == smithay::backend::input::KeyState::Pressed
-                    && let Some(r) = session_key(*modifiers, keysym.modified_sym())
-                {
-                    FilterResult::Intercept(r)
-                } else {
-                    FilterResult::Forward
+            |comp, modifiers, keysym| {
+                if pressed && let Some(r) = session_key(*modifiers, keysym.modified_sym()) {
+                    return FilterResult::Intercept(KeyUse::Session(r));
+                }
+                // Bindings match the key's unshifted symbol (Super+Shift+1
+                // is "1" with Shift, not "!").
+                let sym = keysym
+                    .raw_latin_sym_or_raw_current_sym()
+                    .unwrap_or_else(|| keysym.modified_sym());
+                match comp.key_action(keysym.raw_code().raw(), pressed, modifiers, sym.raw()) {
+                    Some(a) => FilterResult::Intercept(KeyUse::Wm(a)),
+                    None => FilterResult::Forward,
                 }
             },
         );
-        if let Some(r) = request {
-            match r {
-                SessionRequest::Quit => self.loop_signal.stop(),
-                SessionRequest::SwitchVt(_) => self.session_request = Some(r),
+        match request {
+            Some(KeyUse::Session(SessionRequest::Quit)) => self.loop_signal.stop(),
+            Some(KeyUse::Session(r @ SessionRequest::SwitchVt(_))) => {
+                self.session_request = Some(r);
             }
+            Some(KeyUse::Wm(a)) => self.wm_key_event(a),
+            None => {}
         }
     }
 
@@ -82,7 +99,11 @@ impl Comp {
             return;
         };
         let pos = self.clamp_to_outputs(pointer.current_location() + event.delta());
-        let under = self.surface_under(pos);
+        let under = if self.wm_motion(pos) {
+            self.surface_under(pos)
+        } else {
+            None
+        };
         pointer.motion(
             self,
             under,
@@ -129,7 +150,11 @@ impl Comp {
             return;
         };
         let pos = event.position_transformed(output_geo.size) + output_geo.loc.to_f64();
-        let under = self.surface_under(pos);
+        let under = if self.wm_motion(pos) {
+            self.surface_under(pos)
+        } else {
+            None
+        };
         pointer.motion(
             self,
             under,
@@ -148,14 +173,25 @@ impl Comp {
         };
         let serial = SERIAL_COUNTER.next_serial();
         let state = event.state();
-        // A click raises and focuses the window under the pointer, or
-        // clears focus on the desktop.
-        if state == ButtonState::Pressed && !pointer.is_grabbed() {
-            let clicked = self
-                .space
-                .element_under(pointer.current_location())
-                .map(|(w, _)| w.clone());
-            self.focus(clicked.as_ref());
+        let pressed = state == ButtonState::Pressed;
+        let mut to_clients = true;
+        if !pointer.is_grabbed() {
+            if self.wm.connected() {
+                // The window manager decides about focus and raising.
+                to_clients =
+                    self.wm_button(pointer.current_location(), event.button_code(), pressed);
+            } else if pressed {
+                // Without one: a click raises and focuses the window under
+                // the pointer, or clears focus on the desktop.
+                let clicked = self
+                    .space
+                    .element_under(pointer.current_location())
+                    .map(|(w, _)| w.clone());
+                self.focus(clicked.as_ref());
+            }
+        }
+        if !to_clients {
+            return;
         }
         pointer.button(
             self,

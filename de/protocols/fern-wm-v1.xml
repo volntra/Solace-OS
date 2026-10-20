@@ -1,0 +1,379 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="fern_wm_v1">
+  <copyright>
+    Copyright 2026 the Fern authors. GPL-3.0-or-later.
+  </copyright>
+
+  <description summary="the compositor core and the window manager">
+    A private protocol between fern-comp (the core: screen, input, client
+    protocols, rendering, animation) and fern-wm (the window manager: all
+    policy). Only the window manager process the core started can bind it.
+    The prose specification is docs/protocols/wm.md.
+
+    Windows and outputs are named by integer ids the core assigns; an id is
+    never reused while the core runs. Requests take effect at commit, all at
+    once. Coordinates are logical pixels in the global space.
+  </description>
+
+  <interface name="fern_wm_v1" version="1">
+    <description summary="the window manager's view of the desktop">
+      Bound once by the window manager. On bind the core describes every
+      output and window it has, including what a previous window manager
+      process saved (restore, restore_wm), then sends done.
+    </description>
+
+    <enum name="part">
+      <description summary="what the pointer is on"/>
+      <entry name="none" value="0" summary="the desktop: no window"/>
+      <entry name="content" value="1" summary="the window's own surface"/>
+      <entry name="titlebar" value="2" summary="the titlebar, outside its buttons"/>
+      <entry name="close" value="3" summary="the close button"/>
+      <entry name="minimize" value="4" summary="the minimize button"/>
+      <entry name="zoom" value="5" summary="the zoom button"/>
+      <entry name="edge" value="6" summary="a resize edge or corner"/>
+      <entry name="overlay" value="7" summary="none of the above, while the pointer is grabbed"/>
+    </enum>
+
+    <enum name="request_kind">
+      <description summary="what a client asked for"/>
+      <entry name="move" value="1"/>
+      <entry name="resize" value="2" summary="edges says which"/>
+      <entry name="maximize" value="3"/>
+      <entry name="unmaximize" value="4"/>
+      <entry name="fullscreen" value="5"/>
+      <entry name="unfullscreen" value="6"/>
+      <entry name="minimize" value="7"/>
+      <entry name="activate" value="8" summary="xdg-activation, or a dialog's parent"/>
+    </enum>
+
+    <enum name="edges" bitfield="true">
+      <entry name="none" value="0"/>
+      <entry name="top" value="1"/>
+      <entry name="bottom" value="2"/>
+      <entry name="left" value="4"/>
+      <entry name="right" value="8"/>
+    </enum>
+
+    <enum name="state" bitfield="true">
+      <description summary="xdg_toplevel states the window manager sets"/>
+      <entry name="none" value="0"/>
+      <entry name="activated" value="1"/>
+      <entry name="maximized" value="2"/>
+      <entry name="fullscreen" value="4"/>
+      <entry name="tiled_left" value="8"/>
+      <entry name="tiled_right" value="16"/>
+      <entry name="tiled_top" value="32"/>
+      <entry name="tiled_bottom" value="64"/>
+      <entry name="resizing" value="128"/>
+    </enum>
+
+    <enum name="modifiers" bitfield="true">
+      <entry name="none" value="0"/>
+      <entry name="shift" value="1"/>
+      <entry name="ctrl" value="2"/>
+      <entry name="alt" value="4"/>
+      <entry name="super" value="8"/>
+    </enum>
+
+    <enum name="motion">
+      <description summary="how a placement change moves (HIG spring presets)"/>
+      <entry name="instant" value="0"/>
+      <entry name="snappy" value="1"/>
+      <entry name="smooth" value="2"/>
+      <entry name="gentle" value="3"/>
+    </enum>
+
+    <enum name="decoration">
+      <entry name="none" value="0" summary="no titlebar (fullscreen, or client-side)"/>
+      <entry name="titlebar" value="1" summary="our titlebar with traffic lights"/>
+    </enum>
+
+    <enum name="align">
+      <entry name="left" value="0"/>
+      <entry name="center" value="1"/>
+      <entry name="right" value="2"/>
+    </enum>
+
+    <!-- core to window manager: the desktop -->
+
+    <event name="output">
+      <description summary="an output appeared or changed"/>
+      <arg name="id" type="uint"/>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+    </event>
+
+    <event name="output_removed">
+      <arg name="id" type="uint"/>
+    </event>
+
+    <event name="window">
+      <description summary="a toplevel exists (not yet mapped)"/>
+      <arg name="id" type="uint"/>
+      <arg name="app_id" type="string"/>
+      <arg name="title" type="string"/>
+      <arg name="parent" type="uint" summary="0: none"/>
+    </event>
+
+    <event name="window_title">
+      <arg name="id" type="uint"/>
+      <arg name="title" type="string"/>
+    </event>
+
+    <event name="window_app_id">
+      <arg name="id" type="uint"/>
+      <arg name="app_id" type="string"/>
+    </event>
+
+    <event name="window_hints">
+      <description summary="size limits (0: none)"/>
+      <arg name="id" type="uint"/>
+      <arg name="min_width" type="int"/>
+      <arg name="min_height" type="int"/>
+      <arg name="max_width" type="int"/>
+      <arg name="max_height" type="int"/>
+    </event>
+
+    <event name="window_size">
+      <description summary="the client committed content of this size">
+        The first one means the window is mapped (has drawn something).
+      </description>
+      <arg name="id" type="uint"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+    </event>
+
+    <event name="window_closed">
+      <arg name="id" type="uint"/>
+    </event>
+
+    <event name="window_request">
+      <arg name="id" type="uint"/>
+      <arg name="kind" type="uint" enum="request_kind"/>
+      <arg name="edges" type="uint" enum="edges"/>
+    </event>
+
+    <event name="restore">
+      <description summary="after a window manager restart: where a window is">
+        Sent after the window event, during the burst that ends with done.
+      </description>
+      <arg name="id" type="uint"/>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+      <arg name="states" type="uint" enum="state"/>
+      <arg name="visible" type="uint"/>
+      <arg name="data" type="string" summary="what save stored, or empty"/>
+    </event>
+
+    <event name="restore_wm">
+      <arg name="data" type="string" summary="what save_wm stored, or empty"/>
+    </event>
+
+    <event name="done">
+      <description summary="the description of the desktop is complete"/>
+    </event>
+
+    <!-- core to window manager: input -->
+
+    <event name="pointer_button">
+      <description summary="a button went down or up">
+        Always sent for presses on the desktop, on decorations, and on any
+        window whose content the client does not get (pointer grabbed by the
+        window manager); for content clicks the client gets it too.
+      </description>
+      <arg name="window" type="uint" summary="0: none"/>
+      <arg name="part" type="uint" enum="part"/>
+      <arg name="x" type="fixed"/>
+      <arg name="y" type="fixed"/>
+      <arg name="button" type="uint"/>
+      <arg name="pressed" type="uint"/>
+      <arg name="modifiers" type="uint" enum="modifiers"/>
+      <arg name="clicks" type="uint" summary="1, or 2 for a double click"/>
+    </event>
+
+    <event name="pointer_motion">
+      <description summary="while the pointer is grabbed by the window manager"/>
+      <arg name="x" type="fixed"/>
+      <arg name="y" type="fixed"/>
+    </event>
+
+    <event name="key">
+      <description summary="while the keyboard is grabbed by the window manager"/>
+      <arg name="keysym" type="uint"/>
+      <arg name="pressed" type="uint"/>
+      <arg name="modifiers" type="uint" enum="modifiers"/>
+    </event>
+
+    <event name="binding">
+      <description summary="a bound key combination was pressed"/>
+      <arg name="id" type="uint"/>
+    </event>
+
+    <event name="move_update">
+      <description summary="an interactive move is under way"/>
+      <arg name="id" type="uint"/>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="pointer_x" type="fixed"/>
+      <arg name="pointer_y" type="fixed"/>
+    </event>
+
+    <event name="move_end">
+      <description summary="the button was released: the window is at x, y"/>
+      <arg name="id" type="uint"/>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="pointer_x" type="fixed"/>
+      <arg name="pointer_y" type="fixed"/>
+    </event>
+
+    <event name="resize_end">
+      <description summary="an interactive resize ended at this geometry"/>
+      <arg name="id" type="uint"/>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+    </event>
+
+    <!-- window manager to core: windows -->
+
+    <request name="configure">
+      <description summary="tell the client its size and states"/>
+      <arg name="id" type="uint"/>
+      <arg name="width" type="int" summary="content size; 0: the client chooses"/>
+      <arg name="height" type="int"/>
+      <arg name="states" type="uint" enum="state"/>
+    </request>
+
+    <request name="place">
+      <description summary="where and how the window is drawn">
+        x, y is the top-left of the window's frame (titlebar included);
+        scale and alpha change only how it is drawn. The core moves the
+        window there with the given motion.
+      </description>
+      <arg name="id" type="uint"/>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="scale" type="fixed"/>
+      <arg name="alpha" type="fixed"/>
+      <arg name="motion" type="uint" enum="motion"/>
+    </request>
+
+    <request name="decoration">
+      <arg name="id" type="uint"/>
+      <arg name="mode" type="uint" enum="decoration"/>
+    </request>
+
+    <request name="visible">
+      <description summary="hidden windows are neither drawn nor hit"/>
+      <arg name="id" type="uint"/>
+      <arg name="visible" type="uint"/>
+    </request>
+
+    <request name="stack">
+      <description summary="the stacking order, bottom to top (uint ids)"/>
+      <arg name="ids" type="array"/>
+    </request>
+
+    <request name="focus">
+      <arg name="id" type="uint" summary="0: none"/>
+    </request>
+
+    <request name="close">
+      <description summary="ask the client to close the window"/>
+      <arg name="id" type="uint"/>
+    </request>
+
+    <request name="begin_move">
+      <description summary="start an interactive move with the pointer"/>
+      <arg name="id" type="uint"/>
+    </request>
+
+    <request name="begin_resize">
+      <arg name="id" type="uint"/>
+      <arg name="edges" type="uint" enum="edges"/>
+    </request>
+
+    <request name="save">
+      <description summary="data the core keeps for a window across restarts"/>
+      <arg name="id" type="uint"/>
+      <arg name="data" type="string"/>
+    </request>
+
+    <request name="save_wm">
+      <arg name="data" type="string"/>
+    </request>
+
+    <!-- window manager to core: input -->
+
+    <request name="bind">
+      <arg name="id" type="uint"/>
+      <arg name="modifiers" type="uint" enum="modifiers"/>
+      <arg name="keysym" type="uint"/>
+    </request>
+
+    <request name="unbind">
+      <arg name="id" type="uint"/>
+    </request>
+
+    <request name="grab_pointer">
+      <description summary="pointer events go to the window manager, not clients"/>
+      <arg name="grab" type="uint"/>
+    </request>
+
+    <request name="grab_keyboard">
+      <description summary="key events go to the window manager, not clients"/>
+      <arg name="grab" type="uint"/>
+    </request>
+
+    <!-- window manager to core: overlay (drawn above all windows) -->
+
+    <request name="overlay_clear"/>
+
+    <request name="overlay_rect">
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+      <arg name="radius" type="int"/>
+      <arg name="rgba" type="uint" summary="0xRRGGBBAA"/>
+    </request>
+
+    <request name="overlay_wallpaper">
+      <description summary="the wallpaper, scaled into a rounded rectangle"/>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+      <arg name="radius" type="int"/>
+    </request>
+
+    <request name="overlay_mirror">
+      <description summary="a window's picture, scaled into a rectangle"/>
+      <arg name="id" type="uint"/>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+    </request>
+
+    <request name="overlay_text">
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="width" type="int"/>
+      <arg name="size" type="int" summary="font size, logical pixels"/>
+      <arg name="rgba" type="uint"/>
+      <arg name="align" type="uint" enum="align"/>
+      <arg name="text" type="string"/>
+    </request>
+
+    <request name="commit">
+      <description summary="apply every request since the last commit"/>
+    </request>
+  </interface>
+</protocol>

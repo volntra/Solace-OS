@@ -1,0 +1,26 @@
+[package]
+name = "fern-wm"
+version = "0.1.0"
+description = "Fern's window manager: all window policy, in its own process"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lib]
+name = "fernwm"
+path = "src/lib.rs"
+
+[[bin]]
+name = "fern-wm"
+path = "src/bin/fern-wm.rs"
+
+[dependencies]
+fern-wm-proto = { path = "../protocols", features = ["client"] }
+wayland-client = "0.31"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[lints]
+workspace = true

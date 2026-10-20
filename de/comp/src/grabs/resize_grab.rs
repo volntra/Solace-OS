@@ -173,6 +173,7 @@ impl PointerGrab<Comp> for ResizeSurfaceGrab {
         if !handle.current_pressed().contains(&BTN_LEFT) {
             // No more buttons are pressed, release the grab.
             handle.unset_grab(self, data, event.serial, event.time, true);
+            data.wm_resize_end(&self.window);
 
             let xdg = self.window.toplevel().unwrap();
             xdg.with_pending_state(|state| {

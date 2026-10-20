@@ -1,16 +1,17 @@
-# Our own: de/comp in this repository, built with only the DRM backend
-# (the nested one is for development). Linked dynamically: it loads EGL
-# and GBM drivers, which a static binary cannot.
+# Our own: de/comp and de/wm in this repository: the compositor core,
+# built with only the DRM backend (the nested one is for development), and
+# the window manager it starts. Linked dynamically: the compositor loads
+# EGL and GBM drivers, which a static binary cannot.
 name = "fern-comp"
 version = "0.1.0"
-release = 1
-summary = "Fern compositor"
+release = 2
+summary = "Fern compositor and window manager"
 license = "GPL-3.0-or-later"
 
 [[source]]
 local = "."
 # The Cargo workspace only.
-include = ["Cargo.toml", "Cargo.lock", "init", "boot/bootgen", "pkg", "tools/ferncheck", "de/comp"]
+include = ["Cargo.toml", "Cargo.lock", "init", "boot/bootgen", "pkg", "tools/ferncheck", "de/comp", "de/protocols", "de/wm"]
 
 [deps]
 build = ["pkgconf", "seatd", "libinput", "libudev", "mesa", "libglvnd", "libdrm", "libxkbcommon"]
@@ -23,12 +24,15 @@ cargo = true
 compile = '''
 # Not the rust toolchain's static default: see the comment at the top.
 RUSTFLAGS="-C linker=cc" cargo build --release --locked --offline \
-  --target x86_64-unknown-linux-gnu -p fern-comp --no-default-features --features drm \
-  --bin fern-comp --bin fern-testclient
+  --target x86_64-unknown-linux-gnu -p fern-comp -p fern-wm \
+  --no-default-features --features fern-comp/drm \
+  --bin fern-comp --bin fern-testclient --bin fern-wm
 '''
 install = '''
 out=/build/target/x86_64-unknown-linux-gnu/release
 install -Dm755 "$out/fern-comp" "$DESTDIR/usr/bin/fern-comp"
+# Next to fern-comp, which starts it (and restarts it if it exits).
+install -Dm755 "$out/fern-wm" "$DESTDIR/usr/bin/fern-wm"
 # The test client, for the image's smoke tests (image/qemu-test-comp.py).
 install -Dm755 "$out/fern-testclient" "$DESTDIR/usr/lib/fern/test/fern-testclient"
 install -Dm644 "$RECIPE/units/fern-comp.toml" "$DESTDIR/usr/lib/fern/units/fern-comp.toml"

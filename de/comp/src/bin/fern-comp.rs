@@ -1,19 +1,27 @@
 //! fern-comp: the Fern compositor.
 //!
-//!   fern-comp [--nested | --drm] [-- COMMAND [ARGS...]]
+//!   fern-comp [--nested | --drm] [--wm PATH | --no-wm] [-- COMMAND [ARGS...]]
 //!
 //! `--drm` drives the display (KMS, libinput, libseat); `--nested` runs
 //! inside another desktop. Without either, fern-comp nests when it finds a
 //! desktop to nest in (`WAYLAND_DISPLAY` or `DISPLAY`) and takes the
 //! display otherwise. A command after `--` is started as a client.
+//!
+//! The window manager (fern-wm) is started with it and restarted if it
+//! exits: `--wm PATH` (or `FERN_WM`) names it, otherwise the `fern-wm` next
+//! to this binary, else the one on `PATH`. `--no-wm` runs without one (the
+//! core's fallback placement and click-to-focus).
 
 use std::io::IsTerminal;
-use std::process::{Command, ExitCode};
+use std::os::{fd::OwnedFd, unix::net::UnixStream};
+use std::path::PathBuf;
+use std::process::{Child, Command, ExitCode, Stdio};
 
 use ferncomp::{Comp, LoopData};
 use smithay::reexports::{calloop::EventLoop, wayland_server::Display};
 
-const USAGE: &str = "usage: fern-comp [--nested | --drm] [-- COMMAND [ARGS...]]";
+const USAGE: &str =
+    "usage: fern-comp [--nested | --drm] [--wm PATH | --no-wm] [-- COMMAND [ARGS...]]";
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Backend {
@@ -35,10 +43,19 @@ fn main() -> ExitCode {
     let mut args = std::env::args().skip(1);
     let mut client: Vec<String> = Vec::new();
     let mut backend = None;
+    let mut wm = Some(std::env::var_os("FERN_WM").map_or_else(default_wm, PathBuf::from));
     while let Some(a) = args.next() {
         match a.as_str() {
             "--nested" => backend = Some(Backend::Nested),
             "--drm" => backend = Some(Backend::Drm),
+            "--no-wm" => wm = None,
+            "--wm" => {
+                let Some(p) = args.next() else {
+                    eprintln!("fern-comp: --wm needs a path\n{USAGE}");
+                    return ExitCode::from(2);
+                };
+                wm = Some(PathBuf::from(p));
+            }
             "--" => client = args.by_ref().collect(),
             "-h" | "--help" => {
                 println!("{USAGE}");
@@ -60,7 +77,7 @@ fn main() -> ExitCode {
             Backend::Drm
         }
     });
-    match run(backend, &client) {
+    match run(backend, wm, &client) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("fern-comp: {e}");
@@ -69,7 +86,39 @@ fn main() -> ExitCode {
     }
 }
 
-fn run(backend: Backend, client: &[String]) -> Result<(), Box<dyn std::error::Error>> {
+/// The `fern-wm` installed next to this binary, else whatever `PATH` finds.
+fn default_wm() -> PathBuf {
+    std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|d| d.join("fern-wm")))
+        .filter(|p| p.is_file())
+        .unwrap_or_else(|| PathBuf::from("fern-wm"))
+}
+
+/// Starts the window manager with one end of a socket pair as its stdin
+/// (`WAYLAND_SOCKET=0`) and returns the other end.
+fn wm_launcher(path: PathBuf) -> ferncomp::wm::WmLauncher {
+    let mut children: Vec<Child> = Vec::new();
+    Box::new(move || {
+        // Reap the ones that exited (a restart follows an exit).
+        children.retain_mut(|c| matches!(c.try_wait(), Ok(None)));
+        let (ours, theirs) = UnixStream::pair()?;
+        let child = Command::new(&path)
+            .stdin(Stdio::from(OwnedFd::from(theirs)))
+            .env("WAYLAND_SOCKET", "0")
+            .env_remove("WAYLAND_DISPLAY")
+            .spawn()?;
+        tracing::info!(pid = child.id(), path = %path.display(), "window manager started");
+        children.push(child);
+        Ok(ours)
+    })
+}
+
+fn run(
+    backend: Backend,
+    wm: Option<PathBuf>,
+    client: &[String],
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut event_loop: EventLoop<'static, LoopData> = EventLoop::try_new()?;
     let display: Display<Comp> = Display::new()?;
     let display_handle = display.handle();
@@ -87,6 +136,9 @@ fn run(backend: Backend, client: &[String]) -> Result<(), Box<dyn std::error::Er
         other => return Err(format!("built without the {other:?} backend").into()),
     }
     tracing::info!(socket = ?data.state.socket_name, "listening");
+    if let Some(path) = wm {
+        data.state.set_wm_launcher(wm_launcher(path));
+    }
     if let Some((cmd, args)) = client.split_first()
         && let Err(e) = Command::new(cmd)
             .args(args)
