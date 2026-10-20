@@ -959,6 +959,31 @@ fn wm_switcher(h: &mut Harness) -> Result {
     check(h.focused(0), || "the picked app is not in front".into())
 }
 
+/// Blur under a window the window manager placed (and animated in), with
+/// our titlebar on it.
+fn wm_blur(h: &mut Harness) -> Result {
+    h.open("--stripes --size 700x500")?;
+    key(h, 8, 0xff52)?;
+    h.open("--color ffffff00 --size 400x200 --blur")?;
+    let img = h.shot("glass")?;
+    let g = rect(h, 1);
+    let under = spread(&img, g.y + g.h / 2, g.x + 40, g.x + g.w - 40);
+    check(under < 60, || {
+        format!("not blurred under the glass at {g:?}: spread {under}")
+    })?;
+    let beside = spread(&img, SIZE.1 - 40, 40, SIZE.0 - 40);
+    check(beside > 150, || format!("stripes lost contrast: {beside}"))?;
+    // Against the screen's top-left corner too (the blur reaches past
+    // the edge).
+    h.place(1, 0, ferncomp::render::TITLEBAR_HEIGHT)?;
+    let img = h.shot("glass-corner")?;
+    let g = rect(h, 1);
+    let under = spread(&img, g.y + g.h / 2, g.x + 40, g.x + g.w - 40);
+    check(under < 60, || {
+        format!("not blurred in the corner at {g:?}: spread {under}")
+    })
+}
+
 const SCENARIOS: &[Scenario] = &[
     ("orientation", orientation),
     ("corners_and_shadow", corners_and_shadow),
@@ -975,6 +1000,7 @@ const SCENARIOS: &[Scenario] = &[
     ("wm_minimize_to_dock", wm_minimize_to_dock),
     ("wm_overview", wm_overview),
     ("wm_switcher", wm_switcher),
+    ("wm_blur", wm_blur),
 ];
 
 fn main() -> ExitCode {

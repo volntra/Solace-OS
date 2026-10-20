@@ -6,8 +6,8 @@ serial console and checks, from screenshots taken through the QEMU monitor:
   1. fern-comp takes the display at boot and draws the wallpaper
   2. a striped test window appears with our titlebar; Super+Up (fern-wm)
      makes it fill the screen, with rounded corners; a transparent window
-     that asks for blur, placed on top, shows the stripes behind it
-     blurred
+     that asks for blur, opened on top and tiled to the left half
+     (Super+Left), shows the stripes behind it blurred
   3. Ctrl+Alt+F2 switches to the console login on tty2 (the session is
      paused) and Ctrl+Alt+F1 brings the desktop back
   4. the machine powers off cleanly
@@ -87,7 +87,8 @@ def wait_for(c, name, test, what, timeout=300):
         if test(shot):
             return shot
         if time.monotonic() > deadline:
-            fail(f"timed out waiting for {what} (last screenshot: {OUT}/comp-{name}.png)")
+            logs = c.run("fernctl logs -n 30 fern-comp", "fern-comp's log")
+            fail(f"timed out waiting for {what} (last screenshot: {OUT}/comp-{name}.png)\n{logs}")
         c._read()
         time.sleep(2)
 
@@ -161,12 +162,22 @@ def main():
         ok("Super+Up: the window fills the screen")
 
         start_client(c, "--color ffffff00 --size 400x200 --blur")
-        gx, gy = placed(400, 200, size)
-        shot = wait_for(
-            c, "glass",
-            lambda s: is_blurred(s, gy + 100, gx + 60, gx + 340) and has_stripes(s, sy + 30, sx + 50, sx + 550),
-            "the blurred glass window",
+        # The new window takes focus: the striped window's titlebar (its
+        # middle is clear of the new one) turns the inactive colour.
+        wait_for(
+            c, "glass-open",
+            lambda s: near(s.pixel(sw * 3 // 4, GAP + TITLEBAR // 2 - 6), TITLEBAR_COLOURS[1], 3),
+            "the glass window taking focus",
         )
+        # The glass has focus: Super+Left puts it on the left half, over
+        # the stripes, the right half of which stays in view.
+        c.key("meta_l-left")
+        row = sh // 2
+
+        def glass_over_stripes(s):
+            return is_blurred(s, row, 60, sw // 2 - 60) and has_stripes(s, row, sw // 2 + 60, sw - 60)
+
+        shot = wait_for(c, "glass", glass_over_stripes, "the blurred glass window on the left half")
         ok("blur: the stripes behind the glass are smoothed, the rest stay sharp")
         # The striped window's bottom-left corner is cut: its corner pixel
         # shows the wallpaper, a pixel one radius in along the edge shows a
@@ -181,12 +192,7 @@ def main():
         wait_for(c, "tty2", lambda s: s.dark_fraction() > 0.9, "the console on tty2", 120)
         ok("Ctrl+Alt+F2: the console on tty2 (desktop paused)")
         c.key("ctrl-alt-f1")
-        wait_for(
-            c, "back",
-            lambda s: is_blurred(s, gy + 100, gx + 60, gx + 340) and has_stripes(s, sy + 30, sx + 50, sx + 550),
-            "the desktop after switching back",
-            180,
-        )
+        wait_for(c, "back", glass_over_stripes, "the desktop after switching back", 180)
         ok("Ctrl+Alt+F1: the desktop is back")
 
         c.send("fernctl poweroff\n")
