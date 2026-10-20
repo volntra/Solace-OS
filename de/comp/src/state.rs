@@ -10,6 +10,7 @@ use smithay::{
     reexports::{
         calloop::{
             EventLoop, Interest, LoopHandle, LoopSignal, Mode, PostAction, generic::Generic,
+            ping::Ping,
         },
         wayland_server::{
             Display, DisplayHandle,
@@ -59,6 +60,9 @@ pub struct Comp {
     pub syncobj_state: Option<smithay::wayland::drm_syncobj::DrmSyncobjState>,
     /// For work that waits on file descriptors (GPU fences).
     pub loop_handle: LoopHandle<'static, LoopData>,
+    /// Wakes the backend when something changed (set by backends that
+    /// render on demand).
+    pub redraw: Option<Ping>,
 
     pub seat: Seat<Self>,
     /// A request for the session owner (the DRM backend), set by input.
@@ -146,6 +150,7 @@ impl Comp {
             #[cfg(feature = "drm")]
             syncobj_state: None,
             loop_handle: event_loop.handle(),
+            redraw: None,
             seat,
             session_request: None,
         })
@@ -263,6 +268,13 @@ impl Comp {
         self.space.map_element(window.clone(), (x, y), true);
         // A new window comes to the front with focus.
         self.focus(Some(window));
+    }
+
+    /// Something on screen may have changed: render soon.
+    pub fn request_redraw(&self) {
+        if let Some(ping) = &self.redraw {
+            ping.ping();
+        }
     }
 
     /// After a frame was shown on `output`: frame callbacks to every

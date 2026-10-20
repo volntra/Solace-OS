@@ -57,6 +57,7 @@ impl CompositorHandler for Comp {
 
         xdg_shell::handle_commit(&mut self.popups, &self.space, surface);
         resize_grab::handle_commit(&mut self.space, surface);
+        self.request_redraw();
     }
 }
 

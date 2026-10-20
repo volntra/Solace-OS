@@ -5,7 +5,8 @@
 //!
 //! Each connected display gets its own render loop: render, queue the
 //! frame, wait for its vblank, render again. When nothing changed, the
-//! frame is skipped and the next one checked a refresh period later.
+//! display goes idle until a client commits or input arrives, and renders
+//! at once then (not at the next timer tick: that cost refreshes).
 
 use std::{
     cell::RefCell,
@@ -47,6 +48,7 @@ use smithay::{
     reexports::{
         calloop::{
             EventLoop, LoopHandle,
+            ping::make_ping,
             timer::{TimeoutAction, Timer},
         },
         drm::control::{Device as _, ModeTypeFlags, connector, crtc},
@@ -77,14 +79,31 @@ type Out = DrmOutput<Allocator, Exporter, (), DrmDeviceFd>;
 /// Scan-out formats we ask for, best first.
 const FORMATS: [Fourcc; 2] = [Fourcc::Abgr8888, Fourcc::Argb8888];
 
+/// A display's render loop.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LoopState {
+    /// Not rendering (the session is paused, or the display is gone).
+    Stopped,
+    /// A render is scheduled.
+    Scheduled,
+    /// A frame is queued and waits for its vblank.
+    Queued,
+    /// The last render had nothing new: the next one waits for a change
+    /// (a client commit or input wakes it, see `Comp::request_redraw`).
+    Idle,
+}
+
 /// One connected display.
 struct Screen {
     output: Output,
     connector: connector::Handle,
     drm: Out,
     refresh: Duration,
-    /// Its render loop is running (stops while the session is paused).
-    running: bool,
+    /// Where its render loop is.
+    state: LoopState,
+    /// Frame callbacks are scheduled for a refresh period after an empty
+    /// frame (so clients asking only for callbacks cannot spin the loop).
+    callbacks_pending: bool,
     /// Frame timing, when `SOL_COMP_STATS` is set.
     stats: Option<FrameStats>,
 }
@@ -172,6 +191,17 @@ pub fn init(
         &seat,
     )?;
     gpu_clients(&drm, node, &mut data.state);
+    let (ping, wakeups) = make_ping()?;
+    data.state.redraw = Some(ping);
+    let d = Rc::clone(&drm);
+    event_loop
+        .handle()
+        .insert_source(wakeups, move |(), &mut (), data| {
+            if let Ok(mut drm) = d.try_borrow_mut() {
+                drm.wake(&mut data.state);
+            }
+        })
+        .map_err(|e| format!("event loop: {}", e.error))?;
 
     drm.borrow_mut().scan(&mut data.state);
     if drm.borrow().screens.is_empty() {
@@ -498,7 +528,8 @@ impl Drm {
                 connector: info.handle(),
                 drm,
                 refresh: Duration::from_micros(1_000_000_000 / millihertz),
-                running: false,
+                state: LoopState::Stopped,
+                callbacks_pending: false,
                 stats: std::env::var_os("SOL_COMP_STATS")
                     .map(|_| FrameStats::new(Duration::from_micros(1_000_000_000 / millihertz))),
             },
@@ -510,9 +541,9 @@ impl Drm {
     /// Starts a display's render loop if it is not running.
     fn start(&mut self, crtc: crtc::Handle) {
         if let Some(s) = self.screens.get_mut(&crtc)
-            && !s.running
+            && s.state == LoopState::Stopped
         {
-            s.running = true;
+            s.state = LoopState::Scheduled;
             self.after(Duration::ZERO, crtc);
         }
     }
@@ -535,17 +566,35 @@ impl Drm {
         }
     }
 
-    /// One turn of a display's loop.
+    /// Wakes idle displays: something changed (a commit, input).
+    fn wake(&mut self, state: &mut Comp) {
+        let idle: Vec<crtc::Handle> = self
+            .screens
+            .iter()
+            .filter(|(_, s)| s.state == LoopState::Idle)
+            .map(|(c, _)| *c)
+            .collect();
+        for crtc in idle {
+            self.render(crtc, state);
+        }
+    }
+
+    /// One turn of a display's loop: render, and queue the frame if
+    /// anything changed; otherwise wait for a change.
     fn render(&mut self, crtc: crtc::Handle, state: &mut Comp) {
         let Some(screen) = self.screens.get_mut(&crtc) else {
             return;
         };
         if !self.active {
-            screen.running = false;
+            screen.state = LoopState::Stopped;
+            return;
+        }
+        if screen.state == LoopState::Queued {
+            // The vblank renders next.
             return;
         }
         let Some(area) = state.space.output_geometry(&screen.output) else {
-            screen.running = false;
+            screen.state = LoopState::Stopped;
             return;
         };
         let mut elements: Vec<OutputElement> = Vec::new();
@@ -593,13 +642,40 @@ impl Drm {
                 false
             }
         };
-        if !queued {
-            // Nothing new on screen: clients still get their frame
-            // callbacks, and the next frame is checked a period later.
-            state.frame_shown(&screen.output);
-            let _ = state.display_handle.flush_clients();
+        screen.state = if queued {
+            LoopState::Queued
+        } else {
+            LoopState::Idle
+        };
+        if !queued && !screen.callbacks_pending {
+            // Nothing new on screen. Clients waiting for a frame callback
+            // get it a refresh period later, as if a frame had been shown.
+            screen.callbacks_pending = true;
             let refresh = screen.refresh;
-            self.after(refresh, crtc);
+            self.callbacks_after(refresh, crtc);
+        }
+    }
+
+    /// Sends the frame callbacks of an idle display after `delay`.
+    fn callbacks_after(&self, delay: Duration, crtc: crtc::Handle) {
+        let me = self.me.clone();
+        let timer = self
+            .handle
+            .insert_source(Timer::from_duration(delay), move |_, (), data| {
+                if let Some(drm) = me.upgrade()
+                    && let Ok(mut drm) = drm.try_borrow_mut()
+                    && let Some(screen) = drm.screens.get_mut(&crtc)
+                {
+                    screen.callbacks_pending = false;
+                    if screen.state == LoopState::Idle {
+                        data.state.frame_shown(&screen.output);
+                        let _ = data.state.display_handle.flush_clients();
+                    }
+                }
+                TimeoutAction::Drop
+            });
+        if let Err(e) = timer {
+            tracing::warn!("frame callback timer: {}", e.error);
         }
     }
 
@@ -608,6 +684,7 @@ impl Drm {
         let Some(screen) = self.screens.get_mut(&crtc) else {
             return;
         };
+        screen.state = LoopState::Scheduled;
         if let (Some(stats), Some(at)) = (screen.stats.as_mut(), at)
             && let Some(report) = stats.presented(at)
         {
@@ -625,6 +702,10 @@ impl Drm {
     fn pause(&mut self) {
         tracing::info!("session paused");
         self.active = false;
+        // Every loop restarts with a full frame when the session returns.
+        for screen in self.screens.values_mut() {
+            screen.state = LoopState::Stopped;
+        }
         self.libinput.suspend();
         self.manager.pause();
     }

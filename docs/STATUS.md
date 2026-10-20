@@ -1,6 +1,6 @@
 # Status
 
-_Last updated: 2026-10-19 (session 2)_
+_Last updated: 2026-10-20_
 
 Repository: https://github.com/volntra/Solace-OS (`main`).
 
@@ -10,13 +10,19 @@ Stages: 1 foundation ✓, 2 renderer ✓ (corners, shadows, wallpaper,
 background blur), 3 headless backend + pixel tests ✓, 4 graphics base
 recipes ✓, 5 DRM backend on the QEMU image ✓, 6 NVIDIA support ✓ (built,
 not run: no NVIDIA GPU here); left: 165 Hz on the human's machine, which
-only the human can run (below).
+only the human can run (below). First run on the RTX 5070 Ti (2026-10-20):
+wallpaper, corners, shadow and cursor correct, 160 fps of 165. The loop
+then waited a whole refresh on a timer after any frame with nothing new,
+missing about 5 refreshes a second; it now draws as soon as a client
+commits or input arrives. To be re-measured.
 
 **On the human's NVIDIA machine (the Phase 4 hardware check):**
 
 ```sh
 # NixOS, in a text console: Ctrl+Alt+F3, log in, then
-cd ~/solace-os && nix develop
+cd ~/solace-os && git pull
+nix --extra-experimental-features 'nix-command flakes' develop
+just wallpapers          # once: renders the wallpaper
 just comp-drm            # sol-comp on the real display + an animated window
                          # Ctrl+Alt+Backspace quits; timing in build/comp-drm.log
 ```

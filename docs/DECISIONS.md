@@ -675,3 +675,23 @@ entry names a recipe that does not exist.
   frame per frame callback), so the 165 Hz target can be checked on the
   human's machine before Solace itself runs there.
 
+
+### 2026-10-20: Event-driven redraws on the real display (Phase 4)
+
+First hardware run on the RTX 5070 Ti: 160 fps against a 165 Hz display.
+After a frame with no damage the DRM loop slept a full refresh on a timer
+before trying again, so a client commit that landed just after an empty
+frame missed the next vblank (about 5 a second).
+
+- **Decision:** each display is in one of four states (stopped, a frame
+  scheduled, a frame queued for vblank, idle). A client commit or an
+  input event pings the loop, which draws every idle display at once; a
+  queued display draws again on its vblank. Frame callbacks are still
+  paced to the refresh while nothing changes, so idle clients do not spin.
+- **Client flush:** replies to clients are flushed after every event-loop
+  wake-up, not only after a frame, since an idle display draws nothing and
+  a new window would otherwise wait forever for its configure (caught by
+  `just qemu-test-comp`).
+- **Alternatives:** a shorter timer (still adds latency and wakes an idle
+  machine); always rendering every vblank (wastes power and defeats damage
+  tracking).

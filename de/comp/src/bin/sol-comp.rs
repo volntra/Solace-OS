@@ -89,6 +89,11 @@ fn run(backend: Backend, client: &[String]) -> Result<(), Box<dyn std::error::Er
         // The compositor keeps running; the client is the one that failed.
         tracing::warn!("could not start {cmd}: {e}");
     }
-    event_loop.run(None, &mut data, |_| {})?;
+    // Replies to client requests (configures, pings, buffer releases) go
+    // out after every wake-up, not only when a frame is drawn: an idle
+    // display draws nothing, and a new window waits for its configure.
+    event_loop.run(None, &mut data, |data| {
+        let _ = data.display_handle.flush_clients();
+    })?;
     Ok(())
 }

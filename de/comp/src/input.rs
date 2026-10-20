@@ -34,6 +34,8 @@ pub fn session_key(modifiers: ModifiersState, sym: Keysym) -> Option<SessionRequ
 
 impl Comp {
     pub fn process_input_event<I: InputBackend>(&mut self, event: InputEvent<I>) {
+        // The pointer may move, a window may move or take focus.
+        self.request_redraw();
         match event {
             InputEvent::Keyboard { event, .. } => self.on_key::<I>(&event),
             InputEvent::PointerMotion { event, .. } => self.on_pointer_relative::<I>(&event),
