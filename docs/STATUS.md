@@ -6,6 +6,14 @@ Repository: https://github.com/volntra/Solace-OS (`main`).
 
 ## Current phase: 4 (compositor core): done (2026-10-20); next: 5 (fern-wm)
 
+**Renamed 2026-10-20: Solace is now Fern** (prefix `fern`; logo a simple
+pine tree; green palette; Grove wallpaper; boot menu with a frosted panel,
+countdown bar and key hints; see DECISIONS.md). After the rename the
+whole system was rebuilt and `just qemu-test`, `just qemu-test-comp` and
+`just qemu-test-update` all pass. Local package repositories made before
+the rename hold `.solpkg` files the new spk refuses: delete `build/` (or
+its `repo` directories) and run `just bootstrap` again.
+
 Stages: 1 foundation ✓, 2 renderer ✓ (corners, shadows, wallpaper,
 background blur), 3 headless backend + pixel tests ✓, 4 graphics base
 recipes ✓, 5 DRM backend on the QEMU image ✓, 6 NVIDIA support ✓ (built,
