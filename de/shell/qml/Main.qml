@@ -66,9 +66,13 @@ QtObject {
     // The wallpaper of the current mode, crossfaded by the compositor.
     readonly property string wallpaperPath: Theme.dark && (wallpaper.dark ?? "").length ? wallpaper.dark : (wallpaper.light ?? "")
     onWallpaperPathChanged: Compositor.setWallpaper(wallpaperPath)
+    // Titlebars follow the appearance too.
+    readonly property bool dark: Theme.dark
+    onDarkChanged: Compositor.setDarkMode(dark)
     Component.onCompleted: {
         Compositor.setWallpaper(wallpaperPath)
         Compositor.setColorTemperature(colorTemperature)
+        Compositor.setDarkMode(Theme.dark)
         // Super+Space: Search. The volume and brightness keys.
         Compositor.bindKey(1, 8, 0x20)
         Compositor.bindKey(2, 0, 0x1008FF13)

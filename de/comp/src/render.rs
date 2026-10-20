@@ -500,6 +500,8 @@ pub struct Visual {
     pub hover: bool,
     /// Fullscreen: square corners and no shadow.
     pub square: bool,
+    /// Dark mode: the titlebar in the dark palette.
+    pub dark: bool,
 }
 
 impl Visual {
@@ -511,6 +513,7 @@ impl Visual {
         titlebar: 0,
         hover: false,
         square: false,
+        dark: false,
     };
 }
 
@@ -1007,18 +1010,41 @@ const TITLE_SIZE: f32 = 13.0;
 const fn rgb(r: u8, g: u8, b: u8) -> [f32; 4] {
     [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 1.0]
 }
-const TITLEBAR_ACTIVE: [f32; 4] = rgb(0xEA, 0xEC, 0xE7);
-const TITLEBAR_INACTIVE: [f32; 4] = rgb(0xF3, 0xF4, 0xF1);
-const SEPARATOR: [f32; 4] = [0.0, 0.0, 0.0, 0.09];
+/// The titlebar's colours in one appearance (HIG: Window; the dark ones
+/// match the design system's dark window and text).
+struct Chrome {
+    active: [f32; 4],
+    inactive: [f32; 4],
+    separator: [f32; 4],
+    light_off: [f32; 4],
+    title_active: [f32; 4],
+    title_inactive: [f32; 4],
+}
+const LIGHT: Chrome = Chrome {
+    active: rgb(0xEA, 0xEC, 0xE7),
+    inactive: rgb(0xF3, 0xF4, 0xF1),
+    separator: [0.0, 0.0, 0.0, 0.09],
+    light_off: rgb(0xD3, 0xD6, 0xD0),
+    title_active: [0.063, 0.082, 0.071, 0.85],
+    title_inactive: [0.063, 0.082, 0.071, 0.40],
+};
+const DARK: Chrome = Chrome {
+    active: rgb(0x2A, 0x30, 0x2C),
+    inactive: rgb(0x22, 0x27, 0x24),
+    separator: [0.0, 0.0, 0.0, 0.45],
+    light_off: rgb(0x4A, 0x50, 0x4C),
+    title_active: [0.949, 0.957, 0.941, 0.85],
+    title_inactive: [0.949, 0.957, 0.941, 0.40],
+};
+const fn chrome(dark: bool) -> &'static Chrome {
+    if dark { &DARK } else { &LIGHT }
+}
 /// Close, minimize, zoom (our own colours, not anyone else's).
 const LIGHTS: [[f32; 4]; 3] = [
     rgb(0xEE, 0x5D, 0x50),
     rgb(0xF2, 0xB5, 0x3A),
     rgb(0x3D, 0xB8, 0x62),
 ];
-const LIGHT_OFF: [f32; 4] = rgb(0xD3, 0xD6, 0xD0);
-const TITLE_ACTIVE: [f32; 4] = [0.063, 0.082, 0.071, 0.85];
-const TITLE_INACTIVE: [f32; 4] = [0.063, 0.082, 0.071, 0.40];
 
 /// Premultiplies `c` and fades it by `alpha`.
 fn premul(c: [f32; 4], alpha: f32) -> [f32; 4] {
@@ -1052,10 +1078,11 @@ fn decorations(
     );
     #[allow(clippy::cast_possible_truncation)]
     let r = (WINDOW_RADIUS * zoom) as f32;
+    let colours = chrome(vis.dark);
     let bg = if active {
-        TITLEBAR_ACTIVE
+        colours.active
     } else {
-        TITLEBAR_INACTIVE
+        colours.inactive
     };
     let cache = window.user_data().get_or_insert(ShapeCache::default);
     let shape = |slot, rect, color, radii, border: f32, border_color| {
@@ -1085,13 +1112,15 @@ fn decorations(
     out.push_front(shape(
         1,
         line,
-        premul(SEPARATOR, vis.alpha),
+        premul(colours.separator, vis.alpha),
         [0.0; 4],
         0.0,
         [0.0; 4],
     ));
     // The title, centred, clear of the buttons.
-    if let Some((buffer, (bw, bh))) = title_buffer(shaders, window, active, frame.size.w / zoom) {
+    if let Some((buffer, (bw, bh))) =
+        title_buffer(shaders, window, active, vis.dark, frame.size.w / zoom)
+    {
         let (tw, th) = (f64::from(bw) * zoom, f64::from(bh) * zoom);
         let x = (bar.loc.x + (bar.size.w - tw) / 2.0).max(bar.loc.x + TITLE_INSET * zoom);
         let y = bar.loc.y + (bar.size.h - th) / 2.0;
@@ -1124,7 +1153,7 @@ fn decorations(
         let c = if active || vis.hover {
             *colour
         } else {
-            LIGHT_OFF
+            colours.light_off
         };
         #[allow(clippy::cast_possible_truncation)]
         let slot = 2 + i as u32;
@@ -1228,13 +1257,15 @@ fn cached_shape(
 #[derive(Default)]
 struct TitleCache(RefCell<Option<TitleEntry>>);
 
-/// What a title was rendered from (text, active, room) and the result.
-type TitleEntry = (String, bool, i32, Option<Rendered>);
+/// What a title was rendered from (text, active, dark, room) and the
+/// result.
+type TitleEntry = (String, bool, bool, i32, Option<Rendered>);
 
 fn title_buffer(
     shaders: &Shaders,
     window: &Window,
     active: bool,
+    dark: bool,
     frame_width: f64,
 ) -> Option<Rendered> {
     let title = window.toplevel().map(|t| {
@@ -1251,14 +1282,19 @@ fn title_buffer(
     let max = (frame_width - 2.0 * TITLE_INSET).max(0.0) as i32;
     let cache = window.user_data().get_or_insert(TitleCache::default);
     let mut slot = cache.0.borrow_mut();
-    if let Some((t, a, m, buf)) = slot.as_ref()
+    if let Some((t, a, d, m, buf)) = slot.as_ref()
         && *t == title
         && *a == active
+        && *d == dark
         && *m == max
     {
         return buf.clone();
     }
-    let colour = if active { TITLE_ACTIVE } else { TITLE_INACTIVE };
+    let colour = if active {
+        chrome(dark).title_active
+    } else {
+        chrome(dark).title_inactive
+    };
     #[allow(clippy::cast_precision_loss)]
     let line = shaders
         .fonts
@@ -1276,7 +1312,7 @@ fn title_buffer(
             (l.width, l.height),
         )
     });
-    *slot = Some((title, active, max, buf.clone()));
+    *slot = Some((title, active, dark, max, buf.clone()));
     buf
 }
 

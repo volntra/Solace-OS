@@ -109,28 +109,31 @@ def foreground_tree():
     return spruce(rnd, W * 0.035, H * 1.08, H * 1.25)[0]
 
 
-def night(colour):
-    """A ridge colour at night: darker, cooler."""
-    r, g, b = (int(colour[i:i + 2], 16) for i in (1, 3, 5))
-    t = (0x0A, 0x16, 0x1C)
-    mix = [round(c * 0.38 + d * 0.62) for c, d in zip((r, g, b), t)]
-    return "#" + "".join(f"{c:02X}" for c in mix)
+# The ridges at night, far to near: each a step darker than the moonlit
+# mist behind it (never lighter than the sky above it, or the gaps between
+# the far trees read as trees), keeping a little of Fern's green.
+NIGHT_RIDGES = ["#34483F", "#2B3F37", "#21352D", "#182A23", "#0F1F19", "#08140F"]
 
 
 def scene(blurred, at_night=False):
-    sky = (["#070E12", "#0F1D22", "#1C2F33", "#2A3E3E"] if at_night
+    # At night the sky deepens to a blue-green black overhead and lightens
+    # to moonlit mist at the horizon, lighter than the farthest ridge.
+    sky = (["#050B0F", "#0A1719", "#2A3E3A", "#4C615A"] if at_night
            else ["#3D5A4E", "#7E998B", "#C6D5C6", "#E4EBDD"])
-    glow = ([("#DCE6F0", 0.55), ("#B9C9D6", 0.22), ("#8FA3B0", 0.07), ("#8FA3B0", 0)] if at_night
+    # Where the sky's colours sit (fractions of 0.6 H): at night the mist
+    # glow must already be there at the farthest ridge (0.45 H).
+    stops = (0, 0.32, 0.6, 0.74) if at_night else (0, 0.35, 0.75, 1)
+    glow = ([("#E4ECF2", 0.42), ("#B7C8D0", 0.20), ("#7F959C", 0.07), ("#7F959C", 0)] if at_night
             else [("#FFF4D8", 0.8), ("#F8EFD4", 0.5), ("#EEF0DA", 0.2), ("#EEF0DA", 0)])
-    glow_r = W * (0.22 if at_night else 0.42)
-    fog_rgb = "0.36 0.43 0.46" if at_night else "0.85 0.89 0.84"
-    fog_colour = "#4C5E62" if at_night else FOG
+    glow_r = W * (0.34 if at_night else 0.42)
+    fog_rgb = "0.50 0.58 0.58" if at_night else "0.85 0.89 0.84"
+    fog_colour = "#5B6F6B" if at_night else FOG
     defs = [f"""
     <linearGradient id="sky" x1="0" y1="0" x2="0" y2="{H * 0.6}" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="{sky[0]}"/>
-      <stop offset="0.35" stop-color="{sky[1]}"/>
-      <stop offset="0.75" stop-color="{sky[2]}"/>
-      <stop offset="1" stop-color="{sky[3]}"/>
+      <stop offset="{stops[0]}" stop-color="{sky[0]}"/>
+      <stop offset="{stops[1]}" stop-color="{sky[1]}"/>
+      <stop offset="{stops[2]}" stop-color="{sky[2]}"/>
+      <stop offset="{stops[3]}" stop-color="{sky[3]}"/>
     </linearGradient>
     <radialGradient id="sun" cx="{SUN[0]}" cy="{SUN[1]}" r="{glow_r}" gradientUnits="userSpaceOnUse"
                     gradientTransform="translate({SUN[0]} {SUN[1]}) scale(1 0.8) translate({-SUN[0]} {-SUN[1]})">
@@ -142,6 +145,16 @@ def scene(blurred, at_night=False):
     <radialGradient id="vignette" cx="{W / 2}" cy="{H * 0.45}" r="{W * 0.62}" gradientUnits="userSpaceOnUse">
       <stop offset="0.55" stop-color="#06100B" stop-opacity="0"/>
       <stop offset="1" stop-color="#06100B" stop-opacity="0.55"/>
+    </radialGradient>
+    <radialGradient id="moon" cx="0.42" cy="0.40" r="0.65">
+      <stop offset="0" stop-color="#FBFCF8"/>
+      <stop offset="0.7" stop-color="#E9EEEC"/>
+      <stop offset="1" stop-color="#C9D3D2"/>
+    </radialGradient>
+    <radialGradient id="moonhalo">
+      <stop offset="0.3" stop-color="#E6EEF0" stop-opacity="0.35"/>
+      <stop offset="0.55" stop-color="#C8D6D8" stop-opacity="0.12"/>
+      <stop offset="1" stop-color="#C8D6D8" stop-opacity="0"/>
     </radialGradient>
     <filter id="grain" x="0" y="0" width="100%" height="100%">
       <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" seed="11" result="n"/>
@@ -197,14 +210,23 @@ def scene(blurred, at_night=False):
         stars = []
         for _ in range(140):
             x, y = rnd.uniform(0, W), rnd.uniform(0, H * 0.4) ** 1.0
-            stars.append(f'<circle cx="{f(x)}" cy="{f(y)}" r="{rnd.uniform(0.8, 2.0):.1f}" '
-                         f'fill="#E8EEF4" opacity="{rnd.uniform(0.15, 0.7) * (1 - y / (H * 0.45)):.2f}"/>')
+            # Fading into the mist towards the horizon, and around the moon.
+            fade = (1 - y / (H * 0.45)) * min(1.0, math.hypot(x - SUN[0], y - SUN[1]) / 260)
+            r = rnd.uniform(0.8, 2.0) if rnd.random() > 0.06 else rnd.uniform(2.2, 2.8)
+            stars.append(f'<circle cx="{f(x)}" cy="{f(y)}" r="{r:.1f}" '
+                         f'fill="#E8EEF4" opacity="{rnd.uniform(0.2, 0.8) * fade:.2f}"/>')
         body.append("".join(stars))
-        body.append(f'<circle cx="{f(SUN[0])}" cy="{f(SUN[1])}" r="38" fill="#EEF2F4" opacity="0.92"/>')
+        # The moon: a soft halo, a disc lit a little from one side, faint
+        # seas on it.
+        mx, my = SUN
+        body.append(f'<circle cx="{f(mx)}" cy="{f(my)}" r="120" fill="url(#moonhalo)"/>')
+        body.append(f'<circle cx="{f(mx)}" cy="{f(my)}" r="40" fill="url(#moon)"/>')
+        for dx, dy, r, o in [(-12, -8, 11, 0.10), (9, 6, 8, 0.08), (-4, 14, 6, 0.07), (14, -12, 5, 0.06)]:
+            body.append(f'<circle cx="{f(mx + dx)}" cy="{f(my + dy)}" r="{r}" fill="#8C9AA2" opacity="{o}"/>')
     for i, (base_f, amp, heights, spacing, colour, soft, fog) in enumerate(RIDGES):
         ground, trees = ridge(i, base_f, amp, heights, spacing)
         filt = f' filter="url(#soft{i})"' if soft > 0 else ""
-        fill = night(colour) if at_night else colour
+        fill = NIGHT_RIDGES[i] if at_night else colour
         body.append(f'<g fill="{fill}"{filt}><path d="{ground}"/><path d="{trees}"/></g>')
         if fog > 0:
             # A smooth haze over this ridge's foot, then wisps of fog on it.

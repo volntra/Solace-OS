@@ -1237,6 +1237,7 @@ impl Comp {
             hover: self.wm.hover.is_some_and(|h| Some(h) == win_id(window)),
             // The protocol's `fullscreen` state.
             square: rec.states & 4 != 0,
+            dark: self.dark,
             ..Visual::IDENTITY
         };
         if !rec.anim.started {

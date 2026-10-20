@@ -65,6 +65,8 @@ Compositor::Compositor(QObject *parent)
             m_ext->set_wallpaper(m_wallpaper);
         if (m_ext->isActive() && m_kelvin > 0)
             m_ext->set_color_temperature(uint32_t(m_kelvin));
+        if (m_ext->isActive() && m_dark)
+            m_ext->set_dark_mode(1);
         emit activeChanged();
     });
 }
@@ -127,6 +129,15 @@ void Compositor::setColorTemperature(int kelvin)
     m_kelvin = kelvin;
     if (m_ext->isActive())
         m_ext->set_color_temperature(uint32_t(kelvin));
+}
+
+void Compositor::setDarkMode(bool dark)
+{
+    if (dark == m_dark)
+        return;
+    m_dark = dark;
+    if (m_ext->isActive())
+        m_ext->set_dark_mode(dark ? 1 : 0);
 }
 
 int Compositor::screenshot(const QRect &area)

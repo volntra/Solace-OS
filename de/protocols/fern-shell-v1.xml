@@ -69,6 +69,16 @@
       <arg name="height" type="int"/>
     </request>
 
+    <request name="set_dark_mode">
+      <description summary="the appearance of what the compositor draws">
+        Non-zero: dark mode. The compositor draws window titlebars (and
+        whatever else of its own it shows) in the dark palette from the
+        next frame on. The shell sends it whenever the appearance
+        changes, and once after binding.
+      </description>
+      <arg name="dark" type="uint"/>
+    </request>
+
     <request name="bind_key">
       <description summary="a global shortcut for the shell">
         Pressing keysym with exactly these modifiers (shift 1, ctrl 2, alt

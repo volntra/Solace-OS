@@ -1466,17 +1466,18 @@ fn wm_shell_desktop(h: &mut Harness) -> Result {
     // Night Shift, turned on in the settings: the shell asks the
     // compositor for warm colours (warmth 60: 4020 K), and for neutral
     // ones when it is turned off.
-    let set = |key: &str, value: Value<'_>| {
+    let setting = |domain: &str, key: &str, value: Value<'_>| {
         conn.call_method(
             Some("org.fern.Settings"),
             "/org/fern/Settings",
             Some("org.fern.Settings1"),
             "Set",
-            &("nightshift", key, value),
+            &(domain, key, value),
         )
         .map(|_| ())
-        .map_err(|e| format!("Set nightshift.{key}: {e}"))
+        .map_err(|e| format!("Set {domain}.{key}: {e}"))
     };
+    let set = |key: &str, value: Value<'_>| setting("nightshift", key, value);
     set("manual", true.into())?;
     wait_long(h, "Night Shift did not warm the colours", |h| {
         h.data.state.color_temperature == 4020
@@ -1526,6 +1527,47 @@ fn wm_shell_desktop(h: &mut Harness) -> Result {
         sizes == vec![(200, 150), (SIZE.0.cast_unsigned(), SIZE.1.cast_unsigned())],
         || format!("screenshot sizes {sizes:?}"),
     )?;
+
+    // Dark mode with Grove at night (`just wallpapers` renders the pair):
+    // the menu bar turns dark and the compositor crossfades to the night
+    // picture; back to light, back to Grove by day.
+    let walls = root.join("build/wallpapers");
+    if walls.join("grove-night.png").is_file() {
+        let path = |name: &str| Value::from(walls.join(name).display().to_string());
+        setting("wallpaper", "light", path("grove.png"))?;
+        setting("wallpaper", "dark", path("grove-night.png"))?;
+        let sky = |h: &mut Harness| -> std::result::Result<f64, String> {
+            Ok(luma(h.shot("theme")?.pixel(SIZE.0 / 2, 60)))
+        };
+        settle_for(h, Duration::from_secs(2))?;
+        let day = sky(h)?;
+        setting("appearance", "theme", "dark".into())?;
+        // The fade takes 0.88 s.
+        settle_for(h, Duration::from_secs(3))?;
+        let img = h.shot("dark")?;
+        let (night, bar) = (
+            luma(img.pixel(SIZE.0 / 2, 60)),
+            luma(img.pixel(SIZE.0 / 2, 14)),
+        );
+        check(night < 70.0 && day > 120.0, || {
+            format!("the sky did not turn to night: {day:.0} by day, {night:.0} at night")
+        })?;
+        check(bar < 70.0, || {
+            format!("the menu bar did not turn dark: {bar:.0}")
+        })?;
+        check(h.data.state.dark, || {
+            "the titlebars did not turn dark".into()
+        })?;
+        setting("appearance", "theme", "light".into())?;
+        settle_for(h, Duration::from_secs(3))?;
+        let again = sky(h)?;
+        check(again > 120.0, || {
+            format!("the sky did not turn back to day: {again:.0}")
+        })?;
+        check(!h.data.state.dark, || "the titlebars stayed dark".into())?;
+    } else {
+        println!("    dark mode skipped: no build/wallpapers (just wallpapers)");
+    }
     Ok(())
 }
 

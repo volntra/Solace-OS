@@ -525,6 +525,10 @@ impl Dispatch<FernShellV1, ()> for Comp {
                     area,
                 });
             }
+            R::SetDarkMode { dark } => {
+                state.dark = dark != 0;
+                state.request_redraw();
+            }
             R::BindKey {
                 id,
                 modifiers,

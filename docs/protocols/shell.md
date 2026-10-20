@@ -76,6 +76,8 @@ XML: `de/protocols/fern-shell-v1.xml`.
   ("Screenshot 2026-10-20 at 21.04.07.png", never overwriting) and posts
   a notification with a thumbnail. Keys: Shift+Super+3 (and Print) the
   display, Shift+Super+4 a dragged rectangle; also in Search.
+- `set_dark_mode(dark)`: the shell follows the appearance setting and
+  tells the core, which draws window titlebars in the dark palette.
 - `app_menu(service, path)` (event): where the active window's menus are,
   sent on bind and whenever it changes; empty strings when it has none.
 

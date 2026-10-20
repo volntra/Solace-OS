@@ -82,6 +82,8 @@ pub struct Comp {
     /// Night Shift's colour temperature, kelvin; 0 is neutral
     /// (`crate::nightshift`). The DRM backend applies it.
     pub color_temperature: u32,
+    /// Dark mode, as the shell says: titlebars in the dark palette.
+    pub dark: bool,
     /// Screenshots the shell asked for (`crate::screenshot`).
     pub screenshots: Vec<crate::screenshot::Request>,
     /// The shell's bindings and blur, and the work areas (`crate::layers`).
@@ -186,6 +188,7 @@ impl Comp {
             appmenus: crate::appmenu::AppMenus::default(),
             color_temperature: 0,
             screenshots: Vec::new(),
+            dark: false,
             shell: crate::layers::Shell::default(),
             wallpaper_request: None,
         }

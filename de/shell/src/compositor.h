@@ -63,6 +63,8 @@ public:
     Q_INVOKABLE void setWallpaper(const QString &path);
     // Night Shift: colours as warm as this many kelvin; 0 is neutral.
     Q_INVOKABLE void setColorTemperature(int kelvin);
+    // Dark mode for what the compositor draws (titlebars).
+    Q_INVOKABLE void setDarkMode(bool dark);
     // A screenshot of this rectangle of the desktop (empty: the display
     // under the pointer) on the next frame; screenshotTaken or
     // screenshotFailed follow with the returned id (-1: no compositor).
@@ -83,6 +85,7 @@ private:
     QString m_wallpaper;
     QString m_menuService, m_menuPath;
     int m_kelvin = 0;
+    bool m_dark = false;
     int m_lastShot = 0;
     bool m_wallpaperSet = false;
 };

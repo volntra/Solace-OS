@@ -3,7 +3,7 @@
 # a recipe; the output is data generated from our own sources.
 name = "fern-wallpapers"
 version = "0.1"
-release = 2
+release = 3
 summary = "Fern wallpapers"
 license = "GPL-3.0-or-later"
 
