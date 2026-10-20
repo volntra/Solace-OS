@@ -705,6 +705,10 @@ impl Drm {
         // Every loop restarts with a full frame when the session returns.
         for screen in self.screens.values_mut() {
             screen.state = LoopState::Stopped;
+            // Timing restarts too: a report never spans time away.
+            if let Some(stats) = &mut screen.stats {
+                *stats = FrameStats::new(screen.refresh);
+            }
         }
         self.libinput.suspend();
         self.manager.pause();

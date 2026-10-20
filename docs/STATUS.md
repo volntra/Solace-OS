@@ -4,7 +4,7 @@ _Last updated: 2026-10-20_
 
 Repository: https://github.com/volntra/Solace-OS (`main`).
 
-## Current phase: 4 (compositor core): in progress
+## Current phase: 4 (compositor core): done (2026-10-20); next: 5 (sol-wm)
 
 Stages: 1 foundation ✓, 2 renderer ✓ (corners, shadows, wallpaper,
 background blur), 3 headless backend + pixel tests ✓, 4 graphics base
@@ -16,10 +16,16 @@ then waited a whole refresh on a timer after any frame with nothing new,
 missing about 5 refreshes a second; it now draws as soon as a client
 commits or input arrives. Second run (one animated 1600x1000 window, on
 DP-1, whose preferred mode is 180 Hz): **180.1 fps, 5.55 ms average frame
-interval, 0 missed refreshes**, above the 165 Hz target. Left: the same
-check under the full CLAUDE.md 6.5 load, which `just comp-drm` now runs
-(three animated windows plus a dock-sized glass panel re-blurring them
-every frame). The dock itself arrives in Phase 6.
+interval, 0 missed refreshes**, above the 165 Hz target. Third run, the
+full CLAUDE.md 6.5 load (`just comp-drm`: three animated windows plus a
+dock-sized glass panel re-blurring them every frame, 2560x1440 @ 180 Hz):
+**180.2 and 180.1 fps, 5.55 ms average, 6.34 ms worst, 0 missed
+refreshes**. The hardware milestone is met. One page flip in that run
+failed with EACCES (the session no longer held the display, as when
+another VT takes it) and drawing resumed by itself; the summary now shows
+session pause/resume lines and timing restarts after a pause, so a next
+run tells whether a VT switch was the cause. (The dock itself arrives in
+Phase 6.)
 
 **On the human's NVIDIA machine (the Phase 4 hardware check):**
 
@@ -412,7 +418,6 @@ Phase 1's demo still works: `just demo`.
    demo with a window (`just qemu --update build/demo/update.img`), and
    look at the desktop in a window (`just qemu`; with host 3D, try
    `-device virtio-vga-gl -display gtk,gl=on` for virgl).
-2. The Phase 4 hardware check on the human's PC (`just comp-drm`, above):
-   sol-comp at 165 Hz on the RTX 5070 Ti, plus whether GPU clients
-   (e.g. a browser or `glxgears`-style EGL demos) show windows. Then
-   Phase 5 (sol-wm).
+2. Phase 5 (sol-wm). Still to try on the human's PC: GPU clients (e.g.
+   a browser or EGL demos) under `just comp-drm`, and `just comp` nested
+   in the NixOS desktop.

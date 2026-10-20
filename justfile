@@ -110,7 +110,7 @@ comp-drm SIZE="1600x1000":
         $c --color ffffff30 --blur --size 1200x110 --title dock & \
         wait' \
       2> build/comp-drm.log || true
-    @grep -E "display ready|fps|WARN|ERROR" build/comp-drm.log | tail -20 || true
+    @grep -E "display ready|session|fps|WARN|ERROR" build/comp-drm.log | tail -20 || true
 
 # Compositor pixel tests: headless sol-comp, real clients, screenshots
 # (kept in target/tmp/sol-comp-render/). Also part of `just check`.

@@ -699,3 +699,7 @@ frame missed the next vblank (about 5 a second).
   animated window went from 160 to 180.1 fps with 0 missed refreshes.
   sol-comp's logs now go to stderr, uncoloured unless it is a terminal (they
   went to stdout, so `just comp-drm` kept an empty log file).
+  Under the full 6.5 load (three animated windows plus a dock-sized
+  glass panel re-blurring them) it held 180.2 fps with 0 missed refreshes:
+  Phase 4's hardware milestone. Frame timing restarts when the session
+  pauses, so a report never mixes in time spent on another VT.
