@@ -628,6 +628,87 @@ fn wm_tiling(h: &mut Harness) -> Result {
     )
 }
 
+/// Presses and releases a key the way the keyboard does (the binding
+/// lookup included): `mods` as the protocol's modifier bits.
+fn key(h: &mut Harness, mods: u32, keysym: u32) -> Result {
+    use smithay::input::keyboard::ModifiersState;
+    let state = ModifiersState {
+        shift: mods & 1 != 0,
+        ctrl: mods & 2 != 0,
+        alt: mods & 4 != 0,
+        logo: mods & 8 != 0,
+        ..ModifiersState::default()
+    };
+    let keycode = 100;
+    let action = h.data.state.key_action(keycode, true, &state, keysym);
+    check(action.is_some(), || {
+        format!("{keysym:#x} with {mods} is not bound")
+    })?;
+    if let Some(a) = action {
+        h.data.state.wm_key_event(a);
+    }
+    if let Some(a) = h.data.state.key_action(keycode, false, &state, keysym) {
+        h.data.state.wm_key_event(a);
+    }
+    h.settle()
+}
+
+fn shown(h: &Harness, i: usize) -> bool {
+    h.data.state.space.elements().any(|w| *w == h.windows[i])
+}
+
+fn wm_spaces(h: &mut Harness) -> Result {
+    const CTRL_SUPER: u32 = 2 | 8;
+    const SHIFT: u32 = 1;
+    const LEFT: u32 = 0xff51;
+    const RIGHT: u32 = 0xff53;
+    h.open("--color ff5a5fff --size 300x200 --title One")?;
+    h.open("--color 3a86ffff --size 300x200 --title Two")?;
+    let (home0, home1) = (h.location(0), h.location(1));
+    // Carry Two to the right: a new Space; One slides away.
+    key(h, CTRL_SUPER | SHIFT, RIGHT)?;
+    h.shot("space-2")?;
+    check(!shown(h, 0) && shown(h, 1), || {
+        format!("after carrying: shown {} {}", shown(h, 0), shown(h, 1))
+    })?;
+    check(h.focused(1), || "the carried window lost focus".into())?;
+    check(h.location(1) == home1, || {
+        format!("the carried window moved: {:?}", h.location(1))
+    })?;
+    // Back left: One returns where it was, focused; Two is away.
+    key(h, CTRL_SUPER, LEFT)?;
+    check(shown(h, 0) && !shown(h, 1), || {
+        "the first Space did not come back".into()
+    })?;
+    check(h.location(0) == home0, || {
+        format!("One came back at {:?}", h.location(0))
+    })?;
+    check(h.focused(0), || "focus did not follow the Space".into())?;
+    // Fullscreen: One fills the screen in a Space of its own, without a
+    // titlebar; leaving fullscreen puts it back.
+    key(h, CTRL_SUPER, 0x66)?;
+    let size = h.windows[0].geometry().size;
+    let img = h.shot("fullscreen")?;
+    check(h.location(0) == (0, 0) && (size.w, size.h) == SIZE, || {
+        format!("fullscreen at {:?} size {size:?}", h.location(0))
+    })?;
+    let corner = img.pixel(2, 2);
+    check(near(corner, [0xff, 0x5a, 0x5f], 4), || {
+        format!("the fullscreen corner is not the window's: {corner:?}")
+    })?;
+    key(h, CTRL_SUPER, 0x66)?;
+    let size = h.windows[0].geometry().size;
+    check(
+        h.location(0) == home0 && (size.w, size.h) == (300, 200),
+        || format!("left fullscreen at {:?} size {size:?}", h.location(0)),
+    )?;
+    // Two is still on the Space to the right.
+    key(h, CTRL_SUPER, RIGHT)?;
+    check(!shown(h, 0) && shown(h, 1), || {
+        "Two's Space was lost".into()
+    })
+}
+
 const SCENARIOS: &[Scenario] = &[
     ("orientation", orientation),
     ("corners_and_shadow", corners_and_shadow),
@@ -640,6 +721,7 @@ const SCENARIOS: &[Scenario] = &[
     ("wm_titlebar", wm_titlebar),
     ("wm_zoom", wm_zoom),
     ("wm_tiling", wm_tiling),
+    ("wm_spaces", wm_spaces),
 ];
 
 fn main() -> ExitCode {

@@ -284,7 +284,10 @@
     </request>
 
     <request name="visible">
-      <description summary="hidden windows are neither drawn nor hit"/>
+      <description summary="hidden windows are neither drawn nor hit">
+        A window hidden while a non-instant place is still moving it stays
+        drawn (not hit) until that motion rests.
+      </description>
       <arg name="id" type="uint"/>
       <arg name="visible" type="uint"/>
     </request>

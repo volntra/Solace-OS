@@ -7,8 +7,21 @@ Repository: https://github.com/volntra/Solace-OS (`main`).
 ## Current phase: 5 (window manager): in progress
 
 Phase 5 stages: 1 protocol + fern-wm process + crash recovery ✓, 2 spring
-animations ✓, 3 titlebars with traffic lights ✓, 4 tiling ✓; next
-5 Spaces, 6 minimize, 7 Overview and the app switcher, 8 QEMU test and demo.
+animations ✓, 3 titlebars with traffic lights ✓, 4 tiling ✓, 5 Spaces ✓;
+next 6 minimize, 7 Overview and the app switcher, 8 QEMU test and demo.
+
+Stage 5 (2026-10-20): Spaces. Ctrl+Super+Left/Right slide to the Space
+beside this one (windows slide out one side and in the other; the
+wallpaper stays). Ctrl+Super+Shift+Left/Right take the focused window
+along, past the last Space into a new one. A Space left empty disappears
+(one desktop always remains). Fullscreen (an app's own request, or
+Ctrl+Super+F) gives the window its own Space right after the one it came
+from: no titlebar, square corners, no shadow; leaving fullscreen or
+closing the window takes that Space away and goes back. Activating a
+window on another Space switches there. A restarted window manager keeps
+every window's Space and the Spaces themselves (`save`/`save_wm`). Spaces
+are shared by all displays for now. Tests: `cargo test -p fern-wm` (12)
+and the render scenario `wm_spaces` (real key path).
 
 Stage 4 (2026-10-20): drag a window by its titlebar to the left or right
 edge and a soft green preview shows the half it will fill (under the

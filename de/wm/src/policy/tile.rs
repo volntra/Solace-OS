@@ -157,6 +157,9 @@ impl Wm {
         let Some(win) = self.windows.get_mut(&id) else {
             return;
         };
+        if win.windowed.is_some() {
+            return;
+        }
         if win.untiled.is_none() {
             let (w, h) = win.size.unwrap_or(win.cfg);
             let free = Rect::new(win.x, win.y, w, h);

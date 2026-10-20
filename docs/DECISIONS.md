@@ -834,3 +834,25 @@ frame missed the next vblank (about 5 a second).
   stays the default per CLAUDE.md 6.6); snapping by window position
   instead of pointer position (harder to aim, and windows can be wider
   than the gap to the edge).
+
+### 2026-10-20: Spaces and fullscreen (Phase 5, stage 5)
+
+- **Decision:** Spaces are an ordered list kept by fern-wm. Switching
+  slides windows by one screen width on the `smooth` spring; the core
+  keeps a hidden window drawn until a non-instant placement rests (this
+  generalizes stage 2's fade-out rule from "alpha 0" to "still moving").
+  A fullscreen window gets its own Space inserted after its origin.
+- **Keys:** Ctrl+Super+Left/Right switch, plus Shift to carry the focused
+  window, Ctrl+Super+F fullscreen. Plain Ctrl+arrows (macOS) would steal
+  word-jumping from every text field on PC keyboards, where Super is our
+  system modifier.
+- **Dynamic Spaces:** a desktop Space left empty is removed (one always
+  remains); a new one is made by carrying a window past the last. Overview
+  (stage 7) will add explicit add/remove. Alternative: a fixed count of
+  Spaces (simpler, but empty Spaces to scroll past).
+- **The green light stays zoom** (CLAUDE.md 6.6 names it zoom);
+  fullscreen comes from apps (F11 and friends) and Ctrl+Super+F.
+- **Fullscreen looks:** square corners, no shadow, no titlebar (the core
+  reads the `fullscreen` state).
+- **Limits:** Spaces span all displays together; per-display Spaces come
+  with real multi-monitor work.

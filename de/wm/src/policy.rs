@@ -4,7 +4,9 @@
 
 use std::collections::BTreeMap;
 
+mod spaces;
 mod tile;
+pub use spaces::{SpaceInfo, Windowed};
 pub use tile::{Tile, TileKey};
 
 /// `xdg_toplevel` states (the protocol's `state` bits).
@@ -231,16 +233,30 @@ pub enum Cmd {
 
 /// The window manager's key bindings: (id, modifiers, keysym).
 pub mod keys {
-    use super::mods::SUPER;
+    use super::mods::{CTRL, SHIFT, SUPER};
     pub const TILE_LEFT: u32 = 1;
     pub const TILE_RIGHT: u32 = 2;
     pub const TILE_UP: u32 = 3;
     pub const TILE_DOWN: u32 = 4;
+    pub const SPACE_LEFT: u32 = 5;
+    pub const SPACE_RIGHT: u32 = 6;
+    pub const CARRY_LEFT: u32 = 7;
+    pub const CARRY_RIGHT: u32 = 8;
+    pub const FULLSCREEN: u32 = 9;
+    const LEFT: u32 = 0xff51;
+    const UP: u32 = 0xff52;
+    const RIGHT: u32 = 0xff53;
+    const DOWN: u32 = 0xff54;
     pub const BINDINGS: &[(u32, u32, u32)] = &[
-        (TILE_LEFT, SUPER, 0xff51),
-        (TILE_RIGHT, SUPER, 0xff53),
-        (TILE_UP, SUPER, 0xff52),
-        (TILE_DOWN, SUPER, 0xff54),
+        (TILE_LEFT, SUPER, LEFT),
+        (TILE_RIGHT, SUPER, RIGHT),
+        (TILE_UP, SUPER, UP),
+        (TILE_DOWN, SUPER, DOWN),
+        (SPACE_LEFT, CTRL | SUPER, LEFT),
+        (SPACE_RIGHT, CTRL | SUPER, RIGHT),
+        (CARRY_LEFT, CTRL | SUPER | SHIFT, LEFT),
+        (CARRY_RIGHT, CTRL | SUPER | SHIFT, RIGHT),
+        (FULLSCREEN, CTRL | SUPER, 0x66),
     ];
 }
 
@@ -294,6 +310,10 @@ pub struct Win {
     /// goes back to.
     pub tile: Option<Tile>,
     pub untiled: Option<Rect>,
+    /// The Space it is on.
+    pub space: u32,
+    /// Fullscreen (no titlebar, its own Space): what it goes back to.
+    pub windowed: Option<Windowed>,
     /// What the core holds for us (`save`), to notice changes.
     saved: String,
     pub x: i32,
@@ -313,7 +333,10 @@ impl Win {
     /// `key=value` pairs separated by `;`.
     fn dump(&self) -> String {
         let rect = |r: Rect| format!("{},{},{},{}", r.x, r.y, r.w, r.h);
-        let mut parts = Vec::new();
+        let mut parts = vec![format!("space={}", self.space)];
+        if let Some(f) = self.windowed {
+            parts.push(format!("windowed={},{}", f.space, rect(f.frame)));
+        }
         if let Some(z) = self.unzoomed {
             parts.push(format!("unzoomed={}", rect(z)));
         }
@@ -354,6 +377,14 @@ impl Win {
                     .find(|t| format!("{t:?}") == value);
                 }
                 "minimized" => self.minimized = true,
+                "space" => self.space = value.parse().unwrap_or(0),
+                "windowed" => {
+                    if let Some((space, frame)) = value.split_once(',')
+                        && let (Ok(space), Some(frame)) = (space.parse(), rect(frame))
+                    {
+                        self.windowed = Some(Windowed { space, frame });
+                    }
+                }
                 _ => {}
             }
         }
@@ -362,7 +393,8 @@ impl Win {
     /// The frame on screen (titlebar included).
     pub fn rect(&self) -> Rect {
         let (w, h) = self.size.unwrap_or((0, 0));
-        Rect::new(self.x, self.y, w, h + self.tb)
+        let tb = if self.windowed.is_some() { 0 } else { self.tb };
+        Rect::new(self.x, self.y, w, h + tb)
     }
 }
 
@@ -382,12 +414,23 @@ pub struct Wm {
     /// While a window is dragged: the tile the pointer is over, and the
     /// screen it is on (its preview is showing).
     snap: Option<(Tile, Rect)>,
+    /// The Spaces, left to right, and which one is on screen.
+    pub spaces: Vec<SpaceInfo>,
+    pub current: usize,
+    next_space: u32,
+    /// What the core holds for us (`save_wm`).
+    saved_desktop: String,
 }
 
 impl Wm {
     pub fn new() -> Self {
         Wm {
             restoring: true,
+            spaces: vec![SpaceInfo {
+                id: 1,
+                fullscreen: None,
+            }],
+            next_space: 2,
             ..Wm::default()
         }
     }
@@ -443,6 +486,8 @@ impl Wm {
                 request::MAXIMIZE => self.zoom(id, Some(true), &mut out),
                 request::UNMAXIMIZE => self.zoom(id, Some(false), &mut out),
                 request::MINIMIZE => self.minimize(id, &mut out),
+                request::FULLSCREEN => self.fullscreen(id, Some(true), &mut out),
+                request::UNFULLSCREEN => self.fullscreen(id, Some(false), &mut out),
                 _ => {}
             },
             Event::Restore {
@@ -465,7 +510,7 @@ impl Wm {
                     }
                     win.visible = visible;
                     win.states = states;
-                    if visible && !self.stack.contains(&id) {
+                    if !win.minimized && !self.stack.contains(&id) {
                         self.stack.push(id);
                     }
                     if states & state::ACTIVATED != 0 {
@@ -473,9 +518,19 @@ impl Wm {
                     }
                 }
             }
-            Event::RestoreWm(_) => {}
+            Event::RestoreWm(data) => {
+                self.load_spaces(&data);
+                self.saved_desktop = data;
+            }
             Event::Done => {
                 self.restoring = false;
+                // Windows from before Spaces were saved: the one on screen.
+                let here = self.current_space();
+                for w in self.windows.values_mut() {
+                    if !self.spaces.iter().any(|s| s.id == w.space) {
+                        w.space = here;
+                    }
+                }
                 for &(id, mods, keysym) in keys::BINDINGS {
                     out.push(Cmd::Bind { id, mods, keysym });
                 }
@@ -544,12 +599,39 @@ impl Wm {
                     keys::TILE_RIGHT => TileKey::Right,
                     keys::TILE_UP => TileKey::Up,
                     keys::TILE_DOWN => TileKey::Down,
+                    keys::SPACE_LEFT => {
+                        self.switch_by(-1, &mut out);
+                        return self.finish(out);
+                    }
+                    keys::SPACE_RIGHT => {
+                        self.switch_by(1, &mut out);
+                        return self.finish(out);
+                    }
+                    keys::CARRY_LEFT => {
+                        self.carry_by(-1, &mut out);
+                        return self.finish(out);
+                    }
+                    keys::CARRY_RIGHT => {
+                        self.carry_by(1, &mut out);
+                        return self.finish(out);
+                    }
+                    keys::FULLSCREEN => {
+                        if let Some(id) = self.focused {
+                            self.fullscreen(id, None, &mut out);
+                        }
+                        return self.finish(out);
+                    }
                     _ => return out,
                 };
                 self.tile_key(key, &mut out);
             }
             Event::Motion { .. } | Event::Key { .. } => {}
         }
+        self.finish(out)
+    }
+
+    /// Ends handling an event: saves what changed.
+    fn finish(&mut self, mut out: Vec<Cmd>) -> Vec<Cmd> {
         if !self.restoring {
             self.save_changes(&mut out);
         }
@@ -565,6 +647,11 @@ impl Wm {
                 out.push(Cmd::Save(id, data.clone()));
                 win.saved = data;
             }
+        }
+        let data = self.dump_spaces();
+        if data != self.saved_desktop {
+            out.push(Cmd::SaveWm(data.clone()));
+            self.saved_desktop = data;
         }
     }
 
@@ -636,7 +723,7 @@ impl Wm {
         };
         let zoomed = win.unzoomed.is_some();
         let on = on.unwrap_or(!zoomed);
-        if on == zoomed {
+        if on == zoomed || win.windowed.is_some() {
             return;
         }
         // A tiled window zooms from, and returns to, its free frame.
@@ -714,13 +801,20 @@ impl Wm {
         if self.focused == Some(id) {
             self.set_states(id, |s| s & !state::ACTIVATED, out);
             self.focused = None;
-            let next = self.stack.last().copied();
+            let next = self.top_shown();
             self.focus(next, out);
         }
     }
 
-    /// Brings a minimized window back where it was, and focuses it.
+    /// Brings a window to the front: from its Space (which comes on
+    /// screen) and out of the dock if minimized.
     pub fn restore_and_focus(&mut self, id: u32, out: &mut Vec<Cmd>) {
+        if let Some(space) = self.windows.get(&id).map(|w| w.space)
+            && space != self.current_space()
+            && let Some(to) = self.spaces.iter().position(|s| s.id == space)
+        {
+            self.switch_space(to, None, out);
+        }
         if let Some(win) = self.windows.get_mut(&id)
             && win.minimized
         {
@@ -763,14 +857,17 @@ impl Wm {
             .stack
             .iter()
             .filter_map(|i| self.windows.get(i))
+            .filter(|w| w.visible)
             .map(Win::rect)
             .collect();
         let tb = self.windows.get(&id).map_or(0, |w| w.tb);
         let (x, y) = place(area, (w, h + tb), &others);
+        let here = self.current_space();
         if let Some(win) = self.windows.get_mut(&id) {
             win.x = x;
             win.y = y;
             win.visible = true;
+            win.space = here;
         }
         // Opening: from a little lower, smaller and transparent, up into
         // place on the smooth spring.
@@ -796,11 +893,12 @@ impl Wm {
     }
 
     fn on_closed(&mut self, id: u32, out: &mut Vec<Cmd>) {
+        self.closing(id, out);
         self.windows.remove(&id);
         self.stack.retain(|&i| i != id);
         if self.focused == Some(id) {
             self.focused = None;
-            let next = self.stack.last().copied();
+            let next = self.top_shown();
             self.focus(next, out);
         }
     }
@@ -900,6 +998,10 @@ mod tests {
         wm
     }
 
+    fn last_focus(cmds: &[Cmd]) -> Option<&Cmd> {
+        cmds.iter().rev().find(|c| matches!(c, Cmd::Focus(_)))
+    }
+
     fn open(wm: &mut Wm, id: u32, w: i32, h: i32) -> Vec<Cmd> {
         wm.handle(Event::Window {
             id,
@@ -941,7 +1043,7 @@ mod tests {
             h: 0,
             states: state::ACTIVATED
         }));
-        assert_eq!(cmds.last(), Some(&Cmd::Focus(1)));
+        assert_eq!(last_focus(&cmds), Some(&Cmd::Focus(1)));
     }
 
     #[test]
@@ -993,7 +1095,7 @@ mod tests {
         open(&mut wm, 2, 400, 300);
         let cmds = wm.handle(Event::Closed(2));
         assert_eq!(wm.focused, Some(1));
-        assert_eq!(cmds.last(), Some(&Cmd::Focus(1)));
+        assert_eq!(last_focus(&cmds), Some(&Cmd::Focus(1)));
     }
 
     #[test]
@@ -1026,7 +1128,8 @@ mod tests {
             });
         }
         let cmds = wm.handle(Event::Done);
-        assert!(cmds.ends_with(&[Cmd::Stack(vec![4, 7]), Cmd::Focus(7)]));
+        let at = cmds.iter().position(|c| *c == Cmd::Stack(vec![4, 7]));
+        assert!(at.is_some_and(|i| cmds.get(i + 1) == Some(&Cmd::Focus(7))));
         assert_eq!(wm.windows[&4].rect(), Rect::new(10, 20, 200, 100));
     }
 
@@ -1050,7 +1153,7 @@ mod tests {
         };
         assert_eq!(
             data,
-            &format!("tile=Left;untiled={},{},400,300", free.x, free.y)
+            &format!("space=1;tile=Left;untiled={},{},400,300", free.x, free.y)
         );
         let mut back = Win::default();
         back.load(data);
@@ -1154,5 +1257,51 @@ mod tests {
             states: state::ACTIVATED
         }));
         assert_eq!(wm.windows[&1].tile, None);
+    }
+
+    #[test]
+    fn spaces_switch_carry_and_fullscreen() {
+        let mut wm = wm_with_output();
+        open(&mut wm, 1, 400, 300);
+        open(&mut wm, 2, 400, 300);
+        // Carrying window 2 right makes Space 2; window 1 slides left out.
+        let cmds = wm.handle(Event::Binding(keys::CARRY_RIGHT));
+        assert_eq!(wm.spaces.len(), 2);
+        assert_eq!(wm.current, 1);
+        let x1 = wm.windows[&1].x;
+        assert!(cmds.contains(&Cmd::Place {
+            id: 1,
+            x: x1 - 2560,
+            y: wm.windows[&1].y,
+            scale: 1.0,
+            alpha: 1.0,
+            motion: motion::SMOOTH
+        }));
+        assert!(cmds.contains(&Cmd::Visible {
+            id: 1,
+            visible: false
+        }));
+        assert!(cmds.iter().any(|c| matches!(c, Cmd::SaveWm(_))));
+        assert_eq!(wm.focused, Some(2));
+        // Fullscreen from Space 2 goes to a Space right after it; when it
+        // ends the fullscreen Space goes and Space 2 is still there.
+        wm.handle(Event::Binding(keys::FULLSCREEN));
+        assert_eq!(wm.spaces.len(), 3);
+        assert_eq!(wm.spaces[2].fullscreen, Some(2));
+        assert_eq!(wm.current, 2);
+        assert_eq!(wm.windows[&2].cfg, (2560, 1440));
+        wm.handle(Event::Binding(keys::FULLSCREEN));
+        assert_eq!(wm.spaces.len(), 2);
+        assert_eq!(wm.current, 1);
+        assert_eq!(wm.windows[&2].cfg, (400, 300));
+        // Back to Space 1: its window gets focus; Space 2 keeps window 2.
+        wm.handle(Event::Binding(keys::SPACE_LEFT));
+        assert_eq!(wm.focused, Some(1));
+        // The Spaces survive a restart through save_wm.
+        let saved = wm.dump_spaces();
+        let mut again = Wm::new();
+        again.load_spaces(&saved);
+        assert_eq!(again.spaces, wm.spaces);
+        assert_eq!(again.current, wm.current);
     }
 }

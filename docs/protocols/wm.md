@@ -74,7 +74,11 @@ window manager can move, restack and refocus without intermediate frames.
   picture, never the client's size. `motion` picks the spring the core
   animates with (`instant`, `snappy`, `smooth`, `gentle`; HIG presets).
 - `visible`: hidden windows are neither drawn nor hit by the pointer (a
-  minimized window, a window on another Space).
+  minimized window, a window on another Space). A window hidden while its
+  last `place` (not `instant`) is still moving stays drawn, but not hit,
+  until that spring rests: so minimize can shrink and fade, and a Space
+  switch can slide windows off screen, without the window manager timing
+  anything.
 - `stack` gives the order of all windows, bottom to top.
 - `focus` sets keyboard focus; activation is a `configure` state.
 - `decoration`: `titlebar` asks the core to draw our titlebar with traffic

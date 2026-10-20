@@ -482,6 +482,8 @@ pub struct Visual {
     pub titlebar: i32,
     /// The pointer is over the traffic lights: show their glyphs.
     pub hover: bool,
+    /// Fullscreen: square corners and no shadow.
+    pub square: bool,
 }
 
 impl Visual {
@@ -492,6 +494,7 @@ impl Visual {
         alpha: 1.0,
         titlebar: 0,
         hover: false,
+        square: false,
     };
 }
 
@@ -553,7 +556,11 @@ pub fn output_elements(
         );
         let geo_px = geo_f.to_physical(s);
         #[allow(clippy::cast_possible_truncation)]
-        let radius = (WINDOW_RADIUS * scale * v.scale) as f32;
+        let radius = if v.square {
+            0.0
+        } else {
+            (WINDOW_RADIUS * scale * v.scale) as f32
+        };
         // With our titlebar on top, the frame is titlebar plus content and
         // only the content's bottom corners are rounded.
         let titlebar = f64::from(v.titlebar) * v.scale;
@@ -599,9 +606,11 @@ pub fn output_elements(
                 Err(e) => tracing::warn!("blur: {e:?}"),
             }
         }
-        out.push_front(OutputElement::Shadow(shadow_element(
-            window, frame_f, shaders, v.scale, v.alpha,
-        )));
+        if !v.square {
+            out.push_front(OutputElement::Shadow(shadow_element(
+                window, frame_f, shaders, v.scale, v.alpha,
+            )));
+        }
         for b in backdrops {
             out.push_front(OutputElement::Backdrop(b));
         }

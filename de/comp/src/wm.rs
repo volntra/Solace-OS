@@ -1074,14 +1074,16 @@ impl Comp {
     }
 
     /// Puts a window in the space where its record says, or takes it out
-    /// (after its fade, when it is fading out).
+    /// (once its last placement comes to rest, when it is moving).
     fn sync_mapping(&mut self, id: u32) {
         let Some(rec) = self.wm.windows.get(&id) else {
             return;
         };
         let window = rec.window.clone();
         let mapped = self.space.elements().any(|w| *w == window);
-        let fades_out = rec.anim.started && rec.place.alpha <= 0.01 && rec.place.motion != 0;
+        // Hidden on its way somewhere (a fade, a slide to another Space):
+        // drawn until the spring rests, then unmapped.
+        let fades_out = rec.anim.started && rec.place.motion != 0;
         if rec.visible {
             let tb = self.titlebar_height(rec);
             let loc = (rec.place.x, rec.place.y + tb);
@@ -1140,6 +1142,8 @@ impl Comp {
         let deco = Visual {
             titlebar: self.titlebar_height(rec),
             hover: self.wm.hover.is_some_and(|h| Some(h) == win_id(window)),
+            // The protocol's `fullscreen` state.
+            square: rec.states & 4 != 0,
             ..Visual::IDENTITY
         };
         if !rec.anim.started {
