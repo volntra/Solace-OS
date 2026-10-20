@@ -56,16 +56,12 @@ ShellWindow {
         anchors.fill: parent
         onPressed: popups.dismiss()
     }
-    Item {
-        anchors.fill: parent
-        focus: true
-        Keys.onEscapePressed: popups.dismiss()
-    }
-
+    // Sized by its panel, which places itself.
     Loader {
         id: panel
         focus: true
-        anchors.fill: parent
+        // Escape closes whatever is open (keys rise from the panel to here).
+        Keys.onEscapePressed: popups.dismiss()
         sourceComponent: {
             switch (popups.current) {
             case "fern": case "app": case "file": case "window": case "dock": return menu

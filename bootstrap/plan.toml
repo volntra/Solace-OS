@@ -70,7 +70,7 @@ recipes = [
     # The desktop (Phase 6): the message bus, fonts, Qt 6 and the shell.
     "cmake", "dbus", "freetype", "fontconfig", "qtbase", "qtshadertools",
     "qtsvg", "qtdeclarative", "extra-cmake-modules",
-    "layer-shell-qt",
+    "layer-shell-qt", "fern-settingsd", "fern-shell",
     # Optional hardware support (not in the base image).
     "nvidia",
 ]

@@ -1,0 +1,10 @@
+#!/bin/sh
+# The desktop session: a session bus, the user's settings daemon on it, and
+# the compositor with its window manager and shell. Started by the
+# fern-comp unit until the login screen starts sessions (Phase 9).
+set -e
+mkdir -p -m 0700 "$XDG_RUNTIME_DIR"
+exec /usr/bin/dbus-run-session -- /bin/sh -c '
+  /usr/lib/fern/fern-settingsd &
+  exec /usr/bin/fern-comp --drm --shell /usr/bin/fern-shell
+'

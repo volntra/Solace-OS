@@ -15,8 +15,10 @@ Material {
     property bool banner: false
     kind: "popover"
     radius: Theme.radiusCard + 4
-    width: 340
-    height: content.implicitHeight + 24
+    implicitWidth: 340
+    implicitHeight: content.implicitHeight + 24
+    width: implicitWidth
+    height: implicitHeight
 
     readonly property var buttons: actions.filter(a => a.key !== "default")
 

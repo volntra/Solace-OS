@@ -4,7 +4,7 @@ import Fern.Design
 // A text field with the search symbol and a clear button.
 TextField {
     id: control
-    leftPadding: Theme.space(7)
+    leftPadding: Theme.space(4.5) + Math.round(height * 0.5)
     rightPadding: length ? Theme.space(7) : Theme.space(2.5)
     placeholderText: qsTr("Search")
     Symbol {

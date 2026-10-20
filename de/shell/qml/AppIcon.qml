@@ -14,7 +14,7 @@ Item {
     width: size
     height: size
 
-    readonly property var palette: [
+    readonly property var tints: [
         ["#5EA8F7", "#2C6FD6"], ["#62CC8C", "#1C7546"], ["#FFB56B", "#EE6419"],
         ["#B990FF", "#6438DB"], ["#58D6C4", "#178A82"], ["#F07AA8", "#B83468"],
         ["#FFD27A", "#E59A1F"], ["#9AA39D", "#525A57"]
@@ -23,7 +23,7 @@ Item {
         let h = 0
         for (let i = 0; i < appId.length; i++)
             h = (h * 31 + appId.charCodeAt(i)) >>> 0
-        return stack === "trash" ? ["#F2F4F1", "#C9CFCA"] : stack === "downloads" ? ["#8DB8F8", "#3F7EE8"] : palette[h % palette.length]
+        return stack === "trash" ? ["#F2F4F1", "#C9CFCA"] : stack === "downloads" ? ["#8DB8F8", "#3F7EE8"] : tints[h % tints.length]
     }
 
     Image {

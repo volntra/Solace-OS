@@ -26,6 +26,8 @@ entry names a recipe that does not exist.
 - `fern-comp`: our compositor (Phase 4); the image's display server.
 - `fern-grub-theme`: ours (boot/grub-theme/): boot menu theme + Inter fonts for GRUB.
 - `fern-init`: ours (init/): PID 1, service manager, fernctl, fern-log.
+- `fern-settingsd`: ours (de/settingsd/): the settings daemon and fern-settings.
+- `fern-shell`: ours (de/design, de/shell): the design system, the desktop shell and the session script.
 - `fern-wallpapers`: our wallpapers, rendered from assets/wallpapers.
 - `file`: libmagic, used by builds and later by Files for type detection.
 - `findutils`: find/xargs, needed by builds and scripts.

@@ -123,21 +123,22 @@ ShellWindow {
         height: dock.barRect.height
         // Length along the bar: icons at their magnified size plus gaps.
         readonly property real length: content.length + 2 * dock.pad
-        Flow {
+        Grid {
             id: content
             readonly property real length: dock.vertical ? implicitHeight : implicitWidth
             x: dock.vertical ? 0 : dock.pad
             y: dock.vertical ? dock.pad : 0
-            flow: dock.vertical ? Flow.TopToBottom : Flow.LeftToRight
+            rows: dock.vertical ? -1 : 1
+            columns: dock.vertical ? 1 : -1
+            verticalItemAlignment: Grid.AlignVCenter
+            horizontalItemAlignment: Grid.AlignHCenter
             spacing: dock.gap
-            width: dock.vertical ? dock.thickness : implicitWidth
-            height: dock.vertical ? implicitHeight : dock.thickness
             Repeater {
                 model: dock.apps
                 delegate: DockItem {
                     required property var modelData
                     required property int index
-                    dock: dock
+                    owner: dock
                     appId: modelData.id
                     pinned: modelData.pinned
                     order: index
@@ -146,13 +147,10 @@ ShellWindow {
             Rectangle {
                 width: dock.vertical ? dock.iconSize * 0.7 : 1
                 height: dock.vertical ? 1 : dock.iconSize * 0.7
-                anchors.verticalCenter: dock.vertical ? undefined : parent.verticalCenter
-                x: dock.vertical ? (dock.thickness - width) / 2 : 0
-                y: dock.vertical ? 0 : (dock.thickness - height) / 2
                 color: Theme.separator
             }
-            DockItem { dock: dock; stack: "downloads"; order: -1 }
-            DockItem { dock: dock; stack: "trash"; order: -2 }
+            DockItem { owner: dock; stack: "downloads"; order: -1 }
+            DockItem { owner: dock; stack: "trash"; order: -2 }
         }
     }
 }

@@ -141,6 +141,8 @@ fn shell_launcher(path: PathBuf, socket: std::ffi::OsString) -> ferncomp::layers
             .env("WAYLAND_SOCKET", "0")
             .env("WAYLAND_DISPLAY", &socket)
             .env("QT_QPA_PLATFORM", "wayland")
+            // Its warnings go to our log (fern-log), never a journal.
+            .env("QT_FORCE_STDERR_LOGGING", "1")
             .spawn()?;
         tracing::info!(pid = child.id(), path = %path.display(), "shell started");
         children.push(child);

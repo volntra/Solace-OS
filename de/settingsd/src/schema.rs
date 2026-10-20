@@ -165,7 +165,7 @@ pub static DOMAINS: &[Domain] = &[
                     rule: Text::Path,
                     optional: true,
                 },
-                Default::Text(""),
+                Default::Text("/usr/share/fern/wallpapers/grove-night.png"),
                 "Picture in dark mode (empty: the light one)",
             ),
         ],

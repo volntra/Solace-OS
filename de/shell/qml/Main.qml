@@ -23,7 +23,8 @@ QtObject {
     }
     readonly property SettingsDomain wallpaper: SettingsDomain {
         domain: "wallpaper"
-        defaults: ({ light: "/usr/share/fern/wallpapers/grove.png", dark: "" })
+        defaults: ({ light: "/usr/share/fern/wallpapers/grove.png",
+                     dark: "/usr/share/fern/wallpapers/grove-night.png" })
     }
 
     // Do Not Disturb and banner time live in settings; the server follows.

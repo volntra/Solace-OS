@@ -5,7 +5,8 @@ import Fern.Shell
 // One dock tile: an app (`appId`) or a stack ("downloads", "trash").
 Item {
     id: item
-    required property Dock dock
+    // Not `dock`: in the dock, `dock: dock` would read this very property.
+    required property Dock owner
     property string appId: ""
     property string stack: ""
     property bool pinned: false
@@ -23,19 +24,19 @@ Item {
     readonly property bool running: appId.length > 0 && Windows.appIds.includes(matchingWindowId)
 
     // Magnification: a smooth bump under the pointer, three icons wide.
-    readonly property real centre: (dock.vertical ? y + height / 2 : x + width / 2) + dock.pad
+    readonly property real centre: (owner.vertical ? y + height / 2 : x + width / 2) + owner.pad
     readonly property real scale0: {
-        if (dock.pointer < 0)
+        if (owner.pointer < 0)
             return 1
-        const d = Math.abs(dock.pointer - centre) / (dock.iconSize * 1.6)
+        const d = Math.abs(owner.pointer - centre) / (owner.iconSize * 1.6)
         const k = d >= 1 ? 0 : (Math.cos(d * Math.PI) + 1) / 2
-        return 1 + (dock.bigSize / dock.iconSize - 1) * k
+        return 1 + (owner.bigSize / owner.iconSize - 1) * k
     }
     property real zoom: scale0
     Behavior on zoom { NumberAnimation { duration: Theme.snappy; easing: Motion.curve } }
 
-    width: dock.vertical ? dock.thickness : dock.iconSize * zoom
-    height: dock.vertical ? dock.iconSize * zoom : dock.thickness
+    width: owner.vertical ? owner.thickness : owner.iconSize * zoom
+    height: owner.vertical ? owner.iconSize * zoom : owner.thickness
 
     // Launching: bounce until a window shows (at most 10 s).
     property bool launching: false
@@ -56,14 +57,14 @@ Item {
 
     AppIcon {
         id: icon
-        size: dock.iconSize * item.zoom
+        size: owner.iconSize * item.zoom
         appId: item.appId
         stack: item.stack
         name: item.label
         source: item.app.icon ?? ""
         // Grows away from the screen edge.
-        x: dock.vertical ? (dock.position === "left" ? dock.pad : parent.width - dock.pad - size) - (dock.position === "left" ? -1 : 1) * item.bounce * 18 : 0
-        y: dock.vertical ? 0 : parent.height - dock.pad - size - item.bounce * 18
+        x: owner.vertical ? (owner.position === "left" ? owner.pad : parent.width - owner.pad - size) - (owner.position === "left" ? -1 : 1) * item.bounce * 18 : 0
+        y: owner.vertical ? 0 : parent.height - owner.pad - size - item.bounce * 18
     }
 
     // Running: a dot on the edge side.
@@ -72,21 +73,21 @@ Item {
         width: 4; height: 4; radius: 2
         color: Theme.text
         opacity: 0.75
-        x: dock.vertical ? (dock.position === "left" ? 2 : parent.width - 6) : (parent.width - width) / 2
-        y: dock.vertical ? (parent.height - height) / 2 : parent.height - 5
+        x: owner.vertical ? (owner.position === "left" ? 2 : parent.width - 6) : (parent.width - width) / 2
+        y: owner.vertical ? (parent.height - height) / 2 : parent.height - 5
     }
 
     // The name, over the icon while hovered.
     Rectangle {
-        visible: mouse.containsMouse && !dock.popups.ownerIsDock
+        visible: mouse.containsMouse && !owner.popups.ownerIsDock
         width: tip.implicitWidth + 16
         height: 24
         radius: 8
         color: Theme.material("menu")
         border.width: 1
         border.color: Theme.materialOutline
-        x: dock.vertical ? (dock.position === "left" ? icon.x + icon.size + 10 : icon.x - width - 10) : (parent.width - width) / 2
-        y: dock.vertical ? (parent.height - height) / 2 : icon.y - height - 8
+        x: owner.vertical ? (owner.position === "left" ? icon.x + icon.size + 10 : icon.x - width - 10) : (parent.width - width) / 2
+        y: owner.vertical ? (parent.height - height) / 2 : icon.y - height - 8
         Label { id: tip; anchors.centerIn: parent; text: item.label }
     }
 
@@ -98,11 +99,11 @@ Item {
         drag.target: item.pinned ? dragProxy : null
         onClicked: event => {
             if (event.button === Qt.RightButton) {
-                dock.popups.openDockMenu(item, mapToItem(null, 0, 0))
+                owner.popups.openDockMenu(item, mapToItem(null, 0, 0))
                 return
             }
             if (item.stack.length) {
-                dock.popups.openStack(item.stack, mapToItem(null, width / 2, 0))
+                owner.popups.openStack(item.stack, mapToItem(null, width / 2, 0))
             } else if (item.running) {
                 Windows.activateApp(item.matchingWindowId)
             } else if (Apps.launch(item.appId)) {
@@ -114,17 +115,17 @@ Item {
     // Reordering pinned apps: drag one along the bar.
     Item { id: dragProxy; width: 1; height: 1 }
     function dropAt(p) {
-        dock.dragging = false
-        const along = dock.vertical ? item.y + p.y : item.x + p.x
-        const list = dock.pinned.slice()
+        owner.dragging = false
+        const along = owner.vertical ? item.y + p.y : item.x + p.x
+        const list = owner.pinned.slice()
         const from = list.indexOf(appId)
         if (from < 0)
             return
-        const step = dock.iconSize + dock.gap
+        const step = owner.iconSize + owner.gap
         const to = Math.max(0, Math.min(list.length - 1, Math.round(along / step)))
         list.splice(from, 1)
         list.splice(to, 0, appId)
-        dock.setPinned(list)
+        owner.setPinned(list)
         dragProxy.x = 0
         dragProxy.y = 0
     }
@@ -135,7 +136,7 @@ Item {
             return
         const p = icon.mapToItem(null, 0, 0)
         for (const uid of Windows.windowsOf(matchingWindowId))
-            Windows.setIconRect(uid, dock, Qt.rect(p.x, p.y, icon.size, icon.size))
+            Windows.setIconRect(uid, owner, Qt.rect(p.x, p.y, icon.size, icon.size))
     }
     onXChanged: updateIconRects()
     onYChanged: updateIconRects()

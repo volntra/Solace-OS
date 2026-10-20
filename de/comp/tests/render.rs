@@ -1169,6 +1169,246 @@ fn wm_shell_layers(h: &mut Harness) -> Result {
     Ok(())
 }
 
+/// The real shell (`FERN_SHELL_BIN`, built by `just shell-build`) on this
+/// compositor, with its own session bus and settings daemon: the menu bar
+/// and dock appear and keep their room, a running app shows in the dock,
+/// Super+Space opens Search, and a notification shows as a banner.
+/// Skipped (with a note) when the shell has not been built.
+#[allow(clippy::too_many_lines)]
+fn wm_shell_desktop(h: &mut Harness) -> Result {
+    let Some(shell) = std::env::var_os("FERN_SHELL_BIN").map(PathBuf::from) else {
+        println!("    skipped: FERN_SHELL_BIN is not set (just shell-test sets it)");
+        return Ok(());
+    };
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let tmp = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!("shell-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    let (data, config) = (tmp.join("data"), tmp.join("config"));
+    let apps = data.join("applications");
+    std::fs::create_dir_all(&apps).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(config.join("fern")).map_err(|e| e.to_string())?;
+    let client = env!("CARGO_BIN_EXE_fern-testclient");
+    for (id, name, color) in [("org.fern.Notes", "Notes", "ff5a5fff"), ("org.fern.Mail", "Mail", "3a86ffff"), ("org.fern.Photos", "Photos", "2ec4b6ff")] {
+        std::fs::write(
+            apps.join(format!("{id}.desktop")),
+            format!("[Desktop Entry]\nType=Application\nName={name}\nExec={client} --title {name} --app-id {id} --color {color} --size 520x340\n"),
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    std::fs::write(
+        config.join("fern/dock.toml"),
+        "pinned = [\"org.fern.Notes\", \"org.fern.Mail\", \"org.fern.Photos\"]\n",
+    )
+    .map_err(|e| e.to_string())?;
+
+    // A private session bus, and the user's settings daemon on it.
+    let conf = tmp.join("bus.conf");
+    std::fs::write(
+        &conf,
+        format!(
+            "<busconfig><type>session</type><listen>unix:path={}/bus</listen><policy context=\"default\"><allow send_destination=\"*\" eavesdrop=\"true\"/><allow eavesdrop=\"true\"/><allow own=\"*\"/></policy></busconfig>",
+            tmp.display()
+        ),
+    )
+    .map_err(|e| e.to_string())?;
+    let mut bus = Command::new("dbus-daemon")
+        .arg(format!("--config-file={}", conf.display()))
+        .args(["--nofork", "--print-address"])
+        .stdout(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("dbus-daemon: {e}"))?;
+    let mut address = String::new();
+    {
+        use std::io::BufRead;
+        std::io::BufReader::new(bus.stdout.take().ok_or("no bus address")?)
+            .read_line(&mut address)
+            .map_err(|e| e.to_string())?;
+    }
+    let address = address.trim().to_owned();
+    h.clients.push(bus);
+    let settingsd = root.join("target/debug/fern-settingsd");
+    let daemon = Command::new(&settingsd)
+        .args(["--address", &address, "--dir"])
+        .arg(config.join("fern"))
+        .spawn()
+        .map_err(|e| format!("{} (cargo build -p fern-settingsd): {e}", settingsd.display()))?;
+    h.clients.push(daemon);
+
+    let env: Vec<(String, std::ffi::OsString)> = vec![
+        ("DBUS_SESSION_BUS_ADDRESS".into(), address.clone().into()),
+        ("XDG_DATA_HOME".into(), data.clone().into()),
+        ("XDG_DATA_DIRS".into(), data.clone().into()),
+        ("XDG_CONFIG_HOME".into(), config.clone().into()),
+        ("FERN_FONTS".into(), root.join("build/fonts").into()),
+        ("QT_QPA_PLATFORM".into(), "wayland".into()),
+        ("QT_QUICK_BACKEND".into(), "software".into()),
+        ("QT_FORCE_STDERR_LOGGING".into(), "1".into()),
+        (
+            "QML_IMPORT_PATH".into(),
+            format!(
+                "{}:{}",
+                shell.parent().and_then(|p| p.parent()).map(|p| p.join("qml").display().to_string()).unwrap_or_default(),
+                std::env::var("QML_IMPORT_PATH").unwrap_or_default()
+            )
+            .into(),
+        ),
+    ];
+    let socket = h.data.state.socket_name.clone();
+    h.data
+        .state
+        .set_shell_launcher(Box::new(move || {
+            let (ours, theirs) = std::os::unix::net::UnixStream::pair()?;
+            let mut cmd = Command::new(&shell);
+            cmd.stdin(Stdio::from(std::os::fd::OwnedFd::from(theirs)))
+                .env("WAYLAND_SOCKET", "0")
+                .env("WAYLAND_DISPLAY", &socket);
+            for (k, v) in &env {
+                cmd.env(k, v);
+            }
+            cmd.spawn()?;
+            Ok(ours)
+        }))?;
+
+    // The menu bar and the dock, and the room they keep.
+    wait_long(h, "the menu bar and dock did not appear", |h| h.layers() >= 2)?;
+    wait_long(h, "the work area did not shrink", |h| {
+        h.data.state.shell.work_areas.get(&1).is_some_and(|a| a.loc.y >= 28 && a.size.h < SIZE.1 - 28 - 40)
+    })?;
+    settle_for(h, Duration::from_secs(3))?;
+    let img = h.shot("desktop")?;
+    let bar = img.pixel(SIZE.0 / 2, 14);
+    check(!near(bar, GREY, 6), || format!("no menu bar at the top: {bar:?}"))?;
+
+    // An app from its dock icon's desktop entry: its window, and the dock
+    // marks it running (the shell's window list follows).
+    h.open("--title Notes --app-id org.fern.Notes --color ff5a5fff --size 520x340")?;
+    settle_for(h, Duration::from_secs(2))?;
+    h.shot("app")?;
+
+    // Super+Space: Search, on the overlay layer, with the keyboard.
+    key(h, 8, 0x20)?;
+    wait_long(h, "Search did not open", |h| h.layers() >= 3)?;
+    settle_for(h, Duration::from_secs(2))?;
+    h.shot("search")?;
+    check(!h.focused(0), || "Search did not take the keyboard".into())?;
+    // Typing "mail" finds Mail; Return opens it from its desktop entry.
+    for k in ['m', 'a', 'i', 'l'] {
+        key_press(h, k as u32)?;
+    }
+    settle_for(h, Duration::from_secs(2))?;
+    h.shot("search-mail")?;
+    key_press(h, 0xff0d)?;
+    wait_long(h, "Search did not close", |h| !has_layer(h, "fern-popups"))?;
+    h.wait_for_window("Mail, from Search")?;
+    check(h.windows[1].toplevel().is_some_and(|t| {
+        smithay::wayland::compositor::with_states(t.wl_surface(), |st| {
+            st.data_map
+                .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
+                .and_then(|d| d.lock().ok().and_then(|d| d.app_id.clone()))
+        }) == Some("org.fern.Mail".into())
+    }), || "Search did not open Mail".into())?;
+
+    // The Fern menu and the control center, from the menu bar.
+    click_at(h, 26.0, 14.0)?;
+    wait_long(h, "the Fern menu did not open", |h| has_layer(h, "fern-popups"))?;
+    settle_for(h, Duration::from_secs(1))?;
+    h.shot("fern-menu")?;
+    key_press(h, 0xff1b)?;
+    wait_long(h, "the menu did not close", |h| !has_layer(h, "fern-popups"))?;
+    click_at(h, f64::from(SIZE.0) - 209.0, 14.0)?;
+    wait_long(h, "the control center did not open", |h| has_layer(h, "fern-popups"))?;
+    settle_for(h, Duration::from_secs(1))?;
+    h.shot("control-center")?;
+    key_press(h, 0xff1b)?;
+    wait_long(h, "the control center did not close", |h| !has_layer(h, "fern-popups"))?;
+
+    // A notification: a banner at the top right.
+    let conn = zbus::blocking::connection::Builder::address(address.as_str())
+        .map_err(|e| e.to_string())?
+        .build()
+        .map_err(|e| e.to_string())?;
+    let hints: std::collections::HashMap<&str, zbus::zvariant::Value<'_>> = std::collections::HashMap::new();
+    let reply = conn
+        .call_method(
+            Some("org.freedesktop.Notifications"),
+            "/org/freedesktop/Notifications",
+            Some("org.freedesktop.Notifications"),
+            "Notify",
+            &("Mail", 0u32, "", "Lunch on Friday?", "Sam: the place by the river at noon.", Vec::<&str>::new(), hints, -1i32),
+        )
+        .map_err(|e| format!("Notify: {e}"))?;
+    let id: u32 = reply.body().deserialize().map_err(|e| e.to_string())?;
+    check(id > 0, || "no notification id".into())?;
+    wait_long(h, "no banner appeared", |h| h.layers() >= 3)?;
+    settle_for(h, Duration::from_secs(2))?;
+    let img = h.shot("banner")?;
+    let corner = img.pixel(SIZE.0 - 180, 70);
+    check(!near(corner, GREY, 6), || {
+        let map = smithay::desktop::layer_map_for_output(h.headless.output());
+        let layers: Vec<String> = map
+            .layers()
+            .map(|l| format!("{} {:?}", l.namespace(), map.layer_geometry(l)))
+            .collect();
+        format!("no banner at the top right: {corner:?}; layers {layers:?}")
+    })?;
+    Ok(())
+}
+
+/// Like `wait_until`, for the shell's slower start (Qt, QML, a bus).
+fn wait_long(h: &mut Harness, what: &str, cond: impl Fn(&Harness) -> bool) -> Result {
+    let deadline = Instant::now() + Duration::from_secs(60);
+    while !cond(h) {
+        check(Instant::now() < deadline, || format!("timed out: {what}"))?;
+        h.turn()?;
+    }
+    Ok(())
+}
+
+/// Runs turns for a while (the shell animates in on springs).
+fn settle_for(h: &mut Harness, d: Duration) -> Result {
+    let until = Instant::now() + d;
+    while Instant::now() < until {
+        h.turn()?;
+    }
+    Ok(())
+}
+
+/// Whether a shell surface with this namespace is mapped.
+fn has_layer(h: &Harness, namespace: &str) -> bool {
+    smithay::desktop::layer_map_for_output(h.headless.output())
+        .layers()
+        .any(|l| l.namespace() == namespace)
+}
+
+fn click_at(h: &mut Harness, x: f64, y: f64) -> Result {
+    // Moving first, as a hand does: the client sees where the pointer is
+    // before the press.
+    h.data.state.pointer_to((x, y).into(), 0);
+    settle_for(h, Duration::from_millis(300))?;
+    h.data.state.pointer_button(0x110, true, 1);
+    h.data.state.pointer_button(0x110, false, 2);
+    h.settle()
+}
+
+/// Presses and releases a key that goes to the focused client (US
+/// layout).
+fn key_press(h: &mut Harness, keysym: u32) -> Result {
+    // xkb keycodes are evdev + 8.
+    let evdev = match keysym {
+        0xff1b => 1,  // Escape
+        0xff0d => 28, // Return
+        0x61 => 30,   // a
+        0x69 => 23,   // i
+        0x6c => 38,   // l
+        0x6d => 50,   // m
+        _ => return Err(format!("no keycode for {keysym:#x}")),
+    };
+    let code = evdev + 8u32;
+    h.data.state.key_input(code.into(), true, 0);
+    h.data.state.key_input(code.into(), false, 1);
+    h.settle()
+}
+
 const SCENARIOS: &[Scenario] = &[
     ("orientation", orientation),
     ("corners_and_shadow", corners_and_shadow),
@@ -1187,6 +1427,7 @@ const SCENARIOS: &[Scenario] = &[
     ("wm_switcher", wm_switcher),
     ("wm_blur", wm_blur),
     ("wm_shell_layers", wm_shell_layers),
+    ("wm_shell_desktop", wm_shell_desktop),
 ];
 
 fn main() -> ExitCode {

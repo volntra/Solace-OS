@@ -23,3 +23,7 @@ match_same_arms = "allow"
 [profile.release]
 lto = "thin"
 codegen-units = 1
+
+# Upstream fixes not yet released (third_party/README.md).
+[patch.crates-io]
+smithay = { path = "third_party/smithay" }

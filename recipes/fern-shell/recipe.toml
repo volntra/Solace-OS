@@ -1,0 +1,30 @@
+# Our own: de/design and de/shell in this repository. The design system
+# (the Fern.Design QML module and its symbols) and fern-shell (menu bar,
+# dock, search, notifications, control center), which fern-comp starts.
+name = "fern-shell"
+version = "0.1.0"
+release = 1
+summary = "Fern desktop shell and design system"
+license = "GPL-3.0-or-later"
+
+[[source]]
+local = "."
+include = ["de/CMakeLists.txt", "de/design", "de/shell", "de/protocols/fern-shell-v1.xml", "assets/symbols"]
+
+[deps]
+build = ["cmake", "ninja", "pkgconf", "qtbase", "qtdeclarative", "qtsvg", "layer-shell-qt", "wayland", "libxkbcommon"]
+runtime = ["qtbase", "qtdeclarative", "qtsvg", "layer-shell-qt", "fontconfig", "inter", "dbus", "fern-settingsd"]
+
+[build]
+system = "custom"
+configure = '''
+cmake -S de -B _build -G Ninja -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release \
+  -DFERN_BUILD_TESTS=OFF -DFERN_QML_INSTALL_DIR=lib/qt6/qml
+'''
+compile = '''
+ninja -C _build
+'''
+install = '''
+DESTDIR="$DESTDIR" ninja -C _build install
+install -Dm755 "$RECIPE/fern-session" "$DESTDIR/usr/lib/fern/fern-session"
+'''

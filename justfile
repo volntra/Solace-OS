@@ -55,6 +55,7 @@ wallpapers:
     python3 assets/wallpapers/gen-wallpapers.py
     mkdir -p build/wallpapers
     resvg -w 2560 assets/wallpapers/grove.svg build/wallpapers/grove.png
+    resvg -w 2560 assets/wallpapers/grove-night.svg build/wallpapers/grove-night.png
     resvg -w 2560 assets/wallpapers/grove-blurred.svg build/wallpapers/grove-blurred.png
 
 # Build the GRUB theme and fonts into build/grub-theme (Inter is fetched and hash-checked)
