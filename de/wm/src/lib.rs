@@ -93,6 +93,7 @@ fn send(p: &FernWmV1, cmd: Cmd) {
         Cmd::GrabPointer(g) => p.grab_pointer(u32::from(g)),
         Cmd::GrabKeyboard(g) => p.grab_keyboard(u32::from(g)),
         Cmd::OverlayClear => p.overlay_clear(),
+        Cmd::OverlayBeneath(id) => p.overlay_beneath(id),
         Cmd::OverlayRect {
             x,
             y,

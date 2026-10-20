@@ -7,8 +7,22 @@ Repository: https://github.com/volntra/Solace-OS (`main`).
 ## Current phase: 5 (window manager): in progress
 
 Phase 5 stages: 1 protocol + fern-wm process + crash recovery ✓, 2 spring
-animations ✓, 3 titlebars with traffic lights ✓; next 4 tiling, 5 Spaces,
-6 minimize, 7 Overview and the app switcher, 8 QEMU test and demo.
+animations ✓, 3 titlebars with traffic lights ✓, 4 tiling ✓; next
+5 Spaces, 6 minimize, 7 Overview and the app switcher, 8 QEMU test and demo.
+
+Stage 4 (2026-10-20): drag a window by its titlebar to the left or right
+edge and a soft green preview shows the half it will fill (under the
+window in hand); near a corner, the quarter; the top edge fills the
+screen. Let go and it springs into place with 8 px gaps. Drag it away and
+it gets its own size back, staying under the pointer. Super+Left/Right
+tile to halves, Super+Up fills (or makes a quarter from a half),
+Super+Down puts it back. A restarted window manager remembers tiled and
+zoomed windows' own frames (kept in the core with `save`). The core now
+draws the window manager's overlay (rectangles and text; the wallpaper
+and window pictures come with Overview). Fixed on the way: a titlebar
+drag with a real pointer deadlocked the core (the move asked the locked
+pointer where it was). Tests: `cargo test -p fern-wm` (11) and the render
+scenario `wm_tiling`.
 
 Stage 3 (2026-10-20): every window gets a server-side titlebar drawn by the
 core (28 px, rounded top corners, title in Inter SemiBold, centred and

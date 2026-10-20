@@ -49,6 +49,15 @@ dimmed when inactive; shadows tied to focus.
 | Hit areas | each light: its circle plus 2 px; resize: 6 px outside the frame, 14 px corner squares |
 | Behaviour | a light acts on release over the same light; titlebar drag moves; double-click zooms; edges resize |
 
+**Tiling.** Halves and quarters of the work area with 8 px gaps around
+and between them. Snap zones: 4 px from the left or right edge (halves),
+96 px from a corner along an edge (quarters), the top edge (fill). The
+preview is Leaf #7CC48A at 25 % with the window radius, under the window
+being dragged, and moves on the `smooth` spring when the window lands.
+Keyboard: Super+Left / Super+Right halves, Super+Up fill (from a half:
+the top quarter), Super+Down back to the window's own frame (from a half:
+the bottom quarter).
+
 ## Brand
 
 <img src="../../assets/brand/fern-icon-512.png" width="128" alt="Fern icon">

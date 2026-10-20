@@ -10,6 +10,7 @@ use std::path::{Path, PathBuf};
 use crate::backdrop::{self, Backdrop, BlurShaders, Clip};
 use crate::blur::surface_blur;
 use crate::text::{Fonts, Weight};
+use crate::wm::Overlay;
 
 use smithay::{
     backend::{
@@ -237,7 +238,15 @@ pub struct Shaders {
     /// The traffic lights' hover glyphs (close, minimize, zoom), made on
     /// first use.
     glyphs: RefCell<Option<[Rendered; 3]>>,
+    /// The window manager's overlay rectangles, by position in the list.
+    overlay_shapes: ShapeCache,
+    /// Overlay text by what it was made from; kept while drawn.
+    overlay_texts: RefCell<std::collections::HashMap<TextKey, Option<Rendered>>>,
 }
+
+/// What a line of overlay text was rendered from: text, size, colour,
+/// room.
+type TextKey = (String, i32, u32, i32);
 
 impl Shaders {
     /// # Errors
@@ -278,6 +287,8 @@ impl Shaders {
             blur,
             fonts: Fonts::load(),
             glyphs: RefCell::new(None),
+            overlay_shapes: ShapeCache::default(),
+            overlay_texts: RefCell::default(),
         })
     }
 }
@@ -490,6 +501,9 @@ impl Default for Visual {
     }
 }
 
+// Everything an output shows, from its parts: long, and each argument
+// is a different source.
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 pub fn output_elements(
     renderer: &mut GlesRenderer,
     shaders: &Shaders,
@@ -498,7 +512,10 @@ pub fn output_elements(
     area: Rectangle<i32, Logical>,
     scale: f64,
     visual: &dyn Fn(&Window) -> Visual,
+    overlay: (&[Overlay], Option<Window>),
 ) -> Vec<OutputElement> {
+    let (overlay, beneath) = overlay;
+    let mut overlay_drawn = false;
     let output_size = area.size;
     // Built from the bottom up, so that everything behind a blurred
     // window is known when its backdrop is made.
@@ -513,6 +530,10 @@ pub fn output_elements(
         out.push_front(OutputElement::Image(e));
     }
     for window in space.elements() {
+        if beneath.as_ref() == Some(window) {
+            overlay_elements(renderer, shaders, overlay, area, &mut out);
+            overlay_drawn = true;
+        }
         let Some(geo) = space.element_geometry(window) else {
             continue;
         };
@@ -602,7 +623,121 @@ pub fn output_elements(
             }));
         }
     }
+    if !overlay_drawn {
+        overlay_elements(renderer, shaders, overlay, area, &mut out);
+    }
     out.into()
+}
+
+/// `0xRRGGBBAA` as straight-alpha floats.
+fn unpack_rgba(rgba: u32) -> [f32; 4] {
+    rgba.to_be_bytes().map(|v| f32::from(v) / 255.0)
+}
+
+/// The window manager's overlay, above every window, in list order (the
+/// first is lowest). Coordinates are global; `area` is this output.
+fn overlay_elements(
+    renderer: &mut GlesRenderer,
+    shaders: &Shaders,
+    overlay: &[Overlay],
+    area: Rectangle<i32, Logical>,
+    out: &mut VecDeque<OutputElement>,
+) {
+    let origin = area.loc.to_f64();
+    let mut texts = shaders.overlay_texts.borrow_mut();
+    let mut used = std::collections::HashMap::new();
+    for (i, item) in overlay.iter().enumerate() {
+        match item {
+            Overlay::Rect {
+                x,
+                y,
+                w,
+                h,
+                radius,
+                rgba,
+            } => {
+                let rect = Rectangle::<f64, Logical>::new(
+                    (f64::from(*x) - origin.x, f64::from(*y) - origin.y).into(),
+                    (f64::from(*w), f64::from(*h)).into(),
+                );
+                #[allow(clippy::cast_precision_loss)]
+                let r = (*radius).max(0) as f32;
+                #[allow(clippy::cast_possible_truncation)]
+                let slot = i as u32;
+                out.push_front(OutputElement::Shadow(cached_shape(
+                    &shaders.overlay_shapes,
+                    slot,
+                    shaders,
+                    rect,
+                    premul(unpack_rgba(*rgba), 1.0),
+                    [r; 4],
+                    0.0,
+                    [0.0; 4],
+                )));
+            }
+            Overlay::Text {
+                x,
+                y,
+                width,
+                size,
+                rgba,
+                align,
+                text,
+            } => {
+                let key: TextKey = (text.clone(), *size, *rgba, *width);
+                let made = texts.remove(&key).unwrap_or_else(|| {
+                    #[allow(clippy::cast_precision_loss)]
+                    let line = shaders.fonts.line(
+                        text,
+                        *size as f32,
+                        Weight::SemiBold,
+                        unpack_rgba(*rgba),
+                        *width as f32,
+                    );
+                    line.map(|l| {
+                        (
+                            MemoryRenderBuffer::from_slice(
+                                &l.pixels,
+                                Fourcc::Argb8888,
+                                (l.width, l.height),
+                                1,
+                                Transform::Normal,
+                                None,
+                            ),
+                            (l.width, l.height),
+                        )
+                    })
+                });
+                if let Some((buffer, (tw, _))) = &made {
+                    let left = match align {
+                        1 => (width - tw) / 2,
+                        2 => width - tw,
+                        _ => 0,
+                    };
+                    let at = Point::<f64, Logical>::from((
+                        f64::from(x + left.max(0)) - origin.x,
+                        f64::from(*y) - origin.y,
+                    ));
+                    if let Ok(e) = MemoryRenderBufferRenderElement::from_buffer(
+                        renderer,
+                        at.to_physical(1.0),
+                        buffer,
+                        None,
+                        None,
+                        None,
+                        Kind::Unspecified,
+                    ) {
+                        out.push_front(OutputElement::Image(e));
+                    }
+                }
+                used.insert(key, made);
+            }
+            // Drawn from stage 7 on (Overview); nothing uses them yet.
+            Overlay::Wallpaper { .. } | Overlay::Mirror { .. } => {}
+        }
+    }
+    // Text no longer shown is dropped; the rest is kept for next frame.
+    *texts = used;
 }
 
 /// Text rendered into a buffer, with its size in pixels.
@@ -672,9 +807,10 @@ fn decorations(
     } else {
         TITLEBAR_INACTIVE
     };
+    let cache = window.user_data().get_or_insert(ShapeCache::default);
     let shape = |slot, rect, color, radii, border: f32, border_color| {
         OutputElement::Shadow(cached_shape(
-            window,
+            cache,
             slot,
             shaders,
             rect,
@@ -739,7 +875,7 @@ fn decorations(
             LIGHT_OFF
         };
         #[allow(clippy::cast_possible_truncation)]
-        let slot = 2 + i as u8;
+        let slot = 2 + i as u32;
         out.push_front(shape(
             slot,
             rect,
@@ -771,10 +907,10 @@ fn decorations(
 
 /// Shapes already made for a window, by slot, so a titlebar that does not
 /// change is the same element (no damage) frame after frame.
-#[derive(Default)]
-struct ShapeCache(RefCell<std::collections::HashMap<u8, (PixelShaderElement, ShapeKey)>>);
+#[derive(Debug, Clone, Default)]
+struct ShapeCache(RefCell<std::collections::HashMap<u32, (PixelShaderElement, ShapeKey)>>);
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 struct ShapeKey {
     rect: Rectangle<i32, Logical>,
     params: [u32; 13],
@@ -782,8 +918,8 @@ struct ShapeKey {
 
 #[allow(clippy::too_many_arguments)]
 fn cached_shape(
-    window: &Window,
-    slot: u8,
+    cache: &ShapeCache,
+    slot: u32,
     shaders: &Shaders,
     rect: Rectangle<f64, Logical>,
     color: [f32; 4],
@@ -811,7 +947,6 @@ fn cached_shape(
             Uniform::new("border", border),
         ]
     };
-    let cache = window.user_data().get_or_insert(ShapeCache::default);
     let mut map = cache.0.borrow_mut();
     if let Some((e, old)) = map.get_mut(&slot) {
         if old.rect != key.rect {

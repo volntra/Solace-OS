@@ -4,6 +4,9 @@
 
 use std::collections::BTreeMap;
 
+mod tile;
+pub use tile::{Tile, TileKey};
+
 /// `xdg_toplevel` states (the protocol's `state` bits).
 pub mod state {
     pub const ACTIVATED: u32 = 1;
@@ -192,6 +195,7 @@ pub enum Cmd {
     GrabPointer(bool),
     GrabKeyboard(bool),
     OverlayClear,
+    OverlayBeneath(u32),
     OverlayRect {
         x: i32,
         y: i32,
@@ -223,6 +227,21 @@ pub enum Cmd {
         align: u32,
         text: String,
     },
+}
+
+/// The window manager's key bindings: (id, modifiers, keysym).
+pub mod keys {
+    use super::mods::SUPER;
+    pub const TILE_LEFT: u32 = 1;
+    pub const TILE_RIGHT: u32 = 2;
+    pub const TILE_UP: u32 = 3;
+    pub const TILE_DOWN: u32 = 4;
+    pub const BINDINGS: &[(u32, u32, u32)] = &[
+        (TILE_LEFT, SUPER, 0xff51),
+        (TILE_RIGHT, SUPER, 0xff53),
+        (TILE_UP, SUPER, 0xff52),
+        (TILE_DOWN, SUPER, 0xff54),
+    ];
 }
 
 /// A window opens from this far below its place, at this scale.
@@ -271,6 +290,12 @@ pub struct Win {
     pub unzoomed: Option<Rect>,
     /// Minimized (hidden until restored).
     pub minimized: bool,
+    /// Tiled into a half or quarter, and the free frame (content size) it
+    /// goes back to.
+    pub tile: Option<Tile>,
+    pub untiled: Option<Rect>,
+    /// What the core holds for us (`save`), to notice changes.
+    saved: String,
     pub x: i32,
     pub y: i32,
     pub visible: bool,
@@ -282,6 +307,56 @@ pub struct Win {
 impl Win {
     pub fn mapped(&self) -> bool {
         self.size.is_some()
+    }
+
+    /// The window manager's memory of this window, as `save` data:
+    /// `key=value` pairs separated by `;`.
+    fn dump(&self) -> String {
+        let rect = |r: Rect| format!("{},{},{},{}", r.x, r.y, r.w, r.h);
+        let mut parts = Vec::new();
+        if let Some(z) = self.unzoomed {
+            parts.push(format!("unzoomed={}", rect(z)));
+        }
+        if let Some(t) = self.tile {
+            parts.push(format!("tile={t:?}"));
+        }
+        if let Some(u) = self.untiled {
+            parts.push(format!("untiled={}", rect(u)));
+        }
+        if self.minimized {
+            parts.push("minimized".into());
+        }
+        parts.join(";")
+    }
+
+    /// Takes back what [`Win::dump`] wrote; unknown parts are ignored.
+    fn load(&mut self, data: &str) {
+        let rect = |v: &str| {
+            let n: Vec<i32> = v.split(',').filter_map(|p| p.parse().ok()).collect();
+            (n.len() == 4).then(|| Rect::new(n[0], n[1], n[2], n[3]))
+        };
+        for part in data.split(';') {
+            let (key, value) = part.split_once('=').unwrap_or((part, ""));
+            match key {
+                "unzoomed" => self.unzoomed = rect(value),
+                "untiled" => self.untiled = rect(value),
+                "tile" => {
+                    self.tile = [
+                        Tile::Left,
+                        Tile::Right,
+                        Tile::TopLeft,
+                        Tile::TopRight,
+                        Tile::BottomLeft,
+                        Tile::BottomRight,
+                        Tile::Fill,
+                    ]
+                    .into_iter()
+                    .find(|t| format!("{t:?}") == value);
+                }
+                "minimized" => self.minimized = true,
+                _ => {}
+            }
+        }
     }
 
     /// The frame on screen (titlebar included).
@@ -304,6 +379,9 @@ pub struct Wm {
     /// A traffic light pressed and not yet released: (window, part). It
     /// acts on release over the same button, as buttons do.
     pressed: Option<(u32, u32)>,
+    /// While a window is dragged: the tile the pointer is over, and the
+    /// screen it is on (its preview is showing).
+    snap: Option<(Tile, Rect)>,
 }
 
 impl Wm {
@@ -375,9 +453,11 @@ impl Wm {
                 h,
                 states,
                 visible,
-                data: _,
+                data,
             } => {
                 if let Some(win) = self.windows.get_mut(&id) {
+                    win.load(&data);
+                    win.saved = data;
                     win.x = x;
                     win.y = y;
                     if w > 0 && h > 0 {
@@ -396,6 +476,9 @@ impl Wm {
             Event::RestoreWm(_) => {}
             Event::Done => {
                 self.restoring = false;
+                for &(id, mods, keysym) in keys::BINDINGS {
+                    out.push(Cmd::Bind { id, mods, keysym });
+                }
                 out.push(Cmd::Stack(self.stack.clone()));
                 out.push(Cmd::Focus(self.focused.unwrap_or(0)));
             }
@@ -419,11 +502,19 @@ impl Wm {
                 edges,
                 ..
             } => self.on_button(window, part, pressed, clicks, edges, &mut out),
-            Event::MoveEnd { id, x, y, .. } | Event::MoveUpdate { id, x, y, .. } => {
+            Event::MoveUpdate { id, x, y, px, py } => {
                 if let Some(w) = self.windows.get_mut(&id) {
                     w.x = x;
                     w.y = y;
                 }
+                self.drag_update(id, px, py, &mut out);
+            }
+            Event::MoveEnd { id, x, y, .. } => {
+                if let Some(w) = self.windows.get_mut(&id) {
+                    w.x = x;
+                    w.y = y;
+                }
+                self.drag_end(id, &mut out);
             }
             Event::ResizeEnd { id, x, y, w, h } => {
                 if let Some(win) = self.windows.get_mut(&id) {
@@ -431,11 +522,50 @@ impl Wm {
                     win.y = y;
                     win.size = Some((w, h));
                     win.cfg = (w, h);
+                    // Resized by hand: no longer tiled.
+                    if win.tile.take().is_some() {
+                        win.untiled = None;
+                        win.states &= !(state::TILED_LEFT
+                            | state::TILED_RIGHT
+                            | state::TILED_TOP
+                            | state::TILED_BOTTOM);
+                        out.push(Cmd::Configure {
+                            id,
+                            w,
+                            h,
+                            states: win.states,
+                        });
+                    }
                 }
             }
-            Event::Motion { .. } | Event::Key { .. } | Event::Binding(_) => {}
+            Event::Binding(id) => {
+                let key = match id {
+                    keys::TILE_LEFT => TileKey::Left,
+                    keys::TILE_RIGHT => TileKey::Right,
+                    keys::TILE_UP => TileKey::Up,
+                    keys::TILE_DOWN => TileKey::Down,
+                    _ => return out,
+                };
+                self.tile_key(key, &mut out);
+            }
+            Event::Motion { .. } | Event::Key { .. } => {}
+        }
+        if !self.restoring {
+            self.save_changes(&mut out);
         }
         out
+    }
+
+    /// Hands the core what a restarted window manager will need for each
+    /// window whose memory changed (zoomed, tiled, minimized frames).
+    fn save_changes(&mut self, out: &mut Vec<Cmd>) {
+        for (&id, win) in &mut self.windows {
+            let data = win.dump();
+            if data != win.saved {
+                out.push(Cmd::Save(id, data.clone()));
+                win.saved = data;
+            }
+        }
     }
 
     /// The output a window is on (the one it overlaps most), or the first.
@@ -509,7 +639,11 @@ impl Wm {
         if on == zoomed {
             return;
         }
-        let frame = win.rect();
+        // A tiled window zooms from, and returns to, its free frame.
+        let frame = match (on, win.tile, win.untiled) {
+            (true, Some(_), Some(u)) => Rect::new(u.x, u.y, u.w, u.h + win.tb),
+            _ => win.rect(),
+        };
         let target = if on {
             self.work_area(&frame)
         } else {
@@ -519,6 +653,10 @@ impl Wm {
             return;
         };
         win.unzoomed = on.then_some(frame);
+        win.tile = None;
+        win.untiled = None;
+        win.states &=
+            !(state::TILED_LEFT | state::TILED_RIGHT | state::TILED_TOP | state::TILED_BOTTOM);
         win.states = if on {
             win.states | state::MAXIMIZED
         } else {
@@ -888,7 +1026,7 @@ mod tests {
             });
         }
         let cmds = wm.handle(Event::Done);
-        assert_eq!(cmds, [Cmd::Stack(vec![4, 7]), Cmd::Focus(7)]);
+        assert!(cmds.ends_with(&[Cmd::Stack(vec![4, 7]), Cmd::Focus(7)]));
         assert_eq!(wm.windows[&4].rect(), Rect::new(10, 20, 200, 100));
     }
 
@@ -899,5 +1037,122 @@ mod tests {
         let taken = [Rect::new(300, 200, 400, 300)];
         let p = place(area, (400, 300), &taken);
         assert_eq!(Rect::new(p.0, p.1, 400, 300).overlap(&taken[0]), 0);
+    }
+
+    #[test]
+    fn what_a_window_manager_remembers_survives_a_restart() {
+        let mut wm = wm_with_output();
+        open(&mut wm, 1, 400, 300);
+        let free = wm.windows[&1].rect();
+        let cmds = wm.handle(Event::Binding(keys::TILE_LEFT));
+        let Some(Cmd::Save(1, data)) = cmds.iter().find(|c| matches!(c, Cmd::Save(..))) else {
+            panic!("tiling saved nothing: {cmds:?}");
+        };
+        assert_eq!(
+            data,
+            &format!("tile=Left;untiled={},{},400,300", free.x, free.y)
+        );
+        let mut back = Win::default();
+        back.load(data);
+        assert_eq!(back.tile, Some(Tile::Left));
+        assert_eq!(back.untiled, Some(Rect::new(free.x, free.y, 400, 300)));
+        assert_eq!(back.dump(), *data);
+    }
+
+    #[test]
+    fn super_arrows_tile_and_down_goes_back() {
+        let mut wm = wm_with_output();
+        open(&mut wm, 1, 400, 300);
+        let free = wm.windows[&1].rect();
+        wm.handle(Event::Binding(keys::TILE_RIGHT));
+        assert_eq!(wm.windows[&1].tile, Some(Tile::Right));
+        assert_eq!(
+            (wm.windows[&1].x, wm.windows[&1].y),
+            (1280 + tile::GAP / 2, tile::GAP)
+        );
+        wm.handle(Event::Binding(keys::TILE_UP));
+        assert_eq!(wm.windows[&1].tile, Some(Tile::TopRight));
+        // Down from a quarter: back to the free frame.
+        let cmds = wm.handle(Event::Binding(keys::TILE_DOWN));
+        assert!(cmds.contains(&Cmd::Place {
+            id: 1,
+            x: free.x,
+            y: free.y,
+            scale: 1.0,
+            alpha: 1.0,
+            motion: motion::SMOOTH
+        }));
+        assert_eq!(wm.windows[&1].tile, None);
+        assert_eq!(wm.windows[&1].cfg, (400, 300));
+    }
+
+    #[test]
+    fn dragging_to_an_edge_previews_then_snaps() {
+        let mut wm = wm_with_output();
+        open(&mut wm, 1, 400, 300);
+        let cmds = wm.handle(Event::MoveUpdate {
+            id: 1,
+            x: 100,
+            y: 400,
+            px: 0.0,
+            py: 700.0,
+        });
+        let left = Tile::Left.rect(Rect::new(0, 0, 2560, 1440));
+        assert!(cmds.contains(&Cmd::OverlayRect {
+            x: left.x,
+            y: left.y,
+            w: left.w,
+            h: left.h,
+            radius: 12,
+            rgba: 0x7C_C4_8A_40
+        }));
+        // Moving within the zone sends nothing more.
+        let again = wm.handle(Event::MoveUpdate {
+            id: 1,
+            x: 100,
+            y: 410,
+            px: 0.0,
+            py: 710.0,
+        });
+        assert!(!again.iter().any(|c| matches!(c, Cmd::OverlayRect { .. })));
+        let cmds = wm.handle(Event::MoveEnd {
+            id: 1,
+            x: 100,
+            y: 410,
+            px: 0.0,
+            py: 710.0,
+        });
+        assert!(cmds.contains(&Cmd::OverlayClear));
+        assert!(cmds.contains(&Cmd::Configure {
+            id: 1,
+            w: left.w,
+            h: left.h,
+            states: state::ACTIVATED
+                | state::TILED_LEFT
+                | state::TILED_RIGHT
+                | state::TILED_TOP
+                | state::TILED_BOTTOM
+        }));
+        // The client takes the tiled size.
+        wm.handle(Event::Size {
+            id: 1,
+            w: left.w,
+            h: left.h,
+        });
+        // Dragged away: its own size back (the core keeps it in hand).
+        let cmds = wm.handle(Event::MoveUpdate {
+            id: 1,
+            x: left.x + 50,
+            y: left.y + 200,
+            px: 600.0,
+            py: 300.0,
+        });
+        assert!(cmds.contains(&Cmd::Configure {
+            id: 1,
+            w: 400,
+            h: 300,
+            states: state::ACTIVATED
+        }));
+        assert_eq!(wm.windows[&1].tile, None);
     }
 }

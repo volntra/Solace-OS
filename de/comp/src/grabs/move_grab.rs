@@ -21,6 +21,8 @@ pub struct MoveSurfaceGrab {
     pub start_data: PointerGrabStartData<Comp>,
     pub window: Window,
     pub initial_window_location: Point<i32, Logical>,
+    /// The window's width when the move began.
+    pub initial_width: i32,
 }
 
 impl PointerGrab<Comp> for MoveSurfaceGrab {
@@ -34,11 +36,24 @@ impl PointerGrab<Comp> for MoveSurfaceGrab {
         // While the grab is active, no client has pointer focus
         handle.motion(data, None, event);
 
-        let delta = event.location - self.start_data.location;
-        let new_location = self.initial_window_location.to_f64() + delta;
+        // The pointer keeps its place across the window: if the window
+        // changes width while held (dragged out of a tile), the point under
+        // the pointer stays at the same fraction of the width.
+        let start = self.start_data.location;
+        let initial = self.initial_window_location.to_f64();
+        let width = f64::from(self.window.geometry().size.w);
+        let across = if self.initial_width > 0 && width > 0.0 {
+            (start.x - initial.x) * width / f64::from(self.initial_width)
+        } else {
+            start.x - initial.x
+        };
+        let new_location = Point::<f64, Logical>::from((
+            event.location.x - across,
+            event.location.y - (start.y - initial.y),
+        ));
         data.space
             .map_element(self.window.clone(), new_location.to_i32_round(), false);
-        data.wm_move_update(&self.window, false);
+        data.wm_move_update(&self.window, event.location, false);
     }
 
     fn relative_motion(
@@ -65,8 +80,9 @@ impl PointerGrab<Comp> for MoveSurfaceGrab {
 
         if !handle.current_pressed().contains(&BTN_LEFT) {
             // No more buttons are pressed, release the grab.
+            let at = handle.current_location();
             handle.unset_grab(self, data, event.serial, event.time, true);
-            data.wm_move_update(&self.window, true);
+            data.wm_move_update(&self.window, at, true);
         }
     }
 

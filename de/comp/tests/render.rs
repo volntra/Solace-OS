@@ -556,6 +556,78 @@ fn wm_zoom(h: &mut Harness) -> Result {
     })
 }
 
+/// Presses the left button at `from`, moves to `to` in a dozen steps, taking a
+/// frame after each, and returns the screenshot taken just before release
+/// (labelled `label`) once released and settled.
+fn drag(h: &mut Harness, from: (f64, f64), to: (f64, f64), label: &str) -> Result<Image> {
+    let steps = 12;
+    h.data.state.pointer_to(from.into(), 0);
+    h.data.state.pointer_button(0x110, true, 0);
+    h.settle()?;
+    for i in 1..=steps {
+        let t = f64::from(i) / f64::from(steps);
+        let at = (from.0 + (to.0 - from.0) * t, from.1 + (to.1 - from.1) * t);
+        h.data.state.pointer_to(at.into(), i);
+        h.turn()?;
+    }
+    h.settle()?;
+    let held = h.shot(label)?;
+    h.data.state.pointer_button(0x110, false, 100);
+    h.settle()?;
+    Ok(held)
+}
+
+fn wm_tiling(h: &mut Harness) -> Result {
+    use fernwm::policy::{Rect, Tile};
+    h.open("--color 2ec4b6ff --size 300x200 --title Tile")?;
+    let (x, y) = h.location(0);
+    let tb = ferncomp::render::TITLEBAR_HEIGHT;
+    let grab = (f64::from(x) + 150.0, f64::from(y - tb / 2));
+    // Held at the left edge: the preview (Leaf over grey) shows the left
+    // half; let go and the window fills it, content under its titlebar.
+    let held = drag(h, grab, (0.0, 350.0), "tile-preview")?;
+    let left = Tile::Left.rect(Rect::new(0, 0, SIZE.0, SIZE.1));
+    let preview = held.pixel(left.x + 20, left.y + left.h - 20);
+    check(preview[1] > 135 && preview[0] < 135, || {
+        format!("no green preview at the left half: {preview:?}")
+    })?;
+    // The preview lies under the window in hand (grabbed 150 px across,
+    // so its content spans x -150..150 below the pointer).
+    let held_window = held.pixel(100, 350 + tb);
+    check(near(held_window, [0x2e, 0xc4, 0xb6], 4), || {
+        format!("the preview tints the dragged window: {held_window:?}")
+    })?;
+    h.shot("tiled")?;
+    let size = h.windows[0].geometry().size;
+    check(h.location(0) == (left.x, left.y + tb), || {
+        format!(
+            "tiled at {:?}, want {:?}",
+            h.location(0),
+            (left.x, left.y + tb)
+        )
+    })?;
+    check((size.w, size.h) == (left.w, left.h - tb), || {
+        format!("tiled size {size:?}, want {}x{}", left.w, left.h - tb)
+    })?;
+    // The preview is gone after the drop.
+    check(h.data.state.wm.overlay.is_empty(), || {
+        "the preview stayed".into()
+    })?;
+    // Dragged out to the middle: back to its own size, still held.
+    let (tx, ty) = h.location(0);
+    let grab = (f64::from(tx) + 100.0, f64::from(ty - tb / 2));
+    drag(h, grab, (500.0, 300.0), "untiling")?;
+    let size = h.windows[0].geometry().size;
+    check((size.w, size.h) == (300, 200), || {
+        format!("dragged out at size {size:?}")
+    })?;
+    let (ux, uy) = h.location(0);
+    check(
+        (f64::from(ux)..f64::from(ux + 300)).contains(&500.0) && (uy - tb..uy).contains(&300),
+        || format!("the pointer lost the window: it is at {:?}", (ux, uy)),
+    )
+}
+
 const SCENARIOS: &[Scenario] = &[
     ("orientation", orientation),
     ("corners_and_shadow", corners_and_shadow),
@@ -567,6 +639,7 @@ const SCENARIOS: &[Scenario] = &[
     ("wm_restart_keeps_windows", wm_restart_keeps_windows),
     ("wm_titlebar", wm_titlebar),
     ("wm_zoom", wm_zoom),
+    ("wm_tiling", wm_tiling),
 ];
 
 fn main() -> ExitCode {

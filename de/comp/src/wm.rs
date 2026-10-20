@@ -252,6 +252,7 @@ enum Pending {
     GrabPointer(bool),
     GrabKeyboard(bool),
     OverlayClear,
+    OverlayBeneath(u32),
     Overlay(Overlay),
 }
 
@@ -284,6 +285,9 @@ pub struct WmHost {
     pub grab_keyboard: bool,
     pub overlay: Vec<Overlay>,
     pending_overlay: Option<Vec<Overlay>>,
+    /// The window the overlay is drawn just below (0: above all).
+    pub overlay_beneath: u32,
+    pending_beneath: Option<u32>,
     launcher: Option<WmLauncher>,
     restarts: VecDeque<Instant>,
     last_press: Option<(Instant, Point<f64, Logical>, u32)>,
@@ -416,6 +420,8 @@ impl Comp {
         self.wm.grab_keyboard = false;
         self.wm.overlay.clear();
         self.wm.pending_overlay = None;
+        self.wm.overlay_beneath = 0;
+        self.wm.pending_beneath = None;
         self.request_redraw();
         if self.wm.launcher.is_none() {
             return;
@@ -458,6 +464,17 @@ impl Comp {
 
     /// Height of a window's titlebar: ours when the window manager asked
     /// for it and the client agreed to server-side decoration.
+    /// The window manager's overlay, and the window it goes just below
+    /// (`None`: above every window).
+    pub fn overlay(&self) -> (&[Overlay], Option<Window>) {
+        let beneath = self
+            .wm
+            .windows
+            .get(&self.wm.overlay_beneath)
+            .map(|r| r.window.clone());
+        (&self.wm.overlay, beneath)
+    }
+
     pub fn titlebar_height(&self, rec: &WinRecord) -> i32 {
         if rec.decorated && rec.ssd {
             crate::render::TITLEBAR_HEIGHT
@@ -745,7 +762,10 @@ impl Comp {
         }
     }
 
-    pub fn wm_move_update(&mut self, window: &Window, end: bool) {
+    /// The window is being moved; the pointer is at `p`. (Called from
+    /// inside the move grab, where the pointer is locked: `p` must come
+    /// from the grab, not from the pointer.)
+    pub fn wm_move_update(&mut self, window: &Window, p: Point<f64, Logical>, end: bool) {
         let (Some(id), Some(r)) = (win_id(window), self.wm.resource.clone()) else {
             return;
         };
@@ -753,11 +773,6 @@ impl Comp {
             return;
         };
         let (x, y) = self.frame_location(rec);
-        let p = self
-            .seat
-            .get_pointer()
-            .map(|p| p.current_location())
-            .unwrap_or_default();
         // The window follows the pointer exactly; its spring rests there.
         if let Some(rec) = self.wm.windows.get_mut(&id) {
             rec.place.x = x;
@@ -845,6 +860,7 @@ impl Comp {
             R::GrabPointer { grab } => Pending::GrabPointer(grab != 0),
             R::GrabKeyboard { grab } => Pending::GrabKeyboard(grab != 0),
             R::OverlayClear => Pending::OverlayClear,
+            R::OverlayBeneath { id } => Pending::OverlayBeneath(id),
             R::OverlayRect {
                 x,
                 y,
@@ -917,6 +933,9 @@ impl Comp {
         let pending = std::mem::take(&mut self.wm.pending);
         for p in pending {
             self.wm_apply(p);
+        }
+        if let Some(b) = self.wm.pending_beneath.take() {
+            self.wm.overlay_beneath = b;
         }
         if let Some(o) = self.wm.pending_overlay.take() {
             self.wm.overlay = o;
@@ -1008,7 +1027,11 @@ impl Comp {
                 }
             }
             Pending::GrabKeyboard(on) => self.wm.grab_keyboard = on,
-            Pending::OverlayClear => self.wm.pending_overlay = Some(Vec::new()),
+            Pending::OverlayClear => {
+                self.wm.pending_overlay = Some(Vec::new());
+                self.wm.pending_beneath = Some(0);
+            }
+            Pending::OverlayBeneath(id) => self.wm.pending_beneath = Some(id),
             Pending::Overlay(o) => self
                 .wm
                 .pending_overlay
@@ -1235,6 +1258,7 @@ impl Comp {
         };
         let grab = MoveSurfaceGrab {
             start_data,
+            initial_width: window.geometry().size.w,
             window,
             initial_window_location: loc,
         };

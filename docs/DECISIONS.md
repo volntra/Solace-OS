@@ -808,3 +808,29 @@ frame missed the next vblank (about 5 a second).
   menu bar and dock (Phase 6); minimize targets the bottom centre until
   the dock reports icon rectangles; dark-mode titlebars arrive with
   settingsd.
+
+### 2026-10-20: Edge and corner tiling (Phase 5, stage 4)
+
+- **Decision:** fern-wm owns tiling. During a titlebar drag it watches
+  `move_update`; the pointer within 4 px of the left or right edge snaps
+  to that half, within 96 px of a corner along an edge to the quarter, at
+  the top edge (away from corners) to filling the screen. The bottom edge
+  does nothing: it belongs to the dock. Tiles keep 8 px gaps (HIG:
+  Spacing) and report all four `tiled` states so clients drop their own
+  shadows. Super+arrows do the same from the keyboard.
+- **Preview:** an overlay rectangle in Leaf at 25 % with the window
+  radius, drawn *under* the dragged window via a new request,
+  `overlay_beneath` (macOS does the same; drawn on top it tinted the
+  window in hand).
+- **Dragging out of a tile:** the window manager only asks for the old
+  size; the core's move keeps the pointer at the same fraction across the
+  titlebar as the width changes. Doing it in the window manager (place
+  plus a new move) lagged the pointer by one round trip and the window
+  jumped.
+- **Crash memory:** what the window manager knows about a window that the
+  core does not (its frame before zoom or tiling, its tile, minimized) is
+  stored with `save` as `key=value;...` and read back on restart.
+- **Alternatives:** automatic tiling layouts (not the macOS feel; floating
+  stays the default per CLAUDE.md 6.6); snapping by window position
+  instead of pointer position (harder to aim, and windows can be wider
+  than the gap to the edge).

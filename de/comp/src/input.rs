@@ -99,6 +99,16 @@ impl Comp {
             return;
         };
         let pos = self.clamp_to_outputs(pointer.current_location() + event.delta());
+        self.pointer_to(pos, event.time_msec());
+    }
+
+    /// Moves the pointer to `pos` (global logical): hover, the window
+    /// manager, then the client under it or the active grab. Input
+    /// backends and tests come through here.
+    pub fn pointer_to(&mut self, pos: Point<f64, Logical>, time: u32) {
+        let Some(pointer) = self.seat.get_pointer() else {
+            return;
+        };
         self.update_hover(pos);
         let under = if self.wm_motion(pos) {
             self.surface_under(pos)
@@ -111,7 +121,7 @@ impl Comp {
             &MotionEvent {
                 location: pos,
                 serial: SERIAL_COUNTER.next_serial(),
-                time: event.time_msec(),
+                time,
             },
         );
         pointer.frame(self);
@@ -147,41 +157,34 @@ impl Comp {
         else {
             return;
         };
-        let Some(pointer) = self.seat.get_pointer() else {
-            return;
-        };
         let pos = event.position_transformed(output_geo.size) + output_geo.loc.to_f64();
-        self.update_hover(pos);
-        let under = if self.wm_motion(pos) {
-            self.surface_under(pos)
-        } else {
-            None
-        };
-        pointer.motion(
-            self,
-            under,
-            &MotionEvent {
-                location: pos,
-                serial: SERIAL_COUNTER.next_serial(),
-                time: event.time_msec(),
-            },
-        );
-        pointer.frame(self);
+        self.pointer_to(pos, event.time_msec());
     }
 
     fn on_button<I: InputBackend>(&mut self, event: &I::PointerButtonEvent) {
+        self.pointer_button(
+            event.button_code(),
+            event.state() == ButtonState::Pressed,
+            event.time_msec(),
+        );
+    }
+
+    /// A pointer button (evdev code) went down or up where the pointer is.
+    pub fn pointer_button(&mut self, button: u32, pressed: bool, time: u32) {
         let Some(pointer) = self.seat.get_pointer() else {
             return;
         };
         let serial = SERIAL_COUNTER.next_serial();
-        let state = event.state();
-        let pressed = state == ButtonState::Pressed;
+        let state = if pressed {
+            ButtonState::Pressed
+        } else {
+            ButtonState::Released
+        };
         let mut to_clients = true;
         if !pointer.is_grabbed() {
             if self.wm.connected() {
                 // The window manager decides about focus and raising.
-                to_clients =
-                    self.wm_button(pointer.current_location(), event.button_code(), pressed);
+                to_clients = self.wm_button(pointer.current_location(), button, pressed);
             } else if pressed {
                 // Without one: a click raises and focuses the window under
                 // the pointer, or clears focus on the desktop.
@@ -197,10 +200,10 @@ impl Comp {
         pointer.button(
             self,
             &ButtonEvent {
-                button: event.button_code(),
+                button,
                 state,
                 serial,
-                time: event.time_msec(),
+                time,
             },
         );
         pointer.frame(self);

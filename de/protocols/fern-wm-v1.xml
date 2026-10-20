@@ -347,7 +347,21 @@
 
     <!-- window manager to core: overlay (drawn above all windows) -->
 
-    <request name="overlay_clear"/>
+    <request name="overlay_clear">
+      <description summary="start a new overlay">
+        The overlay is replaced at commit by what follows; it is drawn above
+        all windows again until overlay_beneath says otherwise.
+      </description>
+    </request>
+
+    <request name="overlay_beneath">
+      <description summary="draw the overlay just below a window">
+        Draws the overlay just below window id instead of above everything
+        (the tiling preview goes under the window being dragged). 0: above
+        all windows. Reset by overlay_clear.
+      </description>
+      <arg name="id" type="uint"/>
+    </request>
 
     <request name="overlay_rect">
       <arg name="x" type="int"/>

@@ -129,6 +129,7 @@ impl XdgShellHandler for Comp {
 
             let grab = MoveSurfaceGrab {
                 start_data,
+                initial_width: window.geometry().size.w,
                 window,
                 initial_window_location,
             };
