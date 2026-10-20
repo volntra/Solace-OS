@@ -4,12 +4,45 @@ _Last updated: 2026-10-20_
 
 Repository: https://github.com/volntra/Solace-OS (`main`).
 
-## Current phase: 5 (window manager): in progress
+## Current phase: 5 (window manager): done (2026-10-20); Phase 6 next
 
-Phase 5 stages: 1 protocol + fern-wm process + crash recovery ✓, 2 spring
-animations ✓, 3 titlebars with traffic lights ✓, 4 tiling ✓, 5 Spaces ✓,
-6 minimize into the dock ✓, 7 Overview and the app switcher ✓; next 8
-QEMU test and demo.
+**Demo:**
+- `just qemu-test-wm`: boots the image in QEMU and drives fern-wm with
+  real key presses. It tiles, carries a window to a new Space and back,
+  opens Overview, kills fern-wm (every window stays put, a new fern-wm
+  takes over and remembers the Spaces), then powers off. Screenshots go
+  to `build/image/wm-*.png`.
+- `just wm-demo`: the same, nested in your desktop.
+- `just comp-drm`: from a text console on the real display (it now starts
+  fern-wm too).
+
+Keys: Super+arrows tile; Ctrl+Super+Left/Right switch Spaces (add Shift
+to take the window along); Ctrl+Super+Up opens Overview; Super+Tab
+switches apps; Super+grave cycles an app's windows; Super+M minimizes;
+Ctrl+Super+F toggles fullscreen. Drag a titlebar to a screen edge to tile.
+
+Stages: 1 protocol, fern-wm process and crash recovery ✓; 2 spring
+animations ✓; 3 titlebars with traffic lights ✓; 4 tiling ✓; 5 Spaces ✓;
+6 minimize into the dock ✓; 7 Overview and the app switcher ✓; 8 QEMU
+test and demo ✓.
+
+Stage 8 (2026-10-20): `image/qemu-test-wm.py` (above). The Phase 4 test
+(`just qemu-test-comp`) is updated for the window manager: the striped
+window gets a titlebar, Super+Up fills the screen with it, and the glass
+window lands on top for the blur check. Found and fixed by the QEMU test:
+- On a slow renderer (software, in a VM) springs ran in slow motion: each
+  frame advanced at most 1/30 s. It is now real time, capped at 1 s.
+- After a fern-wm restart, a window on another Space (or minimized) came
+  back where it had last been drawn: off screen, or in the dock. fern-wm
+  now saves where a hidden window belongs.
+
+**Not done in Phase 5** (each named in its stage below):
+- App icons in the switcher (Phase 7).
+- Dragging windows between Spaces in Overview, and removing Spaces there.
+- A genie-style minimize bend.
+- Per-display Spaces.
+- The real dock and its icon rectangles (Phase 6, with layer-shell).
+- Running on the human's NVIDIA PC (the Phase 6 hardware check covers it).
 
 Stage 7 (2026-10-20): Overview (Ctrl+Super+Up). The windows of the Space
 on screen spring into a grid (the live windows, scaled, titles under
@@ -525,6 +558,9 @@ Phase 1's demo still works: `just demo`.
    demo with a window (`just qemu --update build/demo/update.img`), and
    look at the desktop in a window (`just qemu`; with host 3D, try
    `-device virtio-vga-gl -display gtk,gl=on` for virgl).
-2. Phase 5 (fern-wm). Still to try on the human's PC: GPU clients (e.g.
-   a browser or EGL demos) under `just comp-drm`, and `just comp` nested
-   in the NixOS desktop.
+2. On the human's PC: `just wm-demo` nested in the NixOS desktop (if it
+   keeps Super for itself, use `just comp-drm` from a text console), and
+   GPU clients (a browser, EGL demos) under `just comp-drm`.
+3. Phase 6: fern-settingsd, the QML design system, and the shell (menu
+   bar, dock over foreign-toplevel, search, notifications, control
+   center). The core needs layer-shell first.

@@ -359,6 +359,11 @@ impl Win {
     fn dump(&self) -> String {
         let rect = |r: Rect| format!("{},{},{},{}", r.x, r.y, r.w, r.h);
         let mut parts = vec![format!("space={}", self.space)];
+        // Hidden, it is drawn where it went (off screen, into the dock):
+        // where it belongs is ours to remember.
+        if !self.visible {
+            parts.push(format!("at={},{}", self.x, self.y));
+        }
         if let Some(f) = self.windowed {
             parts.push(format!("windowed={},{}", f.space, rect(f.frame)));
         }
@@ -402,6 +407,14 @@ impl Win {
                     .find(|t| format!("{t:?}") == value);
                 }
                 "minimized" => self.minimized = true,
+                "at" => {
+                    if let Some((x, y)) = value.split_once(',')
+                        && let (Ok(x), Ok(y)) = (x.parse(), y.parse())
+                    {
+                        self.x = x;
+                        self.y = y;
+                    }
+                }
                 "space" => self.space = value.parse().unwrap_or(0),
                 "windowed" => {
                     if let Some((space, frame)) = value.split_once(',')
@@ -532,10 +545,12 @@ impl Wm {
                 data,
             } => {
                 if let Some(win) = self.windows.get_mut(&id) {
-                    win.load(&data);
-                    win.saved = data;
                     win.x = x;
                     win.y = y;
+                    // A hidden window's saved place wins over where the
+                    // core drew it last (slid off screen, shrunk away).
+                    win.load(&data);
+                    win.saved = data;
                     if w > 0 && h > 0 {
                         win.size = Some((w, h));
                     }
@@ -1278,7 +1293,10 @@ mod tests {
             data,
             &format!("space=1;tile=Left;untiled={},{},400,300", free.x, free.y)
         );
-        let mut back = Win::default();
+        let mut back = Win {
+            visible: true,
+            ..Win::default()
+        };
         back.load(data);
         assert_eq!(back.tile, Some(Tile::Left));
         assert_eq!(back.untiled, Some(Rect::new(free.x, free.y, 400, 300)));
@@ -1600,5 +1618,74 @@ mod tests {
         // Super+` goes through the Terminal's windows.
         wm.handle(Event::Binding(keys::CYCLE_WINDOWS));
         assert_eq!(wm.focused, Some(2));
+    }
+
+    #[test]
+    fn a_restart_keeps_where_hidden_windows_belong() {
+        let mut wm = wm_with_output();
+        open(&mut wm, 1, 400, 300);
+        open(&mut wm, 2, 400, 300);
+        let home = wm.windows[&1].rect();
+        // Window 2 goes to Space 2; window 1 slides off screen.
+        let cmds = wm.handle(Event::Binding(keys::CARRY_RIGHT));
+        let saved: Vec<(u32, String)> = cmds
+            .iter()
+            .filter_map(|c| match c {
+                Cmd::Save(id, d) => Some((*id, d.clone())),
+                _ => None,
+            })
+            .collect();
+        let wm_data = cmds.iter().rev().find_map(|c| match c {
+            Cmd::SaveWm(d) => Some(d.clone()),
+            _ => None,
+        });
+        let data1 = &saved.iter().rev().find(|(id, _)| *id == 1).unwrap().1;
+        // A new window manager, told what the core knows: window 1 is
+        // hidden and was last drawn off screen.
+        let mut again = Wm::new();
+        again.handle(Event::Output {
+            id: 1,
+            x: 0,
+            y: 0,
+            w: 2560,
+            h: 1440,
+        });
+        for (id, x, visible, data) in [
+            (1, home.x - 2560, false, data1.clone()),
+            (2, 0, true, String::from("space=2")),
+        ] {
+            again.handle(Event::Window {
+                id,
+                app_id: "a".into(),
+                title: "t".into(),
+                parent: 0,
+            });
+            again.handle(Event::Size { id, w: 400, h: 300 });
+            again.handle(Event::Restore {
+                id,
+                x,
+                y: home.y,
+                w: 400,
+                h: 300,
+                states: 0,
+                visible,
+                data,
+            });
+        }
+        again.handle(Event::RestoreWm(wm_data.unwrap_or_default()));
+        again.handle(Event::Done);
+        // Back to Space 1: window 1 slides in to where it belongs.
+        let cmds = again.handle(Event::Binding(keys::SPACE_LEFT));
+        assert!(
+            cmds.contains(&Cmd::Place {
+                id: 1,
+                x: home.x,
+                y: home.y,
+                scale: 1.0,
+                alpha: 1.0,
+                motion: motion::SMOOTH
+            }),
+            "{cmds:?}"
+        );
     }
 }

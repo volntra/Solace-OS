@@ -4,8 +4,10 @@
 Boots image/qemu.sh --screen (a virtio GPU, no window), logs in on the
 serial console and checks, from screenshots taken through the QEMU monitor:
   1. fern-comp takes the display at boot and draws the wallpaper
-  2. a striped test window appears with rounded corners, and a transparent
-     window that asks for blur shows the stripes behind it blurred
+  2. a striped test window appears with our titlebar; Super+Up (fern-wm)
+     makes it fill the screen, with rounded corners; a transparent window
+     that asks for blur, placed on top, shows the stripes behind it
+     blurred
   3. Ctrl+Alt+F2 switches to the console login on tty2 (the session is
      paused) and Ctrl+Alt+F1 brings the desktop back
   4. the machine powers off cleanly
@@ -96,10 +98,17 @@ def start_client(c, args):
     c.run(f"({CLIENT} {args} >/dev/null 2>&1 &)", f"starting fern-testclient {args}")
 
 
+TITLEBAR = 28
+GAP = 8
+TITLEBAR_COLOURS = [(0xEA, 0xEC, 0xE7), (0xF3, 0xF4, 0xF1)]
+
+
 def placed(w, h, size):
-    """Where fern-comp's placement puts a new window: centred, 40% down."""
+    """Where fern-wm puts a new window's content when nothing is in the
+    way (or everything is): the frame (titlebar included) centred, 40%
+    down."""
     sw, sh = size
-    return (sw - w) // 2, int((sh - h) * 0.4)
+    return (sw - w) // 2, (sh - h - TITLEBAR) * 2 // 5 + TITLEBAR
 
 
 def main():
@@ -134,8 +143,22 @@ def main():
         ok(f"protocols: GPU buffers (linux-dmabuf), blur, xdg-shell; {sync} explicit sync on this GPU")
         start_client(c, "--stripes --size 600x400")
         sx, sy = placed(600, 400, size)
-        wait_for(c, "stripes", lambda s: has_stripes(s, sy + 200, sx + 50, sx + 550), "the striped window")
-        ok("a client window is drawn")
+        shot = wait_for(c, "stripes", lambda s: has_stripes(s, sy + 200, sx + 50, sx + 550), "the striped window")
+        bar = shot.pixel(sx + 300, sy - TITLEBAR // 2 + 6)
+        if not any(near(bar, t, 10) for t in TITLEBAR_COLOURS):
+            fail(f"no titlebar above the window: {bar}")
+        ok("a client window is drawn, with our titlebar")
+        # Super+Up: the window fills the screen (8 px gaps), so the next
+        # one opens on top of it.
+        c.key("meta_l-up")
+        sw, sh = size
+        sx, sy = GAP, GAP + TITLEBAR
+        wait_for(
+            c, "filled",
+            lambda s: has_stripes(s, sh // 2, 40, sw - 40) and has_stripes(s, sh - GAP - 20, 40, sw - 40),
+            "the striped window filling the screen (Super+Up)",
+        )
+        ok("Super+Up: the window fills the screen")
 
         start_client(c, "--color ffffff00 --size 400x200 --blur")
         gx, gy = placed(400, 200, size)
@@ -145,9 +168,11 @@ def main():
             "the blurred glass window",
         )
         ok("blur: the stripes behind the glass are smoothed, the rest stay sharp")
-        # A corner of the striped window is cut: its corner pixel shows the
-        # wallpaper, a pixel one radius in along the edge shows a stripe.
-        corner, edge = shot.pixel(sx, sy), shot.pixel(sx + 14, sy)
+        # The striped window's bottom-left corner is cut: its corner pixel
+        # shows the wallpaper, a pixel one radius in along the edge shows a
+        # stripe.
+        bottom = sh - GAP - 1
+        corner, edge = shot.pixel(sx, bottom), shot.pixel(sx + 14, bottom)
         if any(near(corner, b, 40) for b in BANDS) or not any(near(edge, b, 12) for b in BANDS):
             fail(f"window corner not rounded: corner {corner}, edge {edge}")
         ok("rounded window corners")

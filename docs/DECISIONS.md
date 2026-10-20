@@ -898,3 +898,19 @@ frame missed the next vblank (about 5 a second).
   Super+` windows of the app.
 - **Stacking fix:** Smithay's `map_element` raises; the core now restores
   the windows above after moving one, so only `stack` changes stacking.
+
+### 2026-10-20: The Phase 5 demo runs on the image (Phase 5, stage 8)
+
+- **Decision:** the milestone test boots the real image and drives fern-wm
+  with QEMU monitor key presses (`sendkey meta_l-left`, ...), checking
+  screenshots, so it covers xkb, libinput, the bindings, the protocol and
+  the DRM renderer together. The core's own pixel tests stay in
+  `cargo test` (headless); the window manager's policy is unit-tested.
+- **Springs keep real time:** the per-frame step cap went from 1/30 s to
+  1 s. The cap made slow renderers animate in slow motion (software
+  rendering in the test VM never finished a fade). The closed-form spring
+  is exact for any step, and an idle display has no pending step, so no
+  jump comes from idleness.
+- **Hidden windows' places are saved:** the core only knows where a window
+  was drawn last, which for a window on another Space or in the dock is
+  not where it belongs. fern-wm saves `at=x,y` for hidden windows.

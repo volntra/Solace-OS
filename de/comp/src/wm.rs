@@ -1173,11 +1173,14 @@ impl Comp {
     /// finished fading out leave the space.
     pub fn advance_animations(&mut self) -> bool {
         let now = Instant::now();
-        // A long pause (idle display) is not a jump: at most one 1/30 s.
+        // Real time, so a slow renderer (software, in a VM) shows short
+        // animations, not slow motion; the springs are exact for any step.
+        // An idle display has no last tick, so idleness is never a jump;
+        // a long hitch moves at most one second on.
         let dt = self
             .wm
             .last_tick
-            .map_or(0.0, |t| now.duration_since(t).as_secs_f64().min(1.0 / 30.0));
+            .map_or(0.0, |t| now.duration_since(t).as_secs_f64().min(1.0));
         self.wm.last_tick = Some(now);
         let mut moving = false;
         let mut gone = Vec::new();

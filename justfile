@@ -96,7 +96,7 @@ comp *CLIENT:
 # Ctrl+Alt+Backspace quits. Uses the host's GPU driver (NixOS:
 # /run/opengl-driver, NVIDIA's EGL and GBM among them).
 comp-drm SIZE="1600x1000":
-    cargo build --release -p fern-comp
+    cargo build --release -p fern-comp -p fern-wm
     @mkdir -p build
     FERN_COMP_STATS=1 \
       LD_LIBRARY_PATH="/run/opengl-driver/lib:${LD_LIBRARY_PATH:-}" \
@@ -127,6 +127,33 @@ comp-demo:
 # libseat), test windows, blur, VT switching; screenshots in build/image/
 qemu-test-comp:
     image/qemu-test-comp.py
+
+# --- Window manager (Phase 5) ----------------------------------------------
+
+# Four test windows to tile, minimize, move between Spaces and find in
+# Overview. If your desktop keeps Super combinations for itself, use
+# `just comp-drm` from a text console instead (it starts fern-wm too).
+# Phase 5 demo, nested in your desktop: fern-comp, fern-wm, four windows
+wm-demo: fonts
+    cargo build -p fern-comp -p fern-wm
+    @echo "Keys: Super+Left/Right/Up/Down tile | Ctrl+Super+Left/Right Spaces"
+    @echo "      (+Shift: take the window along) | Ctrl+Super+Up Overview"
+    @echo "      Super+Tab apps | Super+grave windows | Super+M minimize"
+    @echo "      Ctrl+Super+F fullscreen | drag a titlebar to an edge to tile"
+    target/debug/fern-comp --nested -- sh -c ' \
+      c=target/debug/fern-testclient; \
+      $c --color ff5a5fff --size 640x420 --title Notes --app-id org.fern.Notes & sleep 0.4; \
+      $c --color 3a86ffff --size 560x380 --title Mail --app-id org.fern.Mail & sleep 0.4; \
+      $c --color 2ec4b6ff --size 520x360 --title "Mail 2" --app-id org.fern.Mail & sleep 0.4; \
+      $c --stripes --size 700x440 --title Photos --app-id org.fern.Photos & \
+      wait'
+
+# Real key presses drive tiling, Spaces and Overview; `pkill fern-wm`
+# leaves every window in place and a new one takes over. Screenshots in
+# build/image/wm-*.png.
+# Phase 5 demo on the image (QEMU): fern-wm driven by real key presses
+qemu-test-wm:
+    image/qemu-test-wm.py
 
 # --- System updates (Phase 3) -----------------------------------------------
 
