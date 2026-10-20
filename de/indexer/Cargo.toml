@@ -1,0 +1,28 @@
+[package]
+name = "fern-indexd"
+version = "0.1.0"
+description = "Fern file indexer: names under the home folder in SQLite FTS5, kept current with inotify, searched over D-Bus"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lib]
+name = "fernindex"
+path = "src/lib.rs"
+
+[[bin]]
+name = "fern-indexd"
+path = "src/bin/fern-indexd.rs"
+
+[dependencies]
+inotify = { version = "0.11.5", default-features = false }
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+zbus = { version = "5", default-features = false, features = ["async-io", "blocking-api"] }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+tempfile = "3.27.0"
