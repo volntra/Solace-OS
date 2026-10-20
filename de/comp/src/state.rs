@@ -24,7 +24,10 @@ use smithay::{
         dmabuf::{DmabufGlobal, DmabufState},
         output::OutputManagerState,
         selection::data_device::DataDeviceState,
-        shell::xdg::{XdgShellState, decoration::XdgDecorationState},
+        shell::{
+            wlr_layer::{Layer, WlrLayerShellState},
+            xdg::{XdgShellState, decoration::XdgDecorationState},
+        },
         shm::ShmState,
         socket::ListeningSocketSource,
     },
@@ -44,6 +47,8 @@ pub struct Comp {
     pub compositor_state: CompositorState,
     pub xdg_shell_state: XdgShellState,
     pub xdg_decoration_state: XdgDecorationState,
+    /// wlr-layer-shell, for trusted clients (the shell).
+    pub layer_shell_state: WlrLayerShellState,
     pub shm_state: ShmState,
     pub output_manager_state: OutputManagerState,
     pub seat_state: SeatState<Comp>,
@@ -72,6 +77,8 @@ pub struct Comp {
     pub wm: crate::wm::WmHost,
     /// The dock's view of the windows (`crate::toplevels`).
     pub toplevels: crate::toplevels::Toplevels,
+    /// The shell's bindings and blur, and the work areas (`crate::layers`).
+    pub shell: crate::layers::Shell,
 }
 
 /// Checks that the renderer can use a client's GPU buffer.
@@ -103,6 +110,9 @@ impl Comp {
         let compositor_state = CompositorState::new::<Self>(&dh);
         let xdg_shell_state = XdgShellState::new::<Self>(&dh);
         let xdg_decoration_state = XdgDecorationState::new::<Self>(&dh);
+        let layer_shell_state = WlrLayerShellState::new_with_filter::<Self, _>(&dh, |client| {
+            client.get_data::<ClientState>().is_some_and(|d| d.trusted)
+        });
         let shm_state = ShmState::new::<Self>(&dh, vec![]);
         let output_manager_state = OutputManagerState::new_with_xdg_output::<Self>(&dh);
         let mut seat_state = SeatState::new();
@@ -145,6 +155,7 @@ impl Comp {
             compositor_state,
             xdg_shell_state,
             xdg_decoration_state,
+            layer_shell_state,
             shm_state,
             output_manager_state,
             seat_state,
@@ -162,6 +173,7 @@ impl Comp {
             session_request: None,
             wm: crate::wm::WmHost::default(),
             toplevels: crate::toplevels::Toplevels::default(),
+            shell: crate::layers::Shell::default(),
         }
         .with_wm_global())
     }
@@ -213,15 +225,21 @@ impl Comp {
         Ok(socket_name)
     }
 
+    /// The surface under `pos` that takes pointer input: the shell's
+    /// upper layers, then windows, then its lower layers.
     pub fn surface_under(
         &self,
         pos: Point<f64, Logical>,
     ) -> Option<(WlSurface, Point<f64, Logical>)> {
-        self.window_under(pos).and_then(|(window, location)| {
-            window
+        if let Some(under) = self.layer_surface_under(pos, &crate::layers::UPPER) {
+            return Some(under);
+        }
+        if let Some((window, location)) = self.window_under(pos) {
+            return window
                 .surface_under(pos - location.to_f64(), WindowSurfaceType::ALL)
-                .map(|(s, p)| (s, (p + location).to_f64()))
-        })
+                .map(|(s, p)| (s, (p + location).to_f64()));
+        }
+        self.layer_surface_under(pos, &[Layer::Background, Layer::Bottom])
     }
 }
 
@@ -234,6 +252,17 @@ pub struct ClientState {
     /// Part of the desktop, started by the core (the window manager, the
     /// shell): may use privileged protocols (foreign-toplevel management).
     pub trusted: bool,
+    /// Rung when the client disconnects (the shell: to restart it).
+    pub on_disconnect: Option<DisconnectPing>,
+}
+
+/// Wakes the event loop when a client goes away.
+pub struct DisconnectPing(pub Ping);
+
+impl std::fmt::Debug for DisconnectPing {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("DisconnectPing")
+    }
 }
 
 impl std::fmt::Debug for Comp {
@@ -248,6 +277,7 @@ impl Comp {
     fn with_wm_global(mut self) -> Self {
         self.init_wm();
         self.init_toplevels();
+        self.init_shell();
         self
     }
 
@@ -284,6 +314,7 @@ impl Comp {
                 Some(output.clone())
             });
         }
+        self.layers_frame_shown(output, now);
         self.space.refresh();
         self.popups.cleanup();
     }
@@ -305,6 +336,14 @@ impl Comp {
         let surface = window
             .and_then(|w| w.toplevel())
             .map(|t| t.wl_surface().clone());
+        // A shell surface holding the keyboard (an open search panel)
+        // keeps it; the window is still raised and activated.
+        let held = self.keyboard_held_by_layer();
+        if held.is_some() {
+            // Where the keyboard goes when that surface closes.
+            self.shell.focus_before.clone_from(&surface);
+        }
+        let surface = held.or(surface);
         keyboard.set_focus(self, surface, serial);
         for w in self.space.elements() {
             if let Some(t) = w.toplevel() {
@@ -316,5 +355,9 @@ impl Comp {
 
 impl ClientData for ClientState {
     fn initialized(&self, _client_id: ClientId) {}
-    fn disconnected(&self, _client_id: ClientId, _reason: DisconnectReason) {}
+    fn disconnected(&self, _client_id: ClientId, _reason: DisconnectReason) {
+        if let Some(p) = &self.on_disconnect {
+            p.0.ping();
+        }
+    }
 }

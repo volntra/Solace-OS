@@ -77,6 +77,15 @@ pub enum Event {
         h: i32,
     },
     OutputRemoved(u32),
+    /// The part of an output left for windows (without the menu bar and
+    /// the dock).
+    WorkArea {
+        id: u32,
+        x: i32,
+        y: i32,
+        w: i32,
+        h: i32,
+    },
     Window {
         id: u32,
         app_id: String,
@@ -440,6 +449,8 @@ impl Win {
 #[derive(Debug, Default)]
 pub struct Wm {
     pub outputs: BTreeMap<u32, Rect>,
+    /// Each output's work area, once the core sent one.
+    pub work: BTreeMap<u32, Rect>,
     pub windows: BTreeMap<u32, Win>,
     /// Visible windows, bottom to top.
     pub stack: Vec<u32>,
@@ -490,6 +501,13 @@ impl Wm {
             }
             Event::OutputRemoved(id) => {
                 self.outputs.remove(&id);
+                self.work.remove(&id);
+            }
+            Event::WorkArea { id, x, y, w, h } => {
+                let area = Rect::new(x, y, w, h);
+                if self.work.insert(id, area) != Some(area) {
+                    self.refit(&mut out);
+                }
             }
             Event::Window {
                 id,
@@ -811,9 +829,57 @@ impl Wm {
         }
     }
 
-    /// The area windows may use on the output holding `r`.
+    /// The area windows may use on the output holding `r`: the output
+    /// without the menu bar and dock.
     pub fn work_area(&self, r: &Rect) -> Rect {
-        self.output_of(r)
+        self.outputs
+            .iter()
+            .max_by_key(|(_, o)| o.overlap(r))
+            .map_or(Rect::new(0, 0, 1280, 800), |(id, o)| {
+                self.work.get(id).copied().unwrap_or(*o)
+            })
+    }
+
+    /// The work area changed (the dock grew, the menu bar appeared): tiled
+    /// and zoomed windows on screen follow it.
+    fn refit(&mut self, out: &mut Vec<Cmd>) {
+        let ids: Vec<u32> = self
+            .windows
+            .iter()
+            .filter(|(_, w)| w.visible && !w.minimized && w.windowed.is_none())
+            .filter(|(_, w)| w.tile.is_some() || w.unzoomed.is_some())
+            .map(|(id, _)| *id)
+            .collect();
+        for id in ids {
+            let Some(win) = self.windows.get(&id) else {
+                continue;
+            };
+            let area = self.work_area(&win.rect());
+            if let Some(t) = win.tile {
+                self.tile(id, t, area, out);
+                continue;
+            }
+            let Some(win) = self.windows.get_mut(&id) else {
+                continue;
+            };
+            win.cfg = (area.w, area.h - win.tb);
+            win.x = area.x;
+            win.y = area.y;
+            out.push(Cmd::Configure {
+                id,
+                w: win.cfg.0,
+                h: win.cfg.1,
+                states: win.states,
+            });
+            out.push(Cmd::Place {
+                id,
+                x: area.x,
+                y: area.y,
+                scale: 1.0,
+                alpha: 1.0,
+                motion: motion::SMOOTH,
+            });
+        }
     }
 
     /// Zoom: fills the work area, or returns to the frame it had (`None`
@@ -961,10 +1027,11 @@ impl Wm {
         }
         let area = self
             .outputs
-            .values()
+            .iter()
             .next()
-            .copied()
-            .unwrap_or(Rect::new(0, 0, 1280, 800));
+            .map_or(Rect::new(0, 0, 1280, 800), |(id, o)| {
+                self.work.get(id).copied().unwrap_or(*o)
+            });
         let others: Vec<Rect> = self
             .stack
             .iter()
@@ -1328,6 +1395,45 @@ mod tests {
         }));
         assert_eq!(wm.windows[&1].tile, None);
         assert_eq!(wm.windows[&1].cfg, (400, 300));
+    }
+
+    #[test]
+    fn the_work_area_keeps_windows_off_the_menu_bar_and_dock() {
+        let mut wm = wm_with_output();
+        open(&mut wm, 1, 400, 300);
+        wm.handle(Event::Binding(keys::TILE_LEFT));
+        let full = Tile::Left.rect(Rect::new(0, 0, 2560, 1440));
+        assert_eq!((wm.windows[&1].x, wm.windows[&1].y), (full.x, full.y));
+        // The shell takes 28 px at the top and 90 at the bottom: the tiled
+        // window moves and shrinks with it.
+        let work = Rect::new(0, 28, 2560, 1440 - 28 - 90);
+        let cmds = wm.handle(Event::WorkArea {
+            id: 1,
+            x: work.x,
+            y: work.y,
+            w: work.w,
+            h: work.h,
+        });
+        let left = Tile::Left.rect(work);
+        assert!(
+            cmds.iter().any(
+                |c| matches!(c, Cmd::Place { id: 1, x, y, .. } if (*x, *y) == (left.x, left.y))
+            )
+        );
+        assert_eq!(wm.windows[&1].cfg.1, left.h - wm.windows[&1].tb);
+        // The same area again changes nothing.
+        let again = wm.handle(Event::WorkArea {
+            id: 1,
+            x: work.x,
+            y: work.y,
+            w: work.w,
+            h: work.h,
+        });
+        assert!(!again.iter().any(|c| matches!(c, Cmd::Place { .. })));
+        // New windows are placed inside it.
+        open(&mut wm, 2, 2000, 1300);
+        let r = wm.windows[&2].rect();
+        assert!(r.y >= work.y, "{r:?} under the menu bar");
     }
 
     #[test]

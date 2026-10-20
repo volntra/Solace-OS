@@ -1,6 +1,7 @@
 //! fern-comp: the Fern compositor.
 //!
-//!   fern-comp [--nested | --drm] [--wm PATH | --no-wm] [-- COMMAND [ARGS...]]
+//!   fern-comp [--nested | --drm] [--wm PATH | --no-wm] [--shell PATH]
+//!             [-- COMMAND [ARGS...]]
 //!
 //! `--drm` drives the display (KMS, libinput, libseat); `--nested` runs
 //! inside another desktop. Without either, fern-comp nests when it finds a
@@ -11,6 +12,10 @@
 //! exits: `--wm PATH` (or `FERN_WM`) names it, otherwise the `fern-wm` next
 //! to this binary, else the one on `PATH`. `--no-wm` runs without one (the
 //! core's fallback placement and click-to-focus).
+//!
+//! `--shell PATH` (or `FERN_SHELL`) starts the shell (menu bar, dock,
+//! panels: fern-shell) the same way, trusted with the shell's protocols,
+//! and restarts it if it exits. Without it there is no shell.
 
 use std::io::IsTerminal;
 use std::os::{fd::OwnedFd, unix::net::UnixStream};
@@ -20,8 +25,7 @@ use std::process::{Child, Command, ExitCode, Stdio};
 use ferncomp::{Comp, LoopData};
 use smithay::reexports::{calloop::EventLoop, wayland_server::Display};
 
-const USAGE: &str =
-    "usage: fern-comp [--nested | --drm] [--wm PATH | --no-wm] [-- COMMAND [ARGS...]]";
+const USAGE: &str = "usage: fern-comp [--nested | --drm] [--wm PATH | --no-wm] [--shell PATH] [-- COMMAND [ARGS...]]";
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum Backend {
@@ -44,6 +48,9 @@ fn main() -> ExitCode {
     let mut client: Vec<String> = Vec::new();
     let mut backend = None;
     let mut wm = Some(std::env::var_os("FERN_WM").map_or_else(default_wm, PathBuf::from));
+    let mut shell = std::env::var_os("FERN_SHELL")
+        .filter(|s| !s.is_empty())
+        .map(PathBuf::from);
     while let Some(a) = args.next() {
         match a.as_str() {
             "--nested" => backend = Some(Backend::Nested),
@@ -55,6 +62,13 @@ fn main() -> ExitCode {
                     return ExitCode::from(2);
                 };
                 wm = Some(PathBuf::from(p));
+            }
+            "--shell" => {
+                let Some(p) = args.next() else {
+                    eprintln!("fern-comp: --shell needs a path\n{USAGE}");
+                    return ExitCode::from(2);
+                };
+                shell = Some(PathBuf::from(p));
             }
             "--" => client = args.by_ref().collect(),
             "-h" | "--help" => {
@@ -77,7 +91,7 @@ fn main() -> ExitCode {
             Backend::Drm
         }
     });
-    match run(backend, wm, &client) {
+    match run(backend, wm, shell, &client) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             eprintln!("fern-comp: {e}");
@@ -114,9 +128,30 @@ fn wm_launcher(path: PathBuf) -> ferncomp::wm::WmLauncher {
     })
 }
 
+/// Starts the shell with one end of a socket pair as its stdin
+/// (`WAYLAND_SOCKET=0`); `WAYLAND_DISPLAY` stays set for the apps it
+/// launches.
+fn shell_launcher(path: PathBuf, socket: std::ffi::OsString) -> ferncomp::layers::ShellLauncher {
+    let mut children: Vec<Child> = Vec::new();
+    Box::new(move || {
+        children.retain_mut(|c| matches!(c.try_wait(), Ok(None)));
+        let (ours, theirs) = UnixStream::pair()?;
+        let child = Command::new(&path)
+            .stdin(Stdio::from(OwnedFd::from(theirs)))
+            .env("WAYLAND_SOCKET", "0")
+            .env("WAYLAND_DISPLAY", &socket)
+            .env("QT_QPA_PLATFORM", "wayland")
+            .spawn()?;
+        tracing::info!(pid = child.id(), path = %path.display(), "shell started");
+        children.push(child);
+        Ok(ours)
+    })
+}
+
 fn run(
     backend: Backend,
     wm: Option<PathBuf>,
+    shell: Option<PathBuf>,
     client: &[String],
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut event_loop: EventLoop<'static, LoopData> = EventLoop::try_new()?;
@@ -138,6 +173,11 @@ fn run(
     tracing::info!(socket = ?data.state.socket_name, "listening");
     if let Some(path) = wm {
         data.state.set_wm_launcher(wm_launcher(path));
+    }
+    if let Some(path) = shell {
+        let socket = data.state.socket_name.clone();
+        data.state
+            .set_shell_launcher(shell_launcher(path, socket))?;
     }
     if let Some((cmd, args)) = client.split_first()
         && let Err(e) = Command::new(cmd)

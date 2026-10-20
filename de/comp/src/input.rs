@@ -201,7 +201,15 @@ impl Comp {
             ButtonState::Released
         };
         let mut to_clients = true;
-        if !pointer.is_grabbed() {
+        let on_shell = (!pointer.is_grabbed() && !self.wm.grab_pointer)
+            .then(|| self.layer_at(pointer.current_location(), &crate::layers::UPPER))
+            .flatten();
+        if let Some((layer, _)) = on_shell {
+            // The menu bar, dock or a panel: straight to the shell.
+            if pressed {
+                self.layer_clicked(&layer);
+            }
+        } else if !pointer.is_grabbed() {
             if self.wm.connected() {
                 // The window manager decides about focus and raising.
                 to_clients = self.wm_button(pointer.current_location(), button, pressed);

@@ -25,8 +25,7 @@ use smithay::{
             utils::{CommitCounter, OpaqueRegions, draw_render_elements},
         },
     },
-    desktop::Window,
-    utils::{Buffer, Physical, Point, Rectangle, Scale, Size, Transform},
+    utils::{Buffer, Physical, Point, Rectangle, Scale, Size, Transform, user_data::UserDataMap},
 };
 
 /// How strong a material's blur is.
@@ -443,9 +442,10 @@ pub struct Clip {
     pub fb_height: f32,
 }
 
-/// The backdrop elements of `window` for its blurred `rects` (output
-/// pixels), made from `behind` (front to back). Reuses the last result
-/// when nothing behind changed.
+/// The backdrop elements for blurred `rects` (output pixels) of a
+/// window or shell surface (`owner`: its user data keeps the cache), made
+/// from `behind` (front to back). Reuses the last result when nothing
+/// behind changed.
 ///
 /// # Errors
 /// Offscreen rendering failed (e.g. out of GPU memory).
@@ -454,7 +454,7 @@ pub fn backdrops<E: RenderElement<GlesRenderer>>(
     renderer: &mut GlesRenderer,
     shaders: &BlurShaders,
     program: &GlesTexProgram,
-    window: &Window,
+    owner: &UserDataMap,
     rects: &[Rectangle<i32, Physical>],
     clip: Clip,
     behind: &[E],
@@ -470,7 +470,7 @@ pub fn backdrops<E: RenderElement<GlesRenderer>>(
         .map(|e| (e.id().clone(), e.current_commit(), e.geometry(scale)))
         .filter(|(_, _, g)| g.overlaps(area))
         .collect();
-    let cache = window.user_data().get_or_insert(BlurCache::default);
+    let cache = owner.get_or_insert(BlurCache::default);
     let mut cache = cache.0.borrow_mut();
     let unchanged = cache.area == Some(area) && cache.key == key;
     let texture = if let (Some(t), true) = (&cache.result, unchanged) {

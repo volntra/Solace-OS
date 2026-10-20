@@ -75,11 +75,10 @@ entry names a recipe that does not exist.
 - `python-markupsafe`: required by Jinja2 and Mako.
 - `python-packaging`: version parsing in Mesa's build (Python 3.14 has no distutils).
 - `python-pyyaml`: YAML parsing in Mesa's build.
-- `qtbase`: Qt 6 Core/Gui/DBus/Network/Widgets (locked stack: shell, apps and installer are Qt 6 / QML).
+- `qtbase`: Qt 6 Core/Gui/DBus/Network/Widgets and the Wayland client (locked stack: shell, apps and installer are Qt 6 / QML).
 - `qtdeclarative`: QML and Qt Quick, which the shell, apps and design system are written in.
 - `qtshadertools`: shader tools Qt Quick builds with; our QML effects compile their shaders with qsb.
 - `qtsvg`: SVG for symbols and legacy app icons in Qt.
-- `qtwayland`: Qt's Wayland platform plugin (client side only).
 - `readline`: line editing for bash and gawk.
 - `seatd`: libseat: lets fern-comp open DRM and input devices without root; seatd until elogind arrives.
 - `sed`: needed by builds and scripts.

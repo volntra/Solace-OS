@@ -111,6 +111,19 @@
       <arg name="id" type="uint"/>
     </event>
 
+    <event name="work_area">
+      <description summary="the part of an output windows should use">
+        The output minus what the shell keeps for itself (the menu bar, a
+        dock that does not hide): where zoomed and tiled windows go and new
+        windows are placed. Sent after `output`, and again when it changes.
+      </description>
+      <arg name="id" type="uint"/>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+    </event>
+
     <event name="window">
       <description summary="a toplevel exists (not yet mapped)"/>
       <arg name="id" type="uint"/>

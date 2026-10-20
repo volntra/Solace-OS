@@ -3,4 +3,5 @@
 
 fn main() {
     println!("cargo:rerun-if-changed=fern-wm-v1.xml");
+    println!("cargo:rerun-if-changed=fern-shell-v1.xml");
 }

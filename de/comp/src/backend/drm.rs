@@ -502,6 +502,7 @@ impl Drm {
             Some((x, 0).into()),
         );
         state.space.map_output(&output, (x, 0));
+        state.output_changed(&output);
         let drm = self
             .manager
             .initialize_output::<_, OutputElement>(
@@ -620,6 +621,7 @@ impl Drm {
             &mut self.renderer,
             &self.shaders,
             &state.space,
+            Some(&screen.output),
             self.wallpaper.as_ref(),
             Rectangle::new(area.loc, area.size),
             1.0,

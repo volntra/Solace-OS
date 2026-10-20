@@ -33,7 +33,8 @@ toplevel, before it has drawn anything.
 
 On bind the core describes the whole desktop:
 
-1. `output` for each output;
+1. `output` for each output, each followed by its `work_area` once the
+   shell has said what it keeps (docs/protocols/shell.md);
 2. for each window: `window`, `window_hints`, `window_size` (if it has
    drawn), then `restore` with where it is now, its states, whether it is
    visible, and the data the previous window manager stored with `save`;
@@ -53,6 +54,11 @@ If the window manager exits or crashes, the core:
   focuses on click, so the session stays usable;
 - starts a new window manager after 300 ms, and gives up after 5 exits in
   30 seconds.
+
+`work_area` is sent again whenever the shell's surfaces change it (the
+dock grows, the menu bar appears). Zoom and tiling fill the work area, and
+new windows are placed inside it; until one arrives, the whole output is
+the work area.
 
 `save` and `save_wm` exist for this: anything the window manager needs to
 pick up where it left off (which Space a window is on, a window's size

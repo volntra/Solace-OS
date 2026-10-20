@@ -31,7 +31,7 @@ use smithay::{
             backend::ClientId,
         },
     },
-    utils::{Logical, Point, SERIAL_COUNTER},
+    utils::{Logical, Point, Rectangle, SERIAL_COUNTER},
     wayland::{compositor::with_states, shell::xdg::SurfaceCachedState},
 };
 
@@ -269,6 +269,8 @@ pub enum KeyAction {
     },
     /// The release of a key whose press went to the window manager.
     Swallow,
+    /// One of the shell's global shortcuts.
+    Shell(u32),
 }
 
 #[derive(Default)]
@@ -385,6 +387,9 @@ impl Comp {
             if let Some(g) = self.space.output_geometry(o) {
                 let id = u32::try_from(i).unwrap_or(u32::MAX) + 1;
                 resource.output(id, g.loc.x, g.loc.y, g.size.w, g.size.h);
+                if let Some(a) = self.shell.work_areas.get(&id) {
+                    resource.work_area(id, a.loc.x, a.loc.y, a.size.w, a.size.h);
+                }
             }
         }
         for (&id, rec) in &self.wm.windows {
@@ -669,6 +674,13 @@ impl Comp {
         true
     }
 
+    /// The shell changed what it keeps of an output (menu bar, dock).
+    pub fn wm_work_area(&mut self, id: u32, area: Rectangle<i32, Logical>) {
+        if let Some(r) = &self.wm.resource {
+            r.work_area(id, area.loc.x, area.loc.y, area.size.w, area.size.h);
+        }
+    }
+
     // --- Input: events to the window manager --------------------------------
 
     /// A pointer button. Returns whether clients should still get it.
@@ -745,11 +757,18 @@ impl Comp {
         mods: &ModifiersState,
         keysym: u32,
     ) -> Option<KeyAction> {
-        self.wm.resource.as_ref()?;
         if !pressed && self.wm.swallowed.remove(&keycode) {
             return Some(KeyAction::Swallow);
         }
         let bits = mod_bits(mods);
+        if pressed
+            && !self.wm.grab_keyboard
+            && let Some(id) = self.shell_binding(bits, keysym)
+        {
+            self.wm.swallowed.insert(keycode);
+            return Some(KeyAction::Shell(id));
+        }
+        self.wm.resource.as_ref()?;
         if self.wm.grab_keyboard {
             if pressed {
                 self.wm.swallowed.insert(keycode);
@@ -774,6 +793,10 @@ impl Comp {
     }
 
     pub fn wm_key_event(&mut self, action: KeyAction) {
+        if let KeyAction::Shell(id) = action {
+            self.shell_key_binding(id);
+            return;
+        }
         let Some(r) = &self.wm.resource else {
             return;
         };
@@ -788,7 +811,7 @@ impl Comp {
                 u32::from(pressed),
                 fern_wm_v1::Modifiers::from_bits_truncate(mods),
             ),
-            KeyAction::Swallow => {}
+            KeyAction::Swallow | KeyAction::Shell(_) => {}
         }
     }
 
@@ -1246,6 +1269,10 @@ impl Comp {
         use crate::render::{BUTTON_DIAMETER, BUTTON_FIRST_X, BUTTON_STEP};
         use fern_wm_v1::Part;
         use smithay::desktop::space::SpaceElement;
+        // The shell's menu bar, dock and panels are over every window.
+        if self.layer_at(pos, &crate::layers::UPPER).is_some() {
+            return None;
+        }
         for w in self.space.elements().rev() {
             let Some(rec) = self.wm.record(w) else {
                 continue;

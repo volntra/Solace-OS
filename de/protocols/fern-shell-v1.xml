@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="fern_shell_v1">
+  <copyright>
+    Copyright 2026 the Fern authors. GPL-3.0-or-later.
+  </copyright>
+
+  <description summary="private: what the Fern shell asks of the compositor">
+    The desktop shell (menu bar, dock, panels) is ordinary wlr-layer-shell
+    surfaces plus this. The compositor offers it only to clients it started
+    itself (docs/protocols/shell.md).
+  </description>
+
+  <interface name="fern_shell_v1" version="1">
+    <request name="destroy" type="destructor"/>
+
+    <request name="set_blur">
+      <description summary="blur what is behind a rounded rectangle">
+        From the next frame on, the compositor blurs what lies behind this
+        rectangle of the surface (surface-local logical pixels) and clips the
+        blur to its rounded corners. One rectangle per surface; a new one
+        replaces the old. The surface draws its own tint on top.
+      </description>
+      <arg name="surface" type="object" interface="wl_surface"/>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+      <arg name="radius" type="int"/>
+    </request>
+
+    <request name="unset_blur">
+      <arg name="surface" type="object" interface="wl_surface"/>
+    </request>
+
+    <request name="bind_key">
+      <description summary="a global shortcut for the shell">
+        Pressing keysym with exactly these modifiers (shift 1, ctrl 2, alt
+        4, super 8) sends key_binding(id) instead of the key going to the
+        focused app. The shell's bindings come before the window manager's.
+        Binding an id again replaces it.
+      </description>
+      <arg name="id" type="uint"/>
+      <arg name="modifiers" type="uint"/>
+      <arg name="keysym" type="uint"/>
+    </request>
+
+    <request name="unbind_key">
+      <arg name="id" type="uint"/>
+    </request>
+
+    <event name="key_binding">
+      <arg name="id" type="uint"/>
+    </event>
+  </interface>
+</protocol>

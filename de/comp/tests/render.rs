@@ -158,6 +158,31 @@ impl Harness {
         Ok(())
     }
 
+    /// Like [`Harness::start_trusted`], with the client's output piped back.
+    fn start_trusted_piped(&mut self, args: &str) -> Result<std::process::ChildStdout> {
+        let (ours, theirs) = std::os::unix::net::UnixStream::pair().map_err(|e| e.to_string())?;
+        self.data
+            .state
+            .insert_trusted_client(ours)
+            .map_err(|e| e.to_string())?;
+        let mut child = Command::new(env!("CARGO_BIN_EXE_fern-testclient"))
+            .args(args.split_whitespace())
+            .stdin(Stdio::from(std::os::fd::OwnedFd::from(theirs)))
+            .env("WAYLAND_SOCKET", "0")
+            .env_remove("WAYLAND_DISPLAY")
+            .stdout(Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("fern-testclient: {e}"))?;
+        let out = child.stdout.take().ok_or("no stdout")?;
+        self.clients.push(child);
+        Ok(out)
+    }
+
+    /// How many layer surfaces (shell parts) are on the output.
+    fn layers(&self) -> usize {
+        smithay::desktop::layer_map_for_output(self.headless.output()).len()
+    }
+
     fn wait_for_window(&mut self, args: &str) -> Result<Window> {
         let deadline = Instant::now() + Duration::from_secs(20);
         loop {
@@ -984,6 +1009,166 @@ fn wm_blur(h: &mut Harness) -> Result {
     })
 }
 
+/// The shell's parts: layer surfaces for trusted clients only, the work
+/// area they leave, a rounded blur behind the dock, clicks and the
+/// keyboard, and global shortcuts.
+#[allow(clippy::too_many_lines)]
+fn wm_shell_layers(h: &mut Harness) -> Result {
+    use std::io::{BufRead, BufReader};
+    // An app sees neither layer-shell nor fern_shell_v1.
+    let mut lister = Command::new(env!("CARGO_BIN_EXE_fern-testclient"))
+        .arg("--globals")
+        .env("WAYLAND_DISPLAY", &h.data.state.socket_name)
+        .stdout(Stdio::piped())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    while lister.try_wait().map_err(|e| e.to_string())?.is_none() {
+        h.turn()?;
+    }
+    let mut globals = String::new();
+    if let Some(mut out) = lister.stdout.take() {
+        use std::io::Read;
+        out.read_to_string(&mut globals)
+            .map_err(|e| e.to_string())?;
+    }
+    check(globals.contains("wl_compositor"), || {
+        format!("no globals listed: {globals}")
+    })?;
+    check(
+        !globals.contains("zwlr_layer_shell_v1") && !globals.contains("fern_shell_v1"),
+        || format!("an app sees the shell's protocols: {globals}"),
+    )?;
+
+    // A window tiled to fill (Super+Up): the whole screen, less the
+    // gaps, while there is no shell.
+    h.open("--stripes --size 300x200 --title Behind")?;
+    h.data.state.focus(Some(&h.windows[0].clone()));
+    key(h, 8, 0xff52)?;
+    let tb = ferncomp::render::TITLEBAR_HEIGHT;
+    let gap = 8;
+    let filled = |top: i32, bottom: i32| {
+        fernwm::policy::Rect::new(
+            gap,
+            top + gap + tb,
+            SIZE.0 - 2 * gap,
+            SIZE.1 - top - bottom - 2 * gap - tb,
+        )
+    };
+    check(rect(h, 0) == filled(0, 0), || {
+        format!("filled without a shell: {:?}", rect(h, 0))
+    })?;
+
+    // A menu bar along the top and a dock at the bottom keep their room.
+    h.start_trusted(
+        "--layer top --anchor top,left,right --size 10x28 --exclusive 28 --color 202020ff",
+    )?;
+    h.start_trusted("--layer top --anchor bottom --size 400x80 --exclusive 90 --color ffffff30 --shell-blur 0,0,400,80,20")?;
+    wait_until(h, "the shell's surfaces did not appear", |h| {
+        h.layers() == 2
+    })?;
+    h.settle()?;
+    let work = h.data.state.shell.work_areas.get(&1).copied();
+    check(
+        work == Some(smithay::utils::Rectangle::new(
+            (0, 28).into(),
+            (SIZE.0, SIZE.1 - 28 - 90).into(),
+        )),
+        || format!("work area {work:?}"),
+    )?;
+    // The tiled window follows: below the bar, above the dock.
+    wait_until(h, "the tiled window did not refit", |h| {
+        rect(h, 0) == filled(28, 90)
+    })?;
+    let img = h.shot("shell")?;
+    let p = img.pixel(500, 10);
+    check(near(p, [0x20, 0x20, 0x20], 2), || {
+        format!("menu bar: {p:?}")
+    })?;
+    // The dock: the stripes under it are blurred inside its rounded
+    // rectangle; its bottom corner (outside the radius) is not.
+    let (dx, dy) = (300, SIZE.1 - 80);
+    let inside = spread(&img, dy + 40, dx + 100, dx + 300);
+    let window_line = spread(&img, 300, 300, 500);
+    check(inside < window_line / 2, || {
+        format!("dock not blurred: spread {inside} vs {window_line} on the window")
+    })?;
+    let corner = img.pixel(dx + 1, dy + 78);
+    let corner_blur = img.pixel(dx + 200, dy + 78);
+    check(corner != corner_blur, || {
+        "the dock's blur is not rounded".into()
+    })?;
+
+    // A click on the bar goes to the bar, not the window manager: the
+    // window keeps its focus and nothing under the bar is hit.
+    check(h.focused(0), || {
+        "the window lost focus before the click".into()
+    })?;
+    h.data.state.pointer_to((500.0, 10.0).into(), 0);
+    check(h.data.state.hit((500.0, 10.0).into()).is_none(), || {
+        "the window is hit through the bar".into()
+    })?;
+    h.data.state.pointer_button(0x110, true, 0);
+    h.data.state.pointer_button(0x110, false, 0);
+    h.settle()?;
+    check(h.focused(0), || {
+        "a click on the bar took the window's focus".into()
+    })?;
+
+    // A panel that wants the keyboard gets it, and gives it back.
+    let panel = h.start_trusted_piped(
+        "--layer overlay --anchor top --size 300x200 --keyboard exclusive --color 3a86ffff",
+    )?;
+    wait_until(h, "the panel did not appear", |h| h.layers() == 3)?;
+    h.settle()?;
+    check(!h.focused(0), || {
+        "the exclusive panel did not take the keyboard".into()
+    })?;
+    // Focusing the window meanwhile does not take the keyboard from it.
+    h.data.state.focus(Some(&h.windows[0].clone()));
+    check(!h.focused(0), || {
+        "the window took the keyboard from the panel".into()
+    })?;
+    let n = h.clients.len();
+    let _ = h.clients[n - 1].kill();
+    drop(panel);
+    wait_until(h, "the panel did not go", |h| h.layers() == 2)?;
+    h.settle()?;
+    check(h.focused(0), || {
+        "the keyboard did not come back to the window".into()
+    })?;
+
+    // A global shortcut (Super+Space) goes to the shell, not the app.
+    let out = h.start_trusted_piped(
+        "--layer top --anchor top,right --size 40x28 --color 00000000 --bind 8,32",
+    )?;
+    wait_until(h, "the shortcut holder did not appear", |h| h.layers() == 3)?;
+    h.settle()?;
+    key(h, 8, 0x20)?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        for line in BufReader::new(out)
+            .lines()
+            .map_while(std::result::Result::ok)
+        {
+            let _ = tx.send(line);
+        }
+    });
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        h.turn()?;
+        if let Ok(line) = rx.try_recv() {
+            check(line == "binding 1", || {
+                format!("the shell printed {line:?}")
+            })?;
+            break;
+        }
+        check(Instant::now() < deadline, || {
+            "the shortcut never reached the shell".into()
+        })?;
+    }
+    Ok(())
+}
+
 const SCENARIOS: &[Scenario] = &[
     ("orientation", orientation),
     ("corners_and_shadow", corners_and_shadow),
@@ -1001,6 +1186,7 @@ const SCENARIOS: &[Scenario] = &[
     ("wm_overview", wm_overview),
     ("wm_switcher", wm_switcher),
     ("wm_blur", wm_blur),
+    ("wm_shell_layers", wm_shell_layers),
 ];
 
 fn main() -> ExitCode {

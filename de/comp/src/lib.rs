@@ -1,6 +1,7 @@
 //! fern-comp: Fern's compositor core (CLAUDE.md 6.5). It owns the
 //! screen, the Wayland protocols, input and rendering; window management
-//! policy moves to the separate fern-wm process in Phase 5.
+//! policy lives in the separate fern-wm process, the menu bar and dock in
+//! the shell (layer surfaces, `layers`).
 
 pub mod backdrop;
 pub mod backend;
@@ -9,6 +10,7 @@ pub mod cursor;
 mod grabs;
 mod handlers;
 mod input;
+pub mod layers;
 pub mod placement;
 pub mod render;
 pub mod spring;

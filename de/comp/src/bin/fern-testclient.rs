@@ -6,6 +6,8 @@
 //! fern-testclient [--size WxH] [--color RRGGBBAA] [--stripes] [--animate]
 //!                [--blur | --blur-region X,Y,W,H] [--title T] [--csd] [--globals]
 //!                [--dock TITLE] [--app-id ID]
+//!                [--layer LAYER --anchor EDGES [--exclusive N] [--keyboard K]]
+//!                [--shell-blur X,Y,W,H,R] [--bind MODS,KEYSYM]
 //! ```
 //!
 //! Like most apps it asks for server-side decoration (our titlebar) when
@@ -19,10 +21,21 @@
 //! trusted connection, `WAYLAND_SOCKET`): it says the window titled TITLE
 //! has its icon at 10,10 48x48 on our surface and minimizes it; half a
 //! second after that window reports minimized, it activates it again.
+//!
+//! `--layer background|bottom|top|overlay` makes a wlr-layer-shell surface
+//! (a shell part: trusted connections only) instead of a window, anchored
+//! to `--anchor` (comma-separated top, bottom, left, right), keeping
+//! `--exclusive N` pixels for itself and taking the keyboard as `--keyboard`
+//! says (none, exclusive, on-demand). `--shell-blur` asks `fern_shell_v1` for
+//! a rounded blur behind a rectangle of it; `--bind` asks for a global
+//! shortcut and prints `binding` when it fires. A layer surface prints
+//! `key SYM` for every key it is given.
 
 use std::os::fd::AsFd;
 use std::os::unix::fs::FileExt;
 
+use fern_wm_proto::shell::client::fern_shell_v1::{self, FernShellV1};
+use wayland_client::protocol::wl_keyboard::{self, WlKeyboard};
 use wayland_client::protocol::wl_seat::WlSeat;
 use wayland_client::{
     Connection, Dispatch, QueueHandle, delegate_noop,
@@ -54,6 +67,10 @@ use wayland_protocols_wlr::foreign_toplevel::v1::client::{
     zwlr_foreign_toplevel_handle_v1::{self, ZwlrForeignToplevelHandleV1},
     zwlr_foreign_toplevel_manager_v1::{self, ZwlrForeignToplevelManagerV1},
 };
+use wayland_protocols_wlr::layer_shell::v1::client::{
+    zwlr_layer_shell_v1::{Layer, ZwlrLayerShellV1},
+    zwlr_layer_surface_v1::{self, Anchor, KeyboardInteractivity, ZwlrLayerSurfaceV1},
+};
 
 /// What to draw.
 #[derive(Debug, Clone, PartialEq)]
@@ -77,6 +94,14 @@ struct Options {
     /// Play a dock for the window with this title.
     dock: Option<String>,
     app_id: String,
+    layer: Option<Layer>,
+    /// Bits of `zwlr_layer_surface_v1::Anchor`.
+    anchor: u32,
+    exclusive: i32,
+    keyboard: u32,
+    shell_blur: Option<(i32, i32, i32, i32, i32)>,
+    /// Modifier bits and keysym.
+    bind: Option<(u32, u32)>,
 }
 
 impl Default for Options {
@@ -93,6 +118,12 @@ impl Default for Options {
             csd: false,
             dock: None,
             app_id: "org.fern.TestClient".into(),
+            layer: None,
+            anchor: 0,
+            exclusive: 0,
+            keyboard: 0,
+            shell_blur: None,
+            bind: None,
         }
     }
 }
@@ -114,6 +145,36 @@ fn parse_rect(text: &str) -> Option<(i32, i32, i32, i32)> {
     }
 }
 
+fn parse_layer(s: &str) -> Option<Layer> {
+    Some(match s {
+        "background" => Layer::Background,
+        "bottom" => Layer::Bottom,
+        "top" => Layer::Top,
+        "overlay" => Layer::Overlay,
+        _ => return None,
+    })
+}
+
+fn parse_anchor(s: &str) -> Option<u32> {
+    s.split(',')
+        .map(|e| match e {
+            "top" => Some(1),
+            "bottom" => Some(2),
+            "left" => Some(4),
+            "right" => Some(8),
+            _ => None,
+        })
+        .try_fold(0, |acc, b| Some(acc | b?))
+}
+
+fn parse_ints<const N: usize>(text: &str) -> Option<[i32; N]> {
+    let v: Vec<i32> = text
+        .split(',')
+        .map(|n| n.parse().ok())
+        .collect::<Option<_>>()?;
+    v.try_into().ok()
+}
+
 fn parse_color(s: &str) -> Option<[u8; 4]> {
     let s = s.strip_prefix('#').unwrap_or(s);
     if s.len() != 8 || !s.is_ascii() {
@@ -124,32 +185,61 @@ fn parse_color(s: &str) -> Option<[u8; 4]> {
 }
 
 fn parse_args(args: &[String]) -> Result<Options, String> {
-    let mut o = Options::default();
+    let mut opts = Options::default();
     let mut it = args.iter();
     while let Some(arg) = it.next() {
         let mut value = || it.next().ok_or(format!("{arg} needs a value"));
         match arg.as_str() {
-            "--size" => o.size = parse_size(value()?).ok_or("--size wants WxH")?,
-            "--color" => o.color = parse_color(value()?).ok_or("--color wants RRGGBBAA")?,
-            "--title" => o.title.clone_from(value()?),
-            "--stripes" => o.stripes = true,
-            "--csd" => o.csd = true,
-            "--dock" => o.dock = Some(value()?.clone()),
-            "--app-id" => o.app_id.clone_from(value()?),
-            "--globals" => o.globals = true,
+            "--size" => opts.size = parse_size(value()?).ok_or("--size wants WxH")?,
+            "--color" => opts.color = parse_color(value()?).ok_or("--color wants RRGGBBAA")?,
+            "--title" => opts.title.clone_from(value()?),
+            "--stripes" => opts.stripes = true,
+            "--csd" => opts.csd = true,
+            "--dock" => opts.dock = Some(value()?.clone()),
+            "--app-id" => opts.app_id.clone_from(value()?),
+            "--globals" => opts.globals = true,
             "--animate" => {
-                o.animate = true;
-                o.stripes = true;
+                opts.animate = true;
+                opts.stripes = true;
             }
-            "--blur" => o.blur = true,
+            "--layer" => {
+                opts.layer = Some(
+                    parse_layer(value()?)
+                        .ok_or("--layer wants background, bottom, top or overlay")?,
+                );
+            }
+            "--anchor" => {
+                opts.anchor =
+                    parse_anchor(value()?).ok_or("--anchor wants edges: top,bottom,left,right")?;
+            }
+            "--exclusive" => {
+                opts.exclusive = value()?.parse().map_err(|_| "--exclusive wants a number")?;
+            }
+            "--keyboard" => {
+                opts.keyboard = match value()?.as_str() {
+                    "none" => 0,
+                    "exclusive" => 1,
+                    "on-demand" => 2,
+                    _ => return Err("--keyboard wants none, exclusive or on-demand".into()),
+                };
+            }
+            "--shell-blur" => {
+                let v: [i32; 5] = parse_ints(value()?).ok_or("--shell-blur wants X,Y,W,H,R")?;
+                opts.shell_blur = Some((v[0], v[1], v[2], v[3], v[4]));
+            }
+            "--bind" => {
+                let [m, k] = parse_ints(value()?).ok_or("--bind wants MODS,KEYSYM")?;
+                opts.bind = Some((m.cast_unsigned(), k.cast_unsigned()));
+            }
+            "--blur" => opts.blur = true,
             "--blur-region" => {
-                o.blur_region = Some(parse_rect(value()?).ok_or("--blur-region wants X,Y,W,H")?);
-                o.blur = true;
+                opts.blur_region = Some(parse_rect(value()?).ok_or("--blur-region wants X,Y,W,H")?);
+                opts.blur = true;
             }
             other => return Err(format!("unknown argument {other}")),
         }
     }
-    Ok(o)
+    Ok(opts)
 }
 
 /// The window's pixels: little-endian ARGB8888 (B, G, R, A bytes),
@@ -302,6 +392,8 @@ fn main() {
     }
 }
 
+// Set-up, step by step for each kind of surface: long by nature.
+#[allow(clippy::too_many_lines)]
 fn run(options: Options) -> Result<(), String> {
     let conn = Connection::connect_to_env().map_err(|e| format!("connect: {e}"))?;
     let (globals, mut queue) =
@@ -323,15 +415,50 @@ fn run(options: Options) -> Result<(), String> {
         .bind(&qh, 1..=6, ())
         .map_err(|e| format!("xdg_wm_base: {e}"))?;
     let surface = compositor.create_surface(&qh, ());
-    let xdg = wm.get_xdg_surface(&surface, &qh, ());
-    let toplevel = xdg.get_toplevel(&qh, ());
-    toplevel.set_title(options.title.clone());
-    toplevel.set_app_id(options.app_id.clone());
-    if !options.csd
-        && let Ok(manager) = globals.bind::<ZxdgDecorationManagerV1, _, _>(&qh, 1..=1, ())
-    {
-        let deco = manager.get_toplevel_decoration(&toplevel, &qh, ());
-        deco.set_mode(zxdg_toplevel_decoration_v1::Mode::ServerSide);
+    if let Some(layer) = options.layer {
+        let shell: ZwlrLayerShellV1 = globals
+            .bind(&qh, 1..=4, ())
+            .map_err(|e| format!("layer shell (not trusted?): {e}"))?;
+        let ls = shell.get_layer_surface(&surface, None, layer, "fern-testclient".into(), &qh, ());
+        let (w, h) = options.size;
+        // Anchored to both sides of an axis: the compositor decides that size.
+        let a = options.anchor;
+        let w = if a & 0b1100 == 0b1100 { 0 } else { w };
+        let h = if a & 0b0011 == 0b0011 { 0 } else { h };
+        ls.set_size(w.cast_unsigned(), h.cast_unsigned());
+        ls.set_anchor(Anchor::from_bits_truncate(a));
+        ls.set_exclusive_zone(options.exclusive);
+        ls.set_keyboard_interactivity(match options.keyboard {
+            1 => KeyboardInteractivity::Exclusive,
+            2 => KeyboardInteractivity::OnDemand,
+            _ => KeyboardInteractivity::None,
+        });
+        let seat: WlSeat = globals
+            .bind(&qh, 1..=7, ())
+            .map_err(|e| format!("wl_seat: {e}"))?;
+        seat.get_keyboard(&qh, ());
+    } else {
+        let xdg = wm.get_xdg_surface(&surface, &qh, ());
+        let toplevel = xdg.get_toplevel(&qh, ());
+        toplevel.set_title(options.title.clone());
+        toplevel.set_app_id(options.app_id.clone());
+        if !options.csd
+            && let Ok(manager) = globals.bind::<ZxdgDecorationManagerV1, _, _>(&qh, 1..=1, ())
+        {
+            let deco = manager.get_toplevel_decoration(&toplevel, &qh, ());
+            deco.set_mode(zxdg_toplevel_decoration_v1::Mode::ServerSide);
+        }
+    }
+    if options.shell_blur.is_some() || options.bind.is_some() {
+        let shell: FernShellV1 = globals
+            .bind(&qh, 1..=1, ())
+            .map_err(|e| format!("fern_shell_v1 (not trusted?): {e}"))?;
+        if let Some((x, y, w, h, r)) = options.shell_blur {
+            shell.set_blur(&surface, x, y, w, h, r);
+        }
+        if let Some((m, k)) = options.bind {
+            shell.bind_key(1, m, k);
+        }
     }
     if options.blur {
         let manager: OrgKdeKwinBlurManager = globals
@@ -479,8 +606,10 @@ impl Dispatch<XdgToplevel, ()> for App {
                     app.size = (width, height);
                 }
                 let activated = states
-                    .chunks_exact(4)
-                    .filter_map(|c| c.try_into().ok().map(u32::from_ne_bytes))
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .map(|c| u32::from_ne_bytes(*c))
                     .any(|s| s == xdg_toplevel::State::Activated as u32);
                 if activated && let Some(dock) = app.dock.as_mut() {
                     dock.on_screen = true;
@@ -493,6 +622,66 @@ impl Dispatch<XdgToplevel, ()> for App {
 }
 
 delegate_noop!(App: ignore WlSeat);
+delegate_noop!(App: ZwlrLayerShellV1);
+
+impl Dispatch<ZwlrLayerSurfaceV1, ()> for App {
+    fn event(
+        app: &mut Self,
+        ls: &ZwlrLayerSurfaceV1,
+        event: zwlr_layer_surface_v1::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        match event {
+            zwlr_layer_surface_v1::Event::Configure {
+                serial,
+                width,
+                height,
+            } => {
+                ls.ack_configure(serial);
+                if width > 0 && height > 0 {
+                    app.size = (width.cast_signed(), height.cast_signed());
+                }
+                app.redraw = true;
+            }
+            zwlr_layer_surface_v1::Event::Closed => app.closed = true,
+            _ => {}
+        }
+    }
+}
+
+impl Dispatch<FernShellV1, ()> for App {
+    fn event(
+        _: &mut Self,
+        _: &FernShellV1,
+        event: fern_shell_v1::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let fern_shell_v1::Event::KeyBinding { id } = event {
+            println!("binding {id}");
+        }
+    }
+}
+
+impl Dispatch<WlKeyboard, ()> for App {
+    fn event(
+        _: &mut Self,
+        _: &WlKeyboard,
+        event: wl_keyboard::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let wl_keyboard::Event::Key { key, state, .. } = event
+            && state == wayland_client::WEnum::Value(wl_keyboard::KeyState::Pressed)
+        {
+            println!("key {key}");
+        }
+    }
+}
 
 impl Dispatch<ZwlrForeignToplevelManagerV1, ()> for App {
     fn event(
@@ -535,8 +724,10 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for App {
             Event::Title { title } => dock.titles[i].1 = title,
             Event::State { state } => {
                 let minimized = state
-                    .chunks_exact(4)
-                    .filter_map(|c| c.try_into().ok().map(u32::from_ne_bytes))
+                    .as_chunks::<4>()
+                    .0
+                    .iter()
+                    .map(|c| u32::from_ne_bytes(*c))
                     .any(|s| s == State::Minimized as u32);
                 if dock.titles[i].1 == dock.target && minimized && dock.minimized && !dock.activated
                 {

@@ -107,6 +107,7 @@ pub fn init(
                     None,
                     None,
                 );
+                data.state.output_changed(&nested.output);
             }
             WinitEvent::Input(event) => data.state.process_input_event(event),
             WinitEvent::Redraw => nested.redraw(data),
@@ -163,6 +164,7 @@ impl Nested<'_> {
                 renderer,
                 &self.shaders,
                 &state.space,
+                Some(&self.output),
                 self.wallpaper.as_ref(),
                 Rectangle::from_size(logical),
                 1.0,

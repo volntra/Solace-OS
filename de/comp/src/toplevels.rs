@@ -253,6 +253,7 @@ impl Dispatch<ZwlrForeignToplevelHandleV1, u32> for Comp {
                 let rect = if width > 0 && height > 0 {
                     state
                         .surface_origin(&surface)
+                        .or_else(|| state.layer_origin(&surface))
                         .map(|o| (o.x + x, o.y + y, width, height))
                 } else {
                     Some((0, 0, 0, 0))

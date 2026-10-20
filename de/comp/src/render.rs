@@ -30,9 +30,11 @@ use smithay::{
             utils::{CommitCounter, DamageSet, OpaqueRegions},
         },
     },
-    desktop::{Space, Window},
+    desktop::{LayerMap, Space, Window, layer_map_for_output},
+    output::Output,
     reexports::wayland_protocols::xdg::shell::server::xdg_toplevel,
     utils::{Buffer, Logical, Physical, Point, Rectangle, Scale, Size, Transform},
+    wayland::shell::wlr_layer::Layer,
 };
 
 /// Window corner radius, logical pixels (HIG: Radii, window).
@@ -423,6 +425,8 @@ smithay::backend::renderer::element::render_elements! {
     /// Everything fern-comp draws on an output, front to back.
     pub OutputElement<=GlesRenderer>;
     Window=Rounded,
+    /// The shell's surfaces (menu bar, dock, panels).
+    Layer=WaylandSurfaceRenderElement<GlesRenderer>,
     /// The wallpaper in a rounded rectangle (Overview's Spaces).
     Thumb=Rounded<MemoryRenderBufferRenderElement<GlesRenderer>>,
     Backdrop=Backdrop,
@@ -523,6 +527,7 @@ pub fn output_elements(
     renderer: &mut GlesRenderer,
     shaders: &Shaders,
     space: &Space<Window>,
+    output: Option<&Output>,
     wallpaper: Option<&Wallpaper>,
     area: Rectangle<i32, Logical>,
     scale: f64,
@@ -543,6 +548,19 @@ pub fn output_elements(
         && let Ok(e) = wallpaper_element(renderer, wallpaper, output_size)
     {
         out.push_front(OutputElement::Image(e));
+    }
+    let layers = output.map(layer_map_for_output);
+    if let Some(map) = &layers {
+        layer_elements(
+            renderer,
+            shaders,
+            map,
+            &crate::layers::LOWER,
+            s,
+            fb_height,
+            output_px,
+            &mut out,
+        );
     }
     for window in space.elements() {
         if beneath.as_ref() == Some(window) {
@@ -615,7 +633,7 @@ pub fn output_elements(
                 renderer,
                 &shaders.blur,
                 &shaders.rounded,
-                window,
+                window.user_data(),
                 &blurred,
                 clip,
                 out.make_contiguous(),
@@ -653,10 +671,94 @@ pub fn output_elements(
             }));
         }
     }
+    // The shell's top layer (menu bar, dock), then the window manager's
+    // overlay (the app switcher goes over the dock), then the shell's
+    // overlay layer (banners).
+    if let Some(map) = &layers {
+        layer_elements(
+            renderer,
+            shaders,
+            map,
+            &[Layer::Top],
+            s,
+            fb_height,
+            output_px,
+            &mut out,
+        );
+    }
     if !overlay_drawn {
         overlay_elements(renderer, shaders, overlay, wallpaper, area, scale, &mut out);
     }
+    if let Some(map) = &layers {
+        layer_elements(
+            renderer,
+            shaders,
+            map,
+            &[Layer::Overlay],
+            s,
+            fb_height,
+            output_px,
+            &mut out,
+        );
+    }
     out.into()
+}
+
+/// Draws the layer surfaces of `which` (bottom to top) over `out`, each
+/// with the rounded blur it asked for through `fern_shell_v1`.
+#[allow(clippy::too_many_arguments)]
+fn layer_elements(
+    renderer: &mut GlesRenderer,
+    shaders: &Shaders,
+    map: &LayerMap,
+    which: &[Layer],
+    s: Scale<f64>,
+    fb_height: f32,
+    output_px: Size<i32, Physical>,
+    out: &mut VecDeque<OutputElement>,
+) {
+    for &l in which {
+        for layer in map.layers_on(l) {
+            let Some(geo) = map.layer_geometry(layer) else {
+                continue;
+            };
+            if let Some((rect, radius)) = crate::layers::shell_blur(layer.wl_surface()) {
+                let r = Rectangle::new(geo.loc + rect.loc, rect.size);
+                let r_px = r.to_physical_precise_round(s);
+                #[allow(clippy::cast_possible_truncation)]
+                let radius = (f64::from(radius) * s.x) as f32;
+                let clip = Clip {
+                    window: r.to_f64().to_physical(s),
+                    radii: [radius; 4],
+                    fb_height,
+                };
+                match backdrop::backdrops(
+                    renderer,
+                    &shaders.blur,
+                    &shaders.rounded,
+                    layer.user_data(),
+                    &[r_px],
+                    clip,
+                    out.make_contiguous(),
+                    output_px,
+                    s,
+                ) {
+                    Ok(b) => {
+                        for b in b {
+                            out.push_front(OutputElement::Backdrop(b));
+                        }
+                    }
+                    Err(e) => tracing::warn!("shell blur: {e:?}"),
+                }
+            }
+            let loc = geo.loc.to_physical_precise_round(s);
+            let elements: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
+                layer.render_elements(renderer, loc, s, 1.0);
+            for e in elements.into_iter().rev() {
+                out.push_front(OutputElement::Layer(e));
+            }
+        }
+    }
 }
 
 /// `0xRRGGBBAA` as straight-alpha floats.

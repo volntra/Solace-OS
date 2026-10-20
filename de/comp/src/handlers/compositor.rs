@@ -48,6 +48,7 @@ impl CompositorHandler for Comp {
             }
         }
 
+        self.layer_commit(surface);
         self.xdg_commit(surface);
         resize_grab::handle_commit(&mut self.space, surface);
         self.request_redraw();

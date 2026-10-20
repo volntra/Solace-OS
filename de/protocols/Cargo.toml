@@ -1,7 +1,7 @@
 [package]
 name = "fern-wm-proto"
 version = "0.1.0"
-description = "The private core <-> window manager Wayland protocol (fern_wm_v1)"
+description = "Our private Wayland protocols: fern_wm_v1 (core <-> window manager) and fern_shell_v1 (core <-> shell)"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

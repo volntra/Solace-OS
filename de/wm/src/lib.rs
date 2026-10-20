@@ -164,6 +164,19 @@ impl Dispatch<FernWmV1, ()> for App {
                 h: height,
             },
             E::OutputRemoved { id } => Event::OutputRemoved(id),
+            E::WorkArea {
+                id,
+                x,
+                y,
+                width,
+                height,
+            } => Event::WorkArea {
+                id,
+                x,
+                y,
+                w: width,
+                h: height,
+            },
             E::Window {
                 id,
                 app_id,

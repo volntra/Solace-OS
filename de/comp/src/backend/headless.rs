@@ -131,6 +131,7 @@ impl Headless {
         );
         output.set_preferred(mode);
         state.space.map_output(&output, (0, 0));
+        state.output_changed(&output);
         Ok(Headless {
             renderer,
             damage_tracker: OutputDamageTracker::from_output(&output),
@@ -159,6 +160,7 @@ impl Headless {
             &mut self.renderer,
             &self.shaders,
             &state.space,
+            Some(&self.output),
             self.wallpaper.as_ref(),
             Rectangle::from_size(logical),
             1.0,
