@@ -15,6 +15,7 @@ pub mod spring;
 pub mod state;
 pub mod stats;
 pub mod text;
+pub mod toplevels;
 pub mod wm;
 
 use smithay::reexports::wayland_server::DisplayHandle;

@@ -65,6 +65,8 @@
       <entry name="tiled_top" value="32"/>
       <entry name="tiled_bottom" value="64"/>
       <entry name="resizing" value="128"/>
+      <entry name="minimized" value="256"
+             summary="not an xdg state: shown to the dock and the switcher"/>
     </enum>
 
     <enum name="modifiers" bitfield="true">
@@ -180,6 +182,19 @@
       <arg name="states" type="uint" enum="state"/>
       <arg name="visible" type="uint"/>
       <arg name="data" type="string" summary="what save stored, or empty"/>
+    </event>
+
+    <event name="window_icon">
+      <description summary="where a dock shows the window">
+        Global logical pixels, from foreign-toplevel set_rectangle; 0x0
+        when no dock shows it. Minimize animates towards it. Also sent
+        before restore after a restart.
+      </description>
+      <arg name="id" type="uint"/>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
     </event>
 
     <event name="restore_wm">

@@ -5,6 +5,7 @@
 //! ```text
 //! fern-testclient [--size WxH] [--color RRGGBBAA] [--stripes] [--animate]
 //!                [--blur | --blur-region X,Y,W,H] [--title T] [--csd] [--globals]
+//!                [--dock TITLE]
 //! ```
 //!
 //! Like most apps it asks for server-side decoration (our titlebar) when
@@ -13,10 +14,16 @@
 //! `--animate` moves the stripes every frame the compositor asks for, so
 //! it draws at the display's refresh rate (for frame timing). `--globals`
 //! lists the compositor's globals and exits.
+//!
+//! `--dock TITLE` plays a dock over wlr-foreign-toplevel (only for a
+//! trusted connection, `WAYLAND_SOCKET`): it says the window titled TITLE
+//! has its icon at 10,10 48x48 on our surface and minimizes it; half a
+//! second after that window reports minimized, it activates it again.
 
 use std::os::fd::AsFd;
 use std::os::unix::fs::FileExt;
 
+use wayland_client::protocol::wl_seat::WlSeat;
 use wayland_client::{
     Connection, Dispatch, QueueHandle, delegate_noop,
     globals::{GlobalListContents, registry_queue_init},
@@ -43,6 +50,10 @@ use wayland_protocols::xdg::shell::client::{
 use wayland_protocols_plasma::blur::client::{
     org_kde_kwin_blur::OrgKdeKwinBlur, org_kde_kwin_blur_manager::OrgKdeKwinBlurManager,
 };
+use wayland_protocols_wlr::foreign_toplevel::v1::client::{
+    zwlr_foreign_toplevel_handle_v1::{self, ZwlrForeignToplevelHandleV1},
+    zwlr_foreign_toplevel_manager_v1::{self, ZwlrForeignToplevelManagerV1},
+};
 
 /// What to draw.
 #[derive(Debug, Clone, PartialEq)]
@@ -63,6 +74,8 @@ struct Options {
     title: String,
     /// Do not ask for server-side decoration.
     csd: bool,
+    /// Play a dock for the window with this title.
+    dock: Option<String>,
 }
 
 impl Default for Options {
@@ -77,6 +90,7 @@ impl Default for Options {
             blur_region: None,
             title: "Test".into(),
             csd: false,
+            dock: None,
         }
     }
 }
@@ -118,6 +132,7 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
             "--title" => o.title.clone_from(value()?),
             "--stripes" => o.stripes = true,
             "--csd" => o.csd = true,
+            "--dock" => o.dock = Some(value()?.clone()),
             "--globals" => o.globals = true,
             "--animate" => {
                 o.animate = true;
@@ -184,6 +199,20 @@ struct App {
     /// Set by a configure or a frame callback: draw before the next commit.
     redraw: bool,
     closed: bool,
+    dock: Option<Dock>,
+}
+
+/// `--dock`: the target window's handle and how far we got with it.
+struct Dock {
+    target: String,
+    seat: WlSeat,
+    /// Every window's handle and its title so far.
+    titles: Vec<(ZwlrForeignToplevelHandleV1, String)>,
+    /// Our own window is on screen (`set_rectangle` is relative to it): the
+    /// window manager activates a window as it shows it.
+    on_screen: bool,
+    minimized: bool,
+    activated: bool,
 }
 
 impl App {
@@ -315,9 +344,29 @@ fn run(options: Options) -> Result<(), String> {
         }
         blur.commit();
     }
+    let dock = match options.dock.clone() {
+        Some(target) => {
+            let _: ZwlrForeignToplevelManagerV1 = globals
+                .bind(&qh, 1..=3, ())
+                .map_err(|e| format!("foreign toplevel manager (not trusted?): {e}"))?;
+            let seat: WlSeat = globals
+                .bind(&qh, 1..=1, ())
+                .map_err(|e| format!("wl_seat: {e}"))?;
+            Some(Dock {
+                target,
+                seat,
+                titles: Vec::new(),
+                on_screen: false,
+                minimized: false,
+                activated: false,
+            })
+        }
+        None => None,
+    };
     surface.commit();
 
     let mut app = App {
+        dock,
         size: options.size,
         options,
         shm,
@@ -336,6 +385,7 @@ fn run(options: Options) -> Result<(), String> {
             app.redraw = false;
             app.draw(&qh)?;
         }
+        app.dock_act();
     }
     Ok(())
 }
@@ -417,10 +467,85 @@ impl Dispatch<XdgToplevel, ()> for App {
         _: &QueueHandle<Self>,
     ) {
         match event {
-            xdg_toplevel::Event::Configure { width, height, .. } if width > 0 && height > 0 => {
-                app.size = (width, height);
+            xdg_toplevel::Event::Configure {
+                width,
+                height,
+                states,
+            } => {
+                if width > 0 && height > 0 {
+                    app.size = (width, height);
+                }
+                let activated = states
+                    .chunks_exact(4)
+                    .filter_map(|c| c.try_into().ok().map(u32::from_ne_bytes))
+                    .any(|s| s == xdg_toplevel::State::Activated as u32);
+                if activated && let Some(dock) = app.dock.as_mut() {
+                    dock.on_screen = true;
+                }
             }
             xdg_toplevel::Event::Close => app.closed = true,
+            _ => {}
+        }
+    }
+}
+
+delegate_noop!(App: ignore WlSeat);
+
+impl Dispatch<ZwlrForeignToplevelManagerV1, ()> for App {
+    fn event(
+        app: &mut Self,
+        _: &ZwlrForeignToplevelManagerV1,
+        event: zwlr_foreign_toplevel_manager_v1::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let zwlr_foreign_toplevel_manager_v1::Event::Toplevel { toplevel } = event
+            && let Some(dock) = app.dock.as_mut()
+        {
+            dock.titles.push((toplevel, String::new()));
+        }
+    }
+
+    wayland_client::event_created_child!(App, ZwlrForeignToplevelManagerV1, [
+        zwlr_foreign_toplevel_manager_v1::EVT_TOPLEVEL_OPCODE => (ZwlrForeignToplevelHandleV1, ()),
+    ]);
+}
+
+impl Dispatch<ZwlrForeignToplevelHandleV1, ()> for App {
+    fn event(
+        app: &mut Self,
+        handle: &ZwlrForeignToplevelHandleV1,
+        event: zwlr_foreign_toplevel_handle_v1::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        use zwlr_foreign_toplevel_handle_v1::{Event, State};
+        let Some(dock) = app.dock.as_mut() else {
+            return;
+        };
+        let Some(i) = dock.titles.iter().position(|(h, _)| h == handle) else {
+            return;
+        };
+        match event {
+            Event::Title { title } => dock.titles[i].1 = title,
+            Event::State { state } => {
+                let minimized = state
+                    .chunks_exact(4)
+                    .filter_map(|c| c.try_into().ok().map(u32::from_ne_bytes))
+                    .any(|s| s == State::Minimized as u32);
+                if dock.titles[i].1 == dock.target && minimized && dock.minimized && !dock.activated
+                {
+                    // Time for a test to look at the minimized window.
+                    std::thread::sleep(std::time::Duration::from_millis(500));
+                    handle.activate(&dock.seat);
+                    dock.activated = true;
+                }
+            }
+            Event::Closed => {
+                dock.titles.remove(i);
+            }
             _ => {}
         }
     }
@@ -433,6 +558,24 @@ delegate_noop!(App: OrgKdeKwinBlurManager);
 delegate_noop!(App: OrgKdeKwinBlur);
 delegate_noop!(App: ignore WlShm);
 delegate_noop!(App: ignore WlSurface);
+
+impl App {
+    /// `--dock`: once our window is on screen and the target is known,
+    /// put its icon on us and minimize it (once).
+    fn dock_act(&mut self) {
+        let Some(dock) = self.dock.as_mut() else {
+            return;
+        };
+        if !dock.on_screen || dock.minimized {
+            return;
+        }
+        if let Some((handle, _)) = dock.titles.iter().find(|(_, t)| *t == dock.target) {
+            handle.set_rectangle(&self.surface, 10, 10, 48, 48);
+            handle.set_minimized();
+            dock.minimized = true;
+        }
+    }
+}
 impl Dispatch<WlBuffer, (u32, usize)> for App {
     fn event(
         app: &mut Self,

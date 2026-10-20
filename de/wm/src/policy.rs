@@ -18,6 +18,8 @@ pub mod state {
     pub const TILED_RIGHT: u32 = 16;
     pub const TILED_TOP: u32 = 32;
     pub const TILED_BOTTOM: u32 = 64;
+    /// Ours, not xdg's: the dock and switcher see the window minimized.
+    pub const MINIMIZED: u32 = 256;
 }
 
 /// The protocol's `part` values.
@@ -107,6 +109,11 @@ pub enum Event {
     },
     RestoreWm(String),
     Done,
+    /// Where a dock shows the window (minimize goes there).
+    Icon {
+        id: u32,
+        rect: Option<Rect>,
+    },
     /// Whether we draw the titlebar (server side) and how tall it is.
     Decoration {
         id: u32,
@@ -243,6 +250,7 @@ pub mod keys {
     pub const CARRY_LEFT: u32 = 7;
     pub const CARRY_RIGHT: u32 = 8;
     pub const FULLSCREEN: u32 = 9;
+    pub const MINIMIZE: u32 = 10;
     const LEFT: u32 = 0xff51;
     const UP: u32 = 0xff52;
     const RIGHT: u32 = 0xff53;
@@ -257,6 +265,7 @@ pub mod keys {
         (CARRY_LEFT, CTRL | SUPER | SHIFT, LEFT),
         (CARRY_RIGHT, CTRL | SUPER | SHIFT, RIGHT),
         (FULLSCREEN, CTRL | SUPER, 0x66),
+        (MINIMIZE, SUPER, 0x6d),
     ];
 }
 
@@ -316,6 +325,8 @@ pub struct Win {
     pub windowed: Option<Windowed>,
     /// What the core holds for us (`save`), to notice changes.
     saved: String,
+    /// Its icon in the dock, if a dock shows it.
+    pub icon: Option<Rect>,
     pub x: i32,
     pub y: i32,
     pub visible: bool,
@@ -518,6 +529,11 @@ impl Wm {
                     }
                 }
             }
+            Event::Icon { id, rect } => {
+                if let Some(w) = self.windows.get_mut(&id) {
+                    w.icon = rect;
+                }
+            }
             Event::RestoreWm(data) => {
                 self.load_spaces(&data);
                 self.saved_desktop = data;
@@ -613,6 +629,12 @@ impl Wm {
                     }
                     keys::CARRY_RIGHT => {
                         self.carry_by(1, &mut out);
+                        return self.finish(out);
+                    }
+                    keys::MINIMIZE => {
+                        if let Some(id) = self.focused {
+                            self.minimize(id, &mut out);
+                        }
                         return self.finish(out);
                     }
                     keys::FULLSCREEN => {
@@ -768,29 +790,38 @@ impl Wm {
         });
     }
 
-    /// Minimize: shrinks and fades towards the bottom of the screen (where
-    /// the dock will be), then hides; focus passes to the next window.
+    /// Minimize: shrinks and fades into its dock icon (or, with no dock,
+    /// towards the bottom middle of the screen), then hides; focus passes
+    /// to the next window. Fullscreen windows do not minimize.
     pub fn minimize(&mut self, id: u32, out: &mut Vec<Cmd>) {
+        let Some(win) = self.windows.get(&id) else {
+            return;
+        };
+        if win.minimized || !win.visible || win.windowed.is_some() {
+            return;
+        }
+        let frame = win.rect();
+        let screen = self.output_of(&frame);
+        let target = win.icon.unwrap_or_else(|| {
+            let w = frame.w * 12 / 100;
+            let h = frame.h * 12 / 100;
+            Rect::new(
+                screen.x + (screen.w - w) / 2,
+                screen.y + screen.h - h - 8,
+                w,
+                h,
+            )
+        });
+        let (x, y, scale) = shrink_into(frame, target);
         let Some(win) = self.windows.get_mut(&id) else {
             return;
         };
-        if win.minimized || !win.visible {
-            return;
-        }
         win.minimized = true;
         win.visible = false;
-        let frame = win.rect();
-        let screen = self.output_of(&frame);
-        let scale = 0.12;
-        #[allow(clippy::cast_possible_truncation)]
-        let (w, h) = (
-            (f64::from(frame.w) * scale) as i32,
-            (f64::from(frame.h) * scale) as i32,
-        );
         out.push(Cmd::Place {
             id,
-            x: screen.x + (screen.w - w) / 2,
-            y: screen.y + screen.h - h - 8,
+            x,
+            y,
             scale,
             alpha: 0.0,
             motion: motion::GENTLE,
@@ -798,8 +829,9 @@ impl Wm {
         out.push(Cmd::Visible { id, visible: false });
         self.stack.retain(|&i| i != id);
         out.push(Cmd::Stack(self.stack.clone()));
-        if self.focused == Some(id) {
-            self.set_states(id, |s| s & !state::ACTIVATED, out);
+        let was_focused = self.focused == Some(id);
+        self.set_states(id, |s| (s & !state::ACTIVATED) | state::MINIMIZED, out);
+        if was_focused {
             self.focused = None;
             let next = self.top_shown();
             self.focus(next, out);
@@ -820,6 +852,7 @@ impl Wm {
         {
             win.minimized = false;
             win.visible = true;
+            win.states &= !state::MINIMIZED;
             out.push(Cmd::Visible { id, visible: true });
             out.push(Cmd::Place {
                 id,
@@ -935,6 +968,19 @@ impl Wm {
             }
         }
     }
+}
+
+/// Where a frame shrunk into `target` is placed, and its scale: the
+/// largest size that fits, centred on it (scaling keeps the top-left).
+pub fn shrink_into(frame: Rect, target: Rect) -> (i32, i32, f64) {
+    let scale = (f64::from(target.w) / f64::from(frame.w.max(1)))
+        .min(f64::from(target.h) / f64::from(frame.h.max(1)))
+        .clamp(0.01, 1.0);
+    let cx = f64::from(target.x) + f64::from(target.w) / 2.0;
+    let cy = f64::from(target.y) + f64::from(target.h) / 2.0;
+    #[allow(clippy::cast_possible_truncation)]
+    let at = |c: f64, len: i32| (c - f64::from(len) * scale / 2.0).round() as i32;
+    (at(cx, frame.w), at(cy, frame.h), scale)
 }
 
 /// Where a new window of `size` goes in `area`: centred, a little above
@@ -1303,5 +1349,63 @@ mod tests {
         again.load_spaces(&saved);
         assert_eq!(again.spaces, wm.spaces);
         assert_eq!(again.current, wm.current);
+    }
+
+    #[test]
+    fn minimize_shrinks_into_the_dock_icon_and_comes_back() {
+        let mut wm = wm_with_output();
+        open(&mut wm, 1, 400, 300);
+        open(&mut wm, 2, 400, 300);
+        let icon = Rect::new(1000, 1380, 48, 48);
+        wm.handle(Event::Icon {
+            id: 2,
+            rect: Some(icon),
+        });
+        let before = wm.windows[&2].rect();
+        let cmds = wm.handle(Event::Binding(keys::MINIMIZE));
+        let place = cmds.iter().find_map(|c| match c {
+            Cmd::Place {
+                id: 2,
+                x,
+                y,
+                scale,
+                alpha,
+                motion: spring,
+            } => Some((*x, *y, *scale, *alpha, *spring)),
+            _ => None,
+        });
+        let (left, top, scale, alpha, spring) = place.expect("no placement for the minimize");
+        assert_eq!((alpha, spring), (0.0, motion::GENTLE));
+        // Shrunk to fit the icon, centred on it.
+        let width = f64::from(before.w) * scale;
+        let height = f64::from(before.h) * scale;
+        assert!(width <= 48.5 && height <= 48.5, "{width}x{height}");
+        assert!((f64::from(left) + width / 2.0 - 1024.0).abs() <= 1.0);
+        assert!((f64::from(top) + height / 2.0 - 1404.0).abs() <= 1.0);
+        // The dock sees it minimized; focus moved to window 1.
+        assert!(cmds.contains(&Cmd::Configure {
+            id: 2,
+            w: 0,
+            h: 0,
+            states: state::MINIMIZED
+        }));
+        assert_eq!(wm.focused, Some(1));
+        // Activated from the dock: back where it was, focused, not
+        // minimized.
+        let cmds = wm.handle(Event::Request {
+            id: 2,
+            kind: request::ACTIVATE,
+            edges: 0,
+        });
+        assert!(cmds.contains(&Cmd::Place {
+            id: 2,
+            x: before.x,
+            y: before.y,
+            scale: 1.0,
+            alpha: 1.0,
+            motion: motion::GENTLE
+        }));
+        assert_eq!(wm.focused, Some(2));
+        assert_eq!(wm.windows[&2].states, state::ACTIVATED);
     }
 }

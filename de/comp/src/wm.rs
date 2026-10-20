@@ -178,6 +178,8 @@ pub struct WinRecord {
     /// The client agreed to server-side decoration (xdg-decoration): we
     /// may draw its titlebar.
     pub ssd: bool,
+    /// Where a dock shows this window (x, y, w, h; global), for minimize.
+    pub icon: Option<(i32, i32, i32, i32)>,
 }
 
 /// What the pointer is on (see [`Comp::hit`]).
@@ -363,6 +365,7 @@ impl Comp {
             Ok(stream) => {
                 let data = Arc::new(ClientState {
                     is_wm: true,
+                    trusted: true,
                     ..ClientState::default()
                 });
                 match self.display_handle.insert_client(stream, data) {
@@ -391,6 +394,9 @@ impl Comp {
             resource.window_decoration(id, u32::from(rec.ssd), crate::render::TITLEBAR_HEIGHT);
             if let Some((w, h)) = rec.size {
                 resource.window_size(id, w, h);
+            }
+            if let Some((x, y, w, h)) = rec.icon {
+                resource.window_icon(id, x, y, w, h);
             }
             let (x, y) = self.frame_location(rec);
             let (w, h) = rec.size.unwrap_or((0, 0));
@@ -525,6 +531,7 @@ impl Comp {
                 anim: Anim::default(),
                 leaving: false,
                 ssd: false,
+                icon: None,
             },
         );
         if let Some(r) = &self.wm.resource {
@@ -553,6 +560,9 @@ impl Comp {
         let first = rec.size.is_none();
         rec.size = Some(size);
         let ssd = rec.ssd;
+        if first {
+            self.toplevel_new(id);
+        }
         if let Some(r) = &self.wm.resource {
             if first {
                 send_hints(r, id, window);
@@ -605,6 +615,7 @@ impl Comp {
             return;
         };
         self.wm.windows.remove(&id);
+        self.toplevel_closed(id);
         self.space.unmap_elem(window);
         if let Some(r) = &self.wm.resource {
             r.window_closed(id);
@@ -617,12 +628,27 @@ impl Comp {
     }
 
     pub fn wm_names_changed(&mut self, window: &Window) {
-        let (Some(id), Some(r)) = (win_id(window), &self.wm.resource) else {
+        let Some(id) = win_id(window) else {
+            return;
+        };
+        self.toplevel_changed(id);
+        let Some(r) = &self.wm.resource else {
             return;
         };
         let (app_id, title) = names(window);
         r.window_app_id(id, app_id);
         r.window_title(id, title);
+    }
+
+    /// A dock says where window `id`'s icon is (0×0: nowhere).
+    pub fn wm_icon(&mut self, id: u32, rect: (i32, i32, i32, i32)) {
+        let Some(rec) = self.wm.windows.get_mut(&id) else {
+            return;
+        };
+        rec.icon = (rect.2 > 0 && rect.3 > 0).then_some(rect);
+        if let Some(r) = &self.wm.resource {
+            r.window_icon(id, rect.0, rect.1, rect.2, rect.3);
+        }
     }
 
     /// A client asked for something the window manager decides.
@@ -1044,10 +1070,14 @@ impl Comp {
         let Some(rec) = self.wm.windows.get_mut(&id) else {
             return;
         };
+        let changed = rec.states != states;
         rec.states = states;
         let Some(toplevel) = rec.window.toplevel().cloned() else {
             return;
         };
+        if changed {
+            self.toplevel_changed(id);
+        }
         toplevel.with_pending_state(|s| {
             use xdg_toplevel::State as S;
             s.size = (w > 0 && h > 0).then(|| (w, h).into());
@@ -1296,7 +1326,7 @@ impl Comp {
     }
 }
 
-fn names(window: &Window) -> (String, String) {
+pub(crate) fn names(window: &Window) -> (String, String) {
     window.toplevel().map_or_else(Default::default, |t| {
         with_states(t.wl_surface(), |states| {
             states

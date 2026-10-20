@@ -856,3 +856,22 @@ frame missed the next vblank (about 5 a second).
   reads the `fullscreen` state).
 - **Limits:** Spaces span all displays together; per-display Spaces come
   with real multi-monitor work.
+
+### 2026-10-20: The window list is for trusted clients (Phase 5, stage 6)
+
+- **Decision:** the core implements wlr-foreign-toplevel-management v3
+  itself (Smithay has no implementation) and offers it only to clients it
+  started on a socket pair (`ClientState.trusted`: the window manager,
+  later the shell). Requests that the window manager decides (minimize,
+  maximize, fullscreen, activate) go to it as `window_request`, like the
+  app's own; `close` goes straight to the app; `set_rectangle` becomes a
+  `window_icon` event (global coordinates) that minimize aims at.
+- **Alternatives:** offering it to every client like wlroots compositors
+  (any app could list, minimize or close every other app's windows);
+  security-context-v1 tags (right for sandboxed apps later, but our own
+  shell does not need a socket anyone can reach).
+- **Minimized is a state** the window manager sets (`minimized`, 256, not
+  an xdg state) so docks and switchers see it.
+- **Minimize animation:** a uniform shrink and fade into the icon on the
+  `gentle` spring. A genie bend needs a deforming mesh in the renderer;
+  left for Phase 14 polish.

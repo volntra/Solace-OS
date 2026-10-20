@@ -134,6 +134,31 @@ impl Harness {
             .spawn()
             .map_err(|e| format!("fern-testclient: {e}"))?;
         self.clients.push(child);
+        self.wait_for_window(args)
+    }
+
+    /// Starts `fern-testclient ARGS` as a trusted part of the desktop (the
+    /// way the core starts the shell): on a socket pair, `WAYLAND_SOCKET`.
+    /// Does not wait for its window.
+    fn start_trusted(&mut self, args: &str) -> Result {
+        let (ours, theirs) = std::os::unix::net::UnixStream::pair().map_err(|e| e.to_string())?;
+        self.data
+            .state
+            .insert_trusted_client(ours)
+            .map_err(|e| e.to_string())?;
+        let child = Command::new(env!("CARGO_BIN_EXE_fern-testclient"))
+            .args(args.split_whitespace())
+            .stdin(Stdio::from(std::os::fd::OwnedFd::from(theirs)))
+            .env("WAYLAND_SOCKET", "0")
+            .env_remove("WAYLAND_DISPLAY")
+            .stdout(Stdio::null())
+            .spawn()
+            .map_err(|e| format!("fern-testclient: {e}"))?;
+        self.clients.push(child);
+        Ok(())
+    }
+
+    fn wait_for_window(&mut self, args: &str) -> Result<Window> {
         let deadline = Instant::now() + Duration::from_secs(20);
         loop {
             self.turn()?;
@@ -709,6 +734,103 @@ fn wm_spaces(h: &mut Harness) -> Result {
     })
 }
 
+/// Turns until `cond` holds, or fails with `what` after 10 s.
+fn wait_until(h: &mut Harness, what: &str, cond: impl Fn(&Harness) -> bool) -> Result {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !cond(h) {
+        check(Instant::now() < deadline, || format!("timed out: {what}"))?;
+        h.turn()?;
+    }
+    Ok(())
+}
+
+fn wm_minimize_to_dock(h: &mut Harness) -> Result {
+    // An app cannot see the window list (foreign-toplevel management).
+    let mut lister = Command::new(env!("CARGO_BIN_EXE_fern-testclient"))
+        .arg("--globals")
+        .env("WAYLAND_DISPLAY", &h.data.state.socket_name)
+        .stdout(Stdio::piped())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while lister.try_wait().map_err(|e| e.to_string())?.is_none() {
+        check(Instant::now() < deadline, || "--globals hung".into())?;
+        h.turn()?;
+    }
+    let mut globals = String::new();
+    if let Some(mut out) = lister.stdout.take() {
+        use std::io::Read;
+        out.read_to_string(&mut globals)
+            .map_err(|e| e.to_string())?;
+    }
+    check(globals.contains("xdg_wm_base"), || {
+        format!("no globals listed: {globals}")
+    })?;
+    check(
+        !globals.contains("zwlr_foreign_toplevel_manager_v1"),
+        || "an untrusted client sees the window list".into(),
+    )?;
+    // A window, then a trusted dock that minimizes it into an icon on its
+    // own surface (10,10 48x48) and, once minimized, activates it.
+    h.open("--color 2ec4b6ff --size 300x200 --title Target")?;
+    let home = h.location(0);
+    h.start_trusted("--dock Target --title Dock --size 200x100 --color 7cc48aff")?;
+    let in_list = |h: &Harness| {
+        h.data
+            .state
+            .wm
+            .record(&h.windows[0])
+            .is_some_and(|r| r.visible)
+    };
+    wait_until(h, "the target was not minimized", |h| !in_list(h))?;
+    let dock_window = h
+        .data
+        .state
+        .space
+        .elements()
+        .find(|w| **w != h.windows[0])
+        .cloned()
+        .ok_or("the dock has no window")?;
+    let dock = h
+        .data
+        .state
+        .space
+        .element_location(&dock_window)
+        .map(|p| (p.x, p.y))
+        .ok_or("the dock is not placed")?;
+    let place = h
+        .data
+        .state
+        .wm
+        .record(&h.windows[0])
+        .map(|r| r.place)
+        .ok_or("no record")?;
+    let size = h.windows[0].geometry().size;
+    let tb = f64::from(ferncomp::render::TITLEBAR_HEIGHT);
+    let centre = (
+        f64::from(place.x) + f64::from(size.w) * place.scale / 2.0,
+        f64::from(place.y) + (f64::from(size.h) + tb) * place.scale / 2.0,
+    );
+    let icon = (f64::from(dock.0) + 34.0, f64::from(dock.1) + 34.0);
+    check(
+        (centre.0 - icon.0).abs() <= 2.0 && (centre.1 - icon.1).abs() <= 2.0,
+        || format!("minimized towards {centre:?}, the icon is at {icon:?}"),
+    )?;
+    check(place.alpha == 0.0 && place.scale < 0.25, || {
+        format!("minimized place {place:?}")
+    })?;
+    wait_until(h, "the dock's activate did not bring it back", in_list)?;
+    h.settle()?;
+    check(h.location(0) == home, || {
+        format!("came back at {:?}, was at {home:?}", h.location(0))
+    })?;
+    check(h.focused(0), || "the restored window is not focused".into())?;
+    // Super+M minimizes the focused window (no icon for it: towards the
+    // bottom of the screen).
+    key(h, 8, 0x6d)?;
+    check(!shown(h, 0), || "Super+M did not minimize".into())
+}
+
 const SCENARIOS: &[Scenario] = &[
     ("orientation", orientation),
     ("corners_and_shadow", corners_and_shadow),
@@ -722,6 +844,7 @@ const SCENARIOS: &[Scenario] = &[
     ("wm_zoom", wm_zoom),
     ("wm_tiling", wm_tiling),
     ("wm_spaces", wm_spaces),
+    ("wm_minimize_to_dock", wm_minimize_to_dock),
 ];
 
 fn main() -> ExitCode {

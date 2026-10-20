@@ -118,6 +118,14 @@ the tiling preview are drawn with these. `overlay_beneath` draws the
 overlay just below one window instead (the tiling preview sits under the
 window being dragged); `overlay_clear` puts it back on top.
 
+## Docks
+
+The core also runs wlr-foreign-toplevel-management for trusted clients
+(the shell's dock and switcher). Its requests reach the window manager as
+`window_request`s; `set_rectangle` arrives as `window_icon` (global
+coordinates, 0x0 when cleared), which minimize aims at. The window
+manager reports a window as minimized with the `minimized` state bit.
+
 ## What is implemented
 
 See docs/STATUS.md for which parts of this the core and fern-wm carry out

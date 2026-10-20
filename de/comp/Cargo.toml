@@ -43,6 +43,7 @@ smithay = { version = "0.7.0", default-features = false, features = ["wayland_fr
 bitflags = "2"
 png = "0.17"
 wayland-protocols-plasma = { version = "0.3", features = ["server", "client"] }
+wayland-protocols-wlr = { version = "0.3", features = ["server", "client"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 wayland-client = "0.31"

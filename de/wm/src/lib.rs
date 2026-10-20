@@ -219,6 +219,16 @@ impl Dispatch<FernWmV1, ()> for App {
                 data,
             },
             E::RestoreWm { data } => Event::RestoreWm(data),
+            E::WindowIcon {
+                id,
+                x,
+                y,
+                width,
+                height,
+            } => Event::Icon {
+                id,
+                rect: (width > 0 && height > 0).then(|| policy::Rect::new(x, y, width, height)),
+            },
             E::Done => Event::Done,
             E::WindowDecoration {
                 id,

@@ -63,6 +63,10 @@ spring, the wallpaper fixed. Ctrl+Super+Left/Right switch;
 Ctrl+Super+Shift+Left/Right carry the focused window. Fullscreen windows
 get their own Space, square corners, no shadow; Ctrl+Super+F toggles.
 
+**Minimize.** The window shrinks (uniformly) and fades into its dock icon
+on the `gentle` spring, or towards the bottom middle of the screen when no
+dock shows it, and comes back the same way. Super+M minimizes.
+
 ## Brand
 
 <img src="../../assets/brand/fern-icon-512.png" width="128" alt="Fern icon">

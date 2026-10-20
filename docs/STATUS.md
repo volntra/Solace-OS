@@ -7,8 +7,24 @@ Repository: https://github.com/volntra/Solace-OS (`main`).
 ## Current phase: 5 (window manager): in progress
 
 Phase 5 stages: 1 protocol + fern-wm process + crash recovery ✓, 2 spring
-animations ✓, 3 titlebars with traffic lights ✓, 4 tiling ✓, 5 Spaces ✓;
-next 6 minimize, 7 Overview and the app switcher, 8 QEMU test and demo.
+animations ✓, 3 titlebars with traffic lights ✓, 4 tiling ✓, 5 Spaces ✓,
+6 minimize into the dock ✓; next 7 Overview and the app switcher, 8 QEMU
+test and demo.
+
+Stage 6 (2026-10-20): the core speaks wlr-foreign-toplevel-management (the
+window list a dock and switcher need: titles, app ids, states; activate,
+minimize, maximize, fullscreen, close; and `set_rectangle` for where a
+window's dock icon is). Only trusted clients see it: the ones the core
+starts itself on a socket pair (the window manager now; the shell in
+Phase 6). Minimize (yellow light, Super+M, an app's request or the dock)
+shrinks the window into its dock icon and fades it, or towards the bottom
+middle while no dock shows it; activating it from the dock brings it back
+from there. The dock sees `minimized` as a state. Not yet: the real
+dock (Phase 6, needs layer-shell; `set_rectangle` relative to a layer
+surface comes with it), a genie-style bend (the shrink is uniform), and
+`output_enter` updates after a window moves between displays. Tests:
+`cargo test -p fern-wm` (13) and the render scenario
+`wm_minimize_to_dock` (a trusted test dock over the real protocol).
 
 Stage 5 (2026-10-20): Spaces. Ctrl+Super+Left/Right slide to the Space
 beside this one (windows slide out one side and in the other; the

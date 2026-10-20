@@ -70,6 +70,8 @@ pub struct Comp {
     pub session_request: Option<SessionRequest>,
     /// The window manager and every window's record (`crate::wm`).
     pub wm: crate::wm::WmHost,
+    /// The dock's view of the windows (`crate::toplevels`).
+    pub toplevels: crate::toplevels::Toplevels,
 }
 
 /// Checks that the renderer can use a client's GPU buffer.
@@ -159,6 +161,7 @@ impl Comp {
             seat,
             session_request: None,
             wm: crate::wm::WmHost::default(),
+            toplevels: crate::toplevels::Toplevels::default(),
         }
         .with_wm_global())
     }
@@ -228,6 +231,9 @@ pub struct ClientState {
     /// The window manager the core started: the only client that may bind
     /// `fern_wm_v1`.
     pub is_wm: bool,
+    /// Part of the desktop, started by the core (the window manager, the
+    /// shell): may use privileged protocols (foreign-toplevel management).
+    pub trusted: bool,
 }
 
 impl std::fmt::Debug for Comp {
@@ -241,7 +247,25 @@ impl std::fmt::Debug for Comp {
 impl Comp {
     fn with_wm_global(mut self) -> Self {
         self.init_wm();
+        self.init_toplevels();
         self
+    }
+
+    /// Accepts a connection from a part of the desktop the core started
+    /// itself (on a socket pair it made): trusted with privileged
+    /// protocols. Never for a socket anyone could connect to.
+    ///
+    /// # Errors
+    /// The display rejects the connection.
+    pub fn insert_trusted_client(
+        &mut self,
+        stream: std::os::unix::net::UnixStream,
+    ) -> Result<(), std::io::Error> {
+        let data = Arc::new(ClientState {
+            trusted: true,
+            ..ClientState::default()
+        });
+        self.display_handle.insert_client(stream, data).map(|_| ())
     }
 
     /// Something on screen may have changed: render soon.
