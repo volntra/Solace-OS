@@ -184,11 +184,13 @@ def main():
 
         shot = wait_for(c, "glass", glass_over_stripes, "the blurred glass window on the left half", slow)
         ok("blur: the stripes behind the glass are smoothed, the rest stay sharp")
-        # The striped window's bottom-left corner is cut: its corner pixel
+        # The striped window's bottom-right corner (the glass covers the
+        # left half) is cut: its corner pixel
         # shows the wallpaper, a pixel one radius in along the edge shows a
         # stripe.
         bottom = sh - GAP - 1
-        corner, edge = shot.pixel(sx, bottom), shot.pixel(sx + 14, bottom)
+        right = sw - GAP - 1
+        corner, edge = shot.pixel(right, bottom), shot.pixel(right - 14, bottom)
         if any(near(corner, b, 40) for b in BANDS) or not any(near(edge, b, 12) for b in BANDS):
             fail(f"window corner not rounded: corner {corner}, edge {edge}")
         ok("rounded window corners")
