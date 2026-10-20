@@ -1,5 +1,9 @@
 # QML and Qt Quick (with Controls templates, Layouts, Shapes and Effects):
-# the shell, our apps and the design system are written in QML.
+# the shell, our apps and the design system are written in QML. Only the
+# Basic Controls style (our design system draws its own on the
+# templates); no Qt Labs, Quick Dialogs (ours come with Files), particles,
+# XML list model, profiler or designer support. A full build needs over
+# 11 GB of disk; this one about half.
 name = "qtdeclarative"
 version = "6.12.0"
 release = 1
@@ -20,4 +24,14 @@ system = "cmake"
 configure_args = [
     "-DQT_BUILD_EXAMPLES=OFF", "-DQT_BUILD_TESTS=OFF",
     "-DFEATURE_qml_debug=OFF", "-DFEATURE_quick_designer=OFF",
+    "-DFEATURE_qml_profiler=OFF", "-DFEATURE_qml_preview=OFF",
+    "-DFEATURE_qml_designsupport=OFF", "-DFEATURE_qml_labs=OFF",
+    "-DFEATURE_qml_xmllistmodel=OFF", "-DFEATURE_qml_python=OFF",
+    "-DFEATURE_quick_dialogs=OFF", "-DFEATURE_quick_particles=OFF",
+    "-DFEATURE_quickshapes_designhelpers=OFF",
+    "-DFEATURE_quickcontrols2_fusion=OFF", "-DFEATURE_quickcontrols2_imagine=OFF",
+    "-DFEATURE_quickcontrols2_ios=OFF", "-DFEATURE_quickcontrols2_macos=OFF",
+    "-DFEATURE_quickcontrols2_material=OFF", "-DFEATURE_quickcontrols2_universal=OFF",
+    "-DFEATURE_quickcontrols2_windows=OFF", "-DFEATURE_quickcontrols2_fluentwinui3=OFF",
+    "-DFEATURE_quickcontrols2_stylekit=OFF",
 ]

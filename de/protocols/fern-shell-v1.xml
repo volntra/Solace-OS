@@ -32,6 +32,16 @@
       <arg name="surface" type="object" interface="wl_surface"/>
     </request>
 
+    <request name="set_wallpaper">
+      <description summary="the desktop picture">
+        From now on the wallpaper is this picture (a PNG file the
+        compositor reads itself), crossfading from the one before. An empty
+        path means the built-in default. A file that cannot be read keeps
+        the current wallpaper.
+      </description>
+      <arg name="path" type="string"/>
+    </request>
+
     <request name="bind_key">
       <description summary="a global shortcut for the shell">
         Pressing keysym with exactly these modifiers (shift 1, ctrl 2, alt

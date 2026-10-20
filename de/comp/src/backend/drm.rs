@@ -66,7 +66,7 @@ use crate::{
     Comp, LoopData,
     backend::BACKGROUND,
     cursor,
-    render::{self, OutputElement, Shaders, Wallpaper},
+    render::{self, OutputElement, Shaders},
     state::SessionRequest,
     stats::FrameStats,
 };
@@ -116,7 +116,7 @@ struct Drm {
     manager: Manager,
     renderer: GlesRenderer,
     shaders: Shaders,
-    wallpaper: Option<Wallpaper>,
+    wallpapers: render::Wallpapers,
     pointer: MemoryRenderBuffer,
     screens: HashMap<crtc::Handle, Screen>,
     libinput: Libinput,
@@ -174,7 +174,7 @@ pub fn init(
             manager,
             renderer,
             shaders,
-            wallpaper: render::default_wallpaper(),
+            wallpapers: render::Wallpapers::new(render::default_wallpaper()),
             pointer,
             screens: HashMap::new(),
             libinput: libinput.clone(),
@@ -598,7 +598,10 @@ impl Drm {
             screen.state = LoopState::Stopped;
             return;
         };
-        let animating = state.advance_animations();
+        if let Some(req) = state.wallpaper_request.take() {
+            self.wallpapers.change(req.as_deref());
+        }
+        let animating = state.advance_animations() | self.wallpapers.tick();
         let mut elements: Vec<OutputElement> = Vec::new();
         if let Some(pointer) = state.seat.get_pointer() {
             let at = pointer.current_location().to_i32_round();
@@ -622,7 +625,7 @@ impl Drm {
             &self.shaders,
             &state.space,
             Some(&screen.output),
-            self.wallpaper.as_ref(),
+            &self.wallpapers,
             Rectangle::new(area.loc, area.size),
             1.0,
             &|w| state.visual(w),

@@ -79,6 +79,9 @@ pub struct Comp {
     pub toplevels: crate::toplevels::Toplevels,
     /// The shell's bindings and blur, and the work areas (`crate::layers`).
     pub shell: crate::layers::Shell,
+    /// A wallpaper the shell asked for, for the backends to load and fade
+    /// to (`Some(None)`: the default).
+    pub wallpaper_request: Option<Option<std::path::PathBuf>>,
 }
 
 /// Checks that the renderer can use a client's GPU buffer.
@@ -174,6 +177,7 @@ impl Comp {
             wm: crate::wm::WmHost::default(),
             toplevels: crate::toplevels::Toplevels::default(),
             shell: crate::layers::Shell::default(),
+            wallpaper_request: None,
         }
         .with_wm_global())
     }

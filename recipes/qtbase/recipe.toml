@@ -1,6 +1,7 @@
-# Qt 6 core, GUI, D-Bus, Network, Widgets (locked stack: the shell, apps
-# and installer are Qt 6 / QML). OpenGL ES 2+ through libglvnd (EGL), the
-# same path Mesa and NVIDIA take; Wayland only (no X11, no eglfs/linuxfb).
+# Qt 6 core, GUI, D-Bus, Network, Widgets and the Wayland client platform
+# plugin (in qtbase since Qt 6.10; locked stack: the shell, apps and
+# installer are Qt 6 / QML). OpenGL ES 2+ through libglvnd (EGL), the same
+# path Mesa and NVIDIA take; Wayland only (no X11, no eglfs/linuxfb).
 # HarfBuzz, libpng and libjpeg are Qt's bundled copies; no ICU, GLib, SQL,
 # printing or CUPS. Layout as most distributions use (tools and plugins
 # under /usr/lib/qt6). The hash matches upstream's published .sha256.
@@ -19,11 +20,12 @@ sha256 = "a951bd163c7b80fc6b8c88d7668fb56abf91c152373e13c10666763238131307"
 build = [
     "cmake", "ninja", "pkgconf", "python", "zlib", "libzstd", "pcre2",
     "openssl", "libdbus", "freetype", "fontconfig", "libglvnd",
-    "libdrm", "libxkbcommon", "expat",
+    "libdrm", "libxkbcommon", "expat", "wayland",
 ]
+# QtCore hashes with OpenSSL's libcrypto, so everything linking Qt needs it.
 runtime = [
-    "zlib", "libzstd", "pcre2", "libdbus", "freetype", "fontconfig",
-    "libglvnd", "libxkbcommon", "gcc-libs",
+    "zlib", "libzstd", "pcre2", "openssl", "libdbus", "freetype", "fontconfig",
+    "libglvnd", "libxkbcommon", "wayland", "gcc-libs",
 ]
 
 [build]
@@ -51,6 +53,7 @@ configure_args = [
     "-DFEATURE_system_jpeg=OFF", "-DFEATURE_system_pcre2=ON",
     "-DFEATURE_system_zlib=ON", "-DFEATURE_zstd=ON",
     "-DFEATURE_openssl_linked=ON", "-DFEATURE_xkbcommon=ON",
+    "-DFEATURE_wayland=ON", "-DFEATURE_wayland_client=ON",
 ]
 post_install = '''
 rm -rf "$DESTDIR/usr/share/doc"

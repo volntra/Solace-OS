@@ -11,7 +11,7 @@ local = "."
 # The Cargo workspace only: other changes in the repo do not rebuild it.
 # de/comp only by its manifest: cargo must load every workspace member, but
 # compositor changes should not rebuild this package.
-include = ["Cargo.toml", "Cargo.lock", "init", "boot/bootgen", "pkg", "tools/ferncheck", "de/comp/Cargo.toml", "de/protocols", "de/wm/Cargo.toml"]
+include = ["Cargo.toml", "Cargo.lock", "init", "boot/bootgen", "pkg", "tools/ferncheck", "de/comp/Cargo.toml", "de/protocols", "de/wm/Cargo.toml", "de/settingsd/Cargo.toml"]
 
 [build]
 system = "custom"

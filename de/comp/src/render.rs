@@ -528,7 +528,7 @@ pub fn output_elements(
     shaders: &Shaders,
     space: &Space<Window>,
     output: Option<&Output>,
-    wallpaper: Option<&Wallpaper>,
+    wallpapers: &Wallpapers,
     area: Rectangle<i32, Logical>,
     scale: f64,
     visual: &dyn Fn(&Window) -> Visual,
@@ -544,8 +544,15 @@ pub fn output_elements(
     let output_px = output_size.to_physical_precise_round(s);
     #[allow(clippy::cast_precision_loss)]
     let fb_height = output_px.h as f32;
-    if let Some(wallpaper) = wallpaper
-        && let Ok(e) = wallpaper_element(renderer, wallpaper, output_size)
+    // The wallpaper, crossfading from the one before while it changes.
+    let wallpaper = wallpapers.current();
+    if let Some(previous) = &wallpapers.previous
+        && let Ok(e) = wallpaper_element(renderer, previous, output_size, 1.0)
+    {
+        out.push_front(OutputElement::Image(e));
+    }
+    if let Some(w) = wallpaper
+        && let Ok(e) = wallpaper_element(renderer, w, output_size, wallpapers.alpha)
     {
         out.push_front(OutputElement::Image(e));
     }
@@ -1394,6 +1401,7 @@ fn wallpaper_element(
     renderer: &mut GlesRenderer,
     wallpaper: &Wallpaper,
     output_size: Size<i32, Logical>,
+    alpha: f32,
 ) -> Result<MemoryRenderBufferRenderElement<GlesRenderer>, GlesError> {
     let (bw, bh) = wallpaper.size;
     let (x, y, w, h) = cover(
@@ -1404,11 +1412,83 @@ fn wallpaper_element(
         renderer,
         (0.0, 0.0),
         &wallpaper.buffer,
-        None,
+        (alpha < 1.0).then_some(alpha),
         Some(Rectangle::new((x, y).into(), (w, h).into())),
         Some(output_size),
         Kind::Unspecified,
     )
+}
+
+/// How long a wallpaper change crossfades, seconds (HIG: the `gentle`
+/// spring's settle time).
+pub const WALLPAPER_FADE: f64 = 0.88;
+
+/// The wallpaper on screen, and the one it is fading from.
+#[derive(Debug, Default)]
+pub struct Wallpapers {
+    current: Option<Wallpaper>,
+    previous: Option<Wallpaper>,
+    since: Option<std::time::Instant>,
+    /// The current one's opacity over the previous one.
+    alpha: f32,
+}
+
+impl Wallpapers {
+    pub fn new(initial: Option<Wallpaper>) -> Self {
+        Wallpapers {
+            current: initial,
+            previous: None,
+            since: None,
+            alpha: 1.0,
+        }
+    }
+
+    pub fn current(&self) -> Option<&Wallpaper> {
+        self.current.as_ref()
+    }
+
+    /// Fades to `w`.
+    pub fn show(&mut self, w: Wallpaper) {
+        self.previous = self.current.take();
+        self.current = Some(w);
+        self.since = self.previous.is_some().then(std::time::Instant::now);
+        self.alpha = if self.since.is_some() { 0.0 } else { 1.0 };
+    }
+
+    /// The shell asked for `path` (`None`: the default): fade to it. A file
+    /// that does not load keeps the wallpaper as it is.
+    pub fn change(&mut self, path: Option<&Path>) {
+        let next = match path {
+            Some(p) => load_wallpaper(p)
+                .map_err(|e| tracing::warn!("wallpaper: {e}"))
+                .ok(),
+            None => default_wallpaper(),
+        };
+        if let Some(w) = next {
+            self.show(w);
+        }
+    }
+
+    /// Advances the fade. Returns whether it is still running.
+    pub fn tick(&mut self) -> bool {
+        let Some(since) = self.since else {
+            return false;
+        };
+        let p = since.elapsed().as_secs_f64() / WALLPAPER_FADE;
+        if p >= 1.0 {
+            self.alpha = 1.0;
+            self.previous = None;
+            self.since = None;
+            return false;
+        }
+        // The critically damped curve the springs follow, normalised.
+        let a = 2.0 * std::f64::consts::PI * 1.47;
+        let x = |t: f64| 1.0 - (1.0 + a * t) * (-a * t).exp();
+        #[allow(clippy::cast_possible_truncation)]
+        let alpha = (x(p) / x(1.0)) as f32;
+        self.alpha = alpha;
+        true
+    }
 }
 
 /// A decoded wallpaper and its size in pixels.

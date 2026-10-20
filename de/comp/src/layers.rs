@@ -496,6 +496,11 @@ impl Dispatch<FernShellV1, ()> for Comp {
                 set_shell_blur(&surface, None);
                 state.request_redraw();
             }
+            R::SetWallpaper { path } => {
+                state.wallpaper_request =
+                    Some((!path.is_empty()).then(|| std::path::PathBuf::from(path)));
+                state.request_redraw();
+            }
             R::BindKey {
                 id,
                 modifiers,

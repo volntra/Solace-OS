@@ -73,6 +73,18 @@
           systemdLibs
           libgbm
           libdrm
+
+          # The desktop (Phase 6): the message bus (settingsd's tests start
+          # their own dbus-daemon), Qt 6 for the shell and the design
+          # system (QML, its tests with qmltestrunner), and layer-shell-qt.
+          dbus
+          qt6.qtbase
+          qt6.qtdeclarative
+          qt6.qtsvg
+          qt6.qtwayland
+          qt6.qtshadertools
+          kdePackages.layer-shell-qt
+          wayland-scanner
         ];
 
         # Libraries the nested compositor opens with dlopen. EGL comes from
@@ -90,6 +102,21 @@
         ]);
         # For tests on machines without a GPU (the cloud container).
         MESA_EGL_VENDOR_DIR = "${pkgs.mesa}/share/glvnd/egl_vendor.d";
+
+        # Qt finds its plugins (Wayland, layer-shell, SVG) and QML modules
+        # through these outside a wrapped Nix app.
+        QT_PLUGIN_PATH = pkgs.lib.concatMapStringsSep ":" (p: "${p}/${pkgs.qt6.qtbase.qtPluginPrefix}") (with pkgs; [
+          qt6.qtbase
+          qt6.qtdeclarative
+          qt6.qtsvg
+          qt6.qtwayland
+          kdePackages.layer-shell-qt
+        ]);
+        QML_IMPORT_PATH = pkgs.lib.concatMapStringsSep ":" (p: "${p}/${pkgs.qt6.qtbase.qtQmlPrefix}") (with pkgs; [
+          qt6.qtdeclarative
+          qt6.qtsvg
+          kdePackages.layer-shell-qt
+        ]);
 
         # Paths the image/ scripts need without guessing at store paths.
         OVMF_FV = "${pkgs.OVMF.fd}/FV";

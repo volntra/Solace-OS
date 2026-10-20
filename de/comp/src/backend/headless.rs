@@ -32,7 +32,7 @@ pub struct Headless {
     output: Output,
     damage_tracker: OutputDamageTracker,
     shaders: Shaders,
-    wallpaper: Option<Wallpaper>,
+    wallpapers: render::Wallpapers,
     target: GlesTexture,
     size: Size<i32, Physical>,
     /// Frames rendered into `target` so far (0: its contents are undefined).
@@ -137,7 +137,7 @@ impl Headless {
             damage_tracker: OutputDamageTracker::from_output(&output),
             output,
             shaders,
-            wallpaper,
+            wallpapers: render::Wallpapers::new(wallpaper),
             target,
             size,
             frames: 0,
@@ -155,13 +155,16 @@ impl Headless {
     /// Rendering failed.
     pub fn render(&mut self, state: &mut Comp) -> Result<bool, Box<dyn std::error::Error>> {
         let logical = self.size.to_logical(1);
-        let animating = state.advance_animations();
+        if let Some(req) = state.wallpaper_request.take() {
+            self.wallpapers.change(req.as_deref());
+        }
+        let animating = state.advance_animations() | self.wallpapers.tick();
         let elements = render::output_elements(
             &mut self.renderer,
             &self.shaders,
             &state.space,
             Some(&self.output),
-            self.wallpaper.as_ref(),
+            &self.wallpapers,
             Rectangle::from_size(logical),
             1.0,
             &|w| state.visual(w),

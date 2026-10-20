@@ -12,8 +12,8 @@ url = "https://download.kde.org/stable/plasma/6.8.1/layer-shell-qt-6.8.1.tar.xz"
 sha256 = "c8141ac646fb8ae0f34e49c4c1d0051b9a90ae5bd7af1ef4585394d89f52b50e"
 
 [deps]
-build = ["cmake", "ninja", "pkgconf", "extra-cmake-modules", "qtbase", "qtdeclarative", "qtwayland", "wayland", "wayland-protocols", "libxkbcommon"]
-runtime = ["qtbase", "qtdeclarative", "qtwayland", "wayland"]
+build = ["cmake", "ninja", "pkgconf", "extra-cmake-modules", "qtbase", "qtdeclarative", "wayland", "wayland-protocols", "libxkbcommon"]
+runtime = ["qtbase", "qtdeclarative", "wayland"]
 
 [build]
 system = "cmake"

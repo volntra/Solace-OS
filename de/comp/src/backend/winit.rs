@@ -25,7 +25,7 @@ use smithay::wayland::dmabuf::DmabufFeedbackBuilder;
 use crate::{
     Comp, LoopData,
     backend::BACKGROUND,
-    render::{self, Shaders, Wallpaper},
+    render::{self, Shaders},
 };
 
 /// When nothing changed, the next frame is checked after this long (the
@@ -40,7 +40,7 @@ struct Nested<'l> {
     output: Output,
     damage_tracker: OutputDamageTracker,
     shaders: Shaders,
-    wallpaper: Option<Wallpaper>,
+    wallpapers: render::Wallpapers,
     handle: LoopHandle<'l, LoopData>,
 }
 
@@ -90,7 +90,7 @@ pub fn init(
         damage_tracker: OutputDamageTracker::from_output(&output),
         output,
         shaders,
-        wallpaper: render::default_wallpaper(),
+        wallpapers: render::Wallpapers::new(render::default_wallpaper()),
         handle: event_loop.handle(),
     };
 
@@ -154,7 +154,10 @@ impl Nested<'_> {
         };
         let logical = backend.window_size().to_logical(1);
         let age = backend.buffer_age().unwrap_or(0);
-        let animating = state.advance_animations();
+        if let Some(req) = state.wallpaper_request.take() {
+            self.wallpapers.change(req.as_deref());
+        }
+        let animating = state.advance_animations() | self.wallpapers.tick();
         let mut damage = None;
         {
             let Ok((renderer, mut framebuffer)) = backend.bind() else {
@@ -165,7 +168,7 @@ impl Nested<'_> {
                 &self.shaders,
                 &state.space,
                 Some(&self.output),
-                self.wallpaper.as_ref(),
+                &self.wallpapers,
                 Rectangle::from_size(logical),
                 1.0,
                 &|w| state.visual(w),
