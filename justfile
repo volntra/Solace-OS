@@ -216,4 +216,4 @@ doctor:
 # the image has it from the `inter` package): build/fonts/.
 fonts: grub-theme
     mkdir -p build/fonts
-    python3 -c 'import sys, zipfile; z = zipfile.ZipFile("build/Inter-4.1.zip"); [open("build/fonts/" + n.split("/")[-1], "wb").write(z.read(n)) for n in ("extras/ttf/Inter-Regular.ttf", "extras/ttf/Inter-SemiBold.ttf", "LICENSE.txt")]'
+    python3 -c 'import sys, zipfile; z = zipfile.ZipFile("build/Inter-4.1.zip"); [open("build/fonts/" + n.split("/")[-1], "wb").write(z.read(n)) for n in ("extras/ttf/Inter-Regular.ttf", "extras/ttf/Inter-Medium.ttf", "extras/ttf/Inter-SemiBold.ttf", "extras/ttf/Inter-Bold.ttf", "LICENSE.txt")]'

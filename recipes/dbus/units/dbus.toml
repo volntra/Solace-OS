@@ -1,0 +1,7 @@
+description = "System message bus"
+enabled = true
+
+[service]
+# The machine id and the socket directory are made fresh each boot.
+exec = ["/bin/sh", "-c", "mkdir -p /run/dbus /var/lib/dbus && /usr/bin/dbus-uuidgen --ensure && exec /usr/bin/dbus-daemon --system --nofork --nopidfile --nosyslog"]
+restart = "always"

@@ -1,0 +1,20 @@
+# SVG rendering for Qt: symbols in the shell and apps, and legacy SVG app
+# icons (the adaptive icon engine itself renders with resvg).
+name = "qtsvg"
+version = "6.12.0"
+release = 1
+summary = "Qt 6 SVG support"
+license = "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only"
+homepage = "https://www.qt.io/"
+
+[[source]]
+url = "https://download.qt.io/official_releases/qt/6.12/6.12.0/submodules/qtsvg-everywhere-src-6.12.0.tar.xz"
+sha256 = "e4ab39534ec97987b1b9b60ef7f4d3253d5912a69f8c713a01753174a4029331"
+
+[deps]
+build = ["cmake", "ninja", "pkgconf", "qtbase"]
+runtime = ["qtbase"]
+
+[build]
+system = "cmake"
+configure_args = ["-DQT_BUILD_EXAMPLES=OFF", "-DQT_BUILD_TESTS=OFF"]

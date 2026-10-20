@@ -1,0 +1,41 @@
+# The message bus (locked stack: dbus-daemon, as dbus-broker's launcher
+# needs systemd). No systemd, X11 autolaunch or SELinux/AppArmor. The hash
+# matches upstream's published .sha256sum.
+name = "dbus"
+version = "1.16.2"
+release = 1
+summary = "D-Bus message bus daemon and libdbus"
+license = "AFL-2.1 OR GPL-2.0-or-later"
+homepage = "https://www.freedesktop.org/wiki/Software/dbus/"
+
+[[source]]
+url = "https://dbus.freedesktop.org/releases/dbus/dbus-1.16.2.tar.xz"
+sha256 = "0ba2a1a4b16afe7bceb2c07e9ce99a8c2c3508e5dec290dbb643384bd6beb7e2"
+
+[deps]
+build = ["python", "meson", "ninja", "pkgconf", "expat"]
+runtime = ["expat"]
+
+[build]
+system = "meson"
+configure_args = [
+    "-Dsystemd=disabled", "-Dlaunchd=disabled", "-Dx11_autolaunch=disabled",
+    "-Dselinux=disabled", "-Dapparmor=disabled", "-Dlibaudit=disabled",
+    "-Dmodular_tests=disabled", "-Dinstalled_tests=false",
+    "-Ddoxygen_docs=disabled", "-Dxml_docs=disabled", "-Dqt_help=disabled",
+    "-Duser_session=false", "-Dsystem_pid_file=/run/dbus/pid",
+    "-Dsystem_socket=/run/dbus/system_bus_socket", "-Druntime_dir=/run",
+    "-Ddbus_user=messagebus", "-Dsession_socket_dir=/tmp",
+]
+post_install = '''
+# /var/lib/dbus/machine-id and /run are made at boot (the unit), not packaged.
+rm -rf "$DESTDIR/var" "$DESTDIR/run"
+install -Dm644 "$RECIPE/units/dbus.toml" "$DESTDIR/usr/lib/fern/units/dbus.toml"
+'''
+
+[[split]]
+name = "libdbus"
+summary = "D-Bus client library"
+files = ["usr/lib/libdbus-1.so*", "usr/include/dbus-1.0", "usr/lib/dbus-1.0/include", "usr/lib/pkgconfig/dbus-1.pc", "usr/lib/cmake/DBus1"]
+depends = []
+

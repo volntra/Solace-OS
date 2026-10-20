@@ -1,0 +1,33 @@
+# Build tool only: Qt 6 and KDE's layer-shell-qt build with nothing else.
+# Bundled third-party libraries (curl, libuv, ...) and no OpenSSL: CMake
+# never downloads anything during our builds. The hash matches upstream's
+# published cmake-4.4.4-SHA-256.txt.
+name = "cmake"
+version = "4.4.4"
+release = 1
+summary = "Cross-platform build system generator"
+license = "BSD-3-Clause"
+homepage = "https://cmake.org/"
+
+[[source]]
+url = "https://cmake.org/files/v4.4/cmake-4.4.4.tar.gz"
+sha256 = "bd24c30d80a7744ae84b845ff080cc8453b06c622ef01066564108e9cefc44cf"
+
+[deps]
+runtime = ["gcc-libs"]
+
+[build]
+system = "custom"
+configure = '''
+./bootstrap --prefix=/usr --parallel="$(nproc)" --no-system-libs \
+  --docdir=/share/doc/cmake --mandir=/share/man -- \
+  -DCMAKE_BUILD_TYPE=Release -DCMAKE_USE_OPENSSL=OFF -DBUILD_TESTING=OFF \
+  -DBUILD_CursesDialog=OFF
+'''
+compile = '''
+make
+'''
+install = '''
+make DESTDIR="$DESTDIR" install
+rm -rf "$DESTDIR/usr/share/doc"
+'''

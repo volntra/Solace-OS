@@ -1,0 +1,28 @@
+# Font discovery and matching for Qt and every later app. The font cache is
+# built at first use (no fc-cache run while packaging). The hash matches
+# upstream's published .sha256sum.
+name = "fontconfig"
+version = "2.16.0"
+release = 1
+summary = "Font configuration and matching library"
+license = "HPND AND MIT"
+homepage = "https://www.freedesktop.org/wiki/Software/fontconfig/"
+
+[[source]]
+url = "https://www.freedesktop.org/software/fontconfig/release/fontconfig-2.16.0.tar.xz"
+sha256 = "6a33dc555cc9ba8b10caf7695878ef134eeb36d0af366041f639b1da9b6ed220"
+
+[deps]
+build = ["python", "meson", "ninja", "pkgconf", "gperf", "freetype", "expat"]
+runtime = ["freetype", "expat"]
+
+[build]
+system = "meson"
+configure_args = [
+    "-Ddoc=disabled", "-Dtests=disabled", "-Dnls=disabled",
+    "-Dcache-build=disabled", "-Dtools=enabled", "-Dxml-backend=expat",
+    "-Dbaseconfig-dir=/etc/fonts", "-Dcache-dir=/var/cache/fontconfig",
+]
+post_install = '''
+rm -rf "$DESTDIR/var"
+'''

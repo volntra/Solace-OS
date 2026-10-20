@@ -1,0 +1,19 @@
+# CMake modules KDE projects build with; layer-shell-qt needs them. Build
+# time only.
+name = "extra-cmake-modules"
+version = "6.31.0"
+release = 1
+summary = "Extra CMake modules (KDE)"
+license = "BSD-3-Clause"
+homepage = "https://invent.kde.org/frameworks/extra-cmake-modules"
+
+[[source]]
+url = "https://download.kde.org/stable/frameworks/6.31/extra-cmake-modules-6.31.0.tar.xz"
+sha256 = "8f74af329e4c918358bfe54316f8cf4d530c28444595a3e2fb15075f72877f17"
+
+[deps]
+build = ["cmake", "ninja"]
+
+[build]
+system = "cmake"
+configure_args = ["-DBUILD_TESTING=OFF", "-DBUILD_HTML_DOCS=OFF", "-DBUILD_MAN_DOCS=OFF", "-DBUILD_QTHELP_DOCS=OFF"]

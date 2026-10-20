@@ -1,0 +1,20 @@
+# Lets Qt windows be wlr-layer-shell surfaces: the menu bar, dock,
+# notification banners and other shell layers.
+name = "layer-shell-qt"
+version = "6.8.1"
+release = 1
+summary = "Qt support for the wlr-layer-shell protocol"
+license = "LGPL-3.0-or-later"
+homepage = "https://invent.kde.org/plasma/layer-shell-qt"
+
+[[source]]
+url = "https://download.kde.org/stable/plasma/6.8.1/layer-shell-qt-6.8.1.tar.xz"
+sha256 = "c8141ac646fb8ae0f34e49c4c1d0051b9a90ae5bd7af1ef4585394d89f52b50e"
+
+[deps]
+build = ["cmake", "ninja", "pkgconf", "extra-cmake-modules", "qtbase", "qtdeclarative", "qtwayland", "wayland", "wayland-protocols", "libxkbcommon"]
+runtime = ["qtbase", "qtdeclarative", "qtwayland", "wayland"]
+
+[build]
+system = "cmake"
+configure_args = ["-DBUILD_TESTING=OFF", "-DQT_MAJOR_VERSION=6"]

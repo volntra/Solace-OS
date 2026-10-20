@@ -14,13 +14,24 @@ entry names a recipe that does not exist.
 - `bc`: the kernel build needs it (timeconst); Gavin Howard's bc, as LFS uses.
 - `binutils`: assembler and linker; the system builds itself.
 - `bzip2`: bzip2 tool and libbz2; libarchive and pcre2grep read .bz2, and many upstream sources ship as .tar.bz2.
+- `cmake`: build tool for Qt 6 and layer-shell-qt (bundled third-party libraries, no OpenSSL).
 - `coreutils`: the basic userland (ls, cp, ...).
+- `dbus`: dbus-daemon, the system and session message buses (locked stack), and libdbus for Qt D-Bus.
 - `diffutils`: diff/cmp, needed by most builds.
 - `elfutils`: libelf, required by the kernel's objtool.
 - `expat`: XML parser required by dbus-daemon, fontconfig, Mesa, and wayland-scanner.
+- `extra-cmake-modules`: CMake modules layer-shell-qt builds with (build time only).
+- `fern-base`: ours (image/base/): os-release, factory /etc, console units.
+- `fern-bootgen`: ours (boot/bootgen/): grub.cfg, ESP kernels, initramfs.
+- `fern-comp`: our compositor (Phase 4); the image's display server.
+- `fern-grub-theme`: ours (boot/grub-theme/): boot menu theme + Inter fonts for GRUB.
+- `fern-init`: ours (init/): PID 1, service manager, fernctl, fern-log.
+- `fern-wallpapers`: our wallpapers, rendered from assets/wallpapers.
 - `file`: libmagic, used by builds and later by Files for type detection.
 - `findutils`: find/xargs, needed by builds and scripts.
 - `flex`: lexer generator, needed to build the kernel and others.
+- `fontconfig`: font discovery and matching for Qt and every later app.
+- `freetype`: font rasterizer under fontconfig and Qt.
 - `gawk`: awk, needed by builds (glibc, kernel).
 - `gcc`: the compiler (C, C++) plus gcc-libs (libgcc_s, libstdc++) at runtime.
 - `glibc`: the C library (locked stack: NVIDIA userspace and Steam need it).
@@ -29,6 +40,8 @@ entry names a recipe that does not exist.
 - `grep`: needed by builds and scripts.
 - `grub`: the boot loader on the ESP (locked stack); built for UEFI only, branding patched out.
 - `gzip`: .gz archives (kernel image, sources).
+- `inter`: the UI typeface (CLAUDE.md 3); the core draws window titles with it.
+- `layer-shell-qt`: makes Qt windows wlr-layer-shell surfaces (menu bar, dock, banners).
 - `less`: pager for text output (logs, man pages).
 - `libarchive`: archive library Flatpak requires (it unpacks OCI/bundle layers); provides bsdtar.
 - `libcap`: POSIX capabilities; required by udev, later by fern-init sandboxing and elogind.
@@ -62,17 +75,15 @@ entry names a recipe that does not exist.
 - `python-markupsafe`: required by Jinja2 and Mako.
 - `python-packaging`: version parsing in Mesa's build (Python 3.14 has no distutils).
 - `python-pyyaml`: YAML parsing in Mesa's build.
+- `qtbase`: Qt 6 Core/Gui/DBus/Network/Widgets (locked stack: shell, apps and installer are Qt 6 / QML).
+- `qtdeclarative`: QML and Qt Quick, which the shell, apps and design system are written in.
+- `qtshadertools`: shader tools Qt Quick builds with; our QML effects compile their shaders with qsb.
+- `qtsvg`: SVG for symbols and legacy app icons in Qt.
+- `qtwayland`: Qt's Wayland platform plugin (client side only).
 - `readline`: line editing for bash and gawk.
 - `seatd`: libseat: lets fern-comp open DRM and input devices without root; seatd until elogind arrives.
 - `sed`: needed by builds and scripts.
 - `shadow`: user/group/password tools and the text-console login.
-- `fern-bootgen`: ours (boot/bootgen/): grub.cfg, ESP kernels, initramfs.
-- `fern-init`: ours (init/): PID 1, service manager, fernctl, fern-log.
-- `fern-base`: ours (image/base/): os-release, factory /etc, console units.
-- `fern-grub-theme`: ours (boot/grub-theme/): boot menu theme + Inter fonts for GRUB.
-- `fern-comp`: our compositor (Phase 4); the image's display server.
-- `fern-wallpapers`: our wallpapers, rendered from assets/wallpapers.
-- `inter`: the UI typeface (CLAUDE.md 3); the core draws window titles with it.
 - `spk`: ours (pkg/): the package manager; system transactions on a running Fern.
 - `tar`: unpacking sources; archives.
 - `udev`: device manager from the systemd tree (standalone, locked stack): hotplug, device nodes, libudev for libinput.

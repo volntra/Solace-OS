@@ -1,0 +1,31 @@
+# Our own: de/settingsd in this repository. The settings daemon (system
+# instance at boot, user instance in each session) and fern-settings.
+name = "fern-settingsd"
+version = "0.1.0"
+release = 1
+summary = "Fern settings daemon and command-line tool"
+license = "GPL-3.0-or-later"
+
+[[source]]
+local = "."
+# The Cargo workspace only.
+include = ["Cargo.toml", "Cargo.lock", "init", "boot/bootgen", "pkg", "tools/ferncheck", "de/comp", "de/protocols", "de/wm", "de/settingsd"]
+
+[deps]
+runtime = ["dbus"]
+
+[build]
+system = "custom"
+toolchain = "rust"
+cargo = true
+compile = '''
+cargo build --release --locked --offline --target x86_64-unknown-linux-gnu \
+  -p fern-settingsd --bin fern-settingsd --bin fern-settings
+'''
+install = '''
+out=/build/target/x86_64-unknown-linux-gnu/release
+install -Dm755 "$out/fern-settingsd" "$DESTDIR/usr/lib/fern/fern-settingsd"
+install -Dm755 "$out/fern-settings" "$DESTDIR/usr/bin/fern-settings"
+install -Dm644 "$RECIPE/units/fern-settingsd.toml" "$DESTDIR/usr/lib/fern/units/fern-settingsd.toml"
+install -Dm644 "$RECIPE/org.fern.Settings.conf" "$DESTDIR/usr/share/dbus-1/system.d/org.fern.Settings.conf"
+'''

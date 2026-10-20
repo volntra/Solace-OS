@@ -2,7 +2,7 @@
 # (os-release), first-boot /etc defaults, and the console login units.
 name = "fern-base"
 version = "0.1"
-release = 5
+release = 6
 summary = "Fern base files: os-release, factory /etc, console login units"
 license = "GPL-3.0-or-later"
 

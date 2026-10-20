@@ -423,6 +423,21 @@ impl Live {
         Ok(target)
     }
 
+    /// Writes the boot menu again from the current boot settings
+    /// (`/etc/fern/boot.toml`); fern-settingsd runs this after the boot
+    /// settings change. No system changes.
+    ///
+    /// # Errors
+    /// Invalid settings, no ESP, or bootgen refusing (e.g. too little
+    /// space): grub.cfg is then left as it was.
+    pub fn refresh_boot_menu(&self) -> Result<()> {
+        let _lock = self.lock()?;
+        let systems = self.list()?;
+        let (settings, _) = self.settings()?;
+        let params = self.params(&systems, settings)?;
+        self.write_boot_menu(&params)
+    }
+
     /// The systems for `spk systems`: (metadata, booted, default).
     ///
     /// # Errors

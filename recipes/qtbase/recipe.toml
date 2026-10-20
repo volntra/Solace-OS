@@ -1,0 +1,57 @@
+# Qt 6 core, GUI, D-Bus, Network, Widgets (locked stack: the shell, apps
+# and installer are Qt 6 / QML). OpenGL ES 2+ through libglvnd (EGL), the
+# same path Mesa and NVIDIA take; Wayland only (no X11, no eglfs/linuxfb).
+# HarfBuzz, libpng and libjpeg are Qt's bundled copies; no ICU, GLib, SQL,
+# printing or CUPS. Layout as most distributions use (tools and plugins
+# under /usr/lib/qt6). The hash matches upstream's published .sha256.
+name = "qtbase"
+version = "6.12.0"
+release = 1
+summary = "Qt 6 base libraries: Core, Gui, DBus, Network, Widgets"
+license = "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only"
+homepage = "https://www.qt.io/"
+
+[[source]]
+url = "https://download.qt.io/official_releases/qt/6.12/6.12.0/submodules/qtbase-everywhere-src-6.12.0.tar.xz"
+sha256 = "a951bd163c7b80fc6b8c88d7668fb56abf91c152373e13c10666763238131307"
+
+[deps]
+build = [
+    "cmake", "ninja", "pkgconf", "python", "zlib", "libzstd", "pcre2",
+    "openssl", "libdbus", "freetype", "fontconfig", "libglvnd",
+    "libdrm", "libxkbcommon", "expat",
+]
+runtime = [
+    "zlib", "libzstd", "pcre2", "libdbus", "freetype", "fontconfig",
+    "libglvnd", "libxkbcommon", "gcc-libs",
+]
+
+[build]
+system = "cmake"
+configure_args = [
+    "-DINSTALL_BINDIR=lib/qt6/bin", "-DINSTALL_PUBLICBINDIR=usr/bin",
+    "-DINSTALL_LIBEXECDIR=lib/qt6", "-DINSTALL_DOCDIR=share/doc/qt6",
+    "-DINSTALL_ARCHDATADIR=lib/qt6", "-DINSTALL_DATADIR=share/qt6",
+    "-DINSTALL_INCLUDEDIR=include/qt6", "-DINSTALL_MKSPECSDIR=lib/qt6/mkspecs",
+    "-DINSTALL_EXAMPLESDIR=share/doc/qt6/examples",
+    "-DINSTALL_QMLDIR=lib/qt6/qml", "-DINSTALL_PLUGINSDIR=lib/qt6/plugins",
+    "-DQT_BUILD_EXAMPLES=OFF", "-DQT_BUILD_TESTS=OFF",
+    "-DINPUT_opengl=es2", "-DFEATURE_egl=ON",
+    "-DFEATURE_xcb=OFF", "-DFEATURE_xlib=OFF", "-DFEATURE_eglfs=OFF",
+    "-DFEATURE_linuxfb=OFF", "-DFEATURE_vnc=OFF", "-DFEATURE_vulkan=OFF",
+    "-DFEATURE_libinput=OFF", "-DFEATURE_evdev=OFF", "-DFEATURE_tslib=OFF",
+    "-DFEATURE_mtdev=OFF", "-DFEATURE_libudev=OFF", "-DFEATURE_kms=OFF",
+    "-DFEATURE_gbm=OFF", "-DFEATURE_glib=OFF", "-DFEATURE_icu=OFF",
+    "-DFEATURE_journald=OFF", "-DFEATURE_syslog=OFF",
+    "-DFEATURE_sql=OFF", "-DFEATURE_printsupport=OFF", "-DFEATURE_cups=OFF",
+    "-DFEATURE_gssapi=OFF", "-DFEATURE_libproxy=OFF", "-DFEATURE_brotli=OFF",
+    "-DFEATURE_dbus=ON", "-DFEATURE_dbus_linked=ON",
+    "-DFEATURE_fontconfig=ON", "-DFEATURE_system_freetype=ON",
+    "-DFEATURE_system_harfbuzz=OFF", "-DFEATURE_system_libpng=OFF",
+    "-DFEATURE_system_jpeg=OFF", "-DFEATURE_system_pcre2=ON",
+    "-DFEATURE_system_zlib=ON", "-DFEATURE_zstd=ON",
+    "-DFEATURE_openssl_linked=ON", "-DFEATURE_xkbcommon=ON",
+]
+post_install = '''
+rm -rf "$DESTDIR/usr/share/doc"
+'''

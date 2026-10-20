@@ -1,0 +1,7 @@
+description = "System settings (boot menu)"
+enabled = true
+requires = ["dbus"]
+
+[service]
+exec = ["/usr/lib/fern/fern-settingsd", "--system"]
+restart = "on-failure"

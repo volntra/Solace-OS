@@ -1,0 +1,20 @@
+# Qt's shader conversion tools; Qt Quick needs them to build, and our QML
+# effects (materials, blur tints) compile their shaders with qsb.
+name = "qtshadertools"
+version = "6.12.0"
+release = 1
+summary = "Qt 6 shader tools (qsb)"
+license = "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only"
+homepage = "https://www.qt.io/"
+
+[[source]]
+url = "https://download.qt.io/official_releases/qt/6.12/6.12.0/submodules/qtshadertools-everywhere-src-6.12.0.tar.xz"
+sha256 = "c7d84f436e1aaef39fdcadebf2bd71bdf24dc69497e13f2e0198873cbbfea2ab"
+
+[deps]
+build = ["cmake", "ninja", "pkgconf", "qtbase"]
+runtime = ["qtbase"]
+
+[build]
+system = "cmake"
+configure_args = ["-DQT_BUILD_EXAMPLES=OFF", "-DQT_BUILD_TESTS=OFF"]

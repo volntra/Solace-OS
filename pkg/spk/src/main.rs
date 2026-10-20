@@ -70,6 +70,9 @@ enum Cmd {
         /// System id (see `spk systems`)
         id: Option<String>,
     },
+    /// Write the boot menu again from the boot settings (fern-settingsd
+    /// runs this when they change)
+    BootMenu,
     /// Build recipes into signed packages in a local repository
     Build(BuildArgs),
     /// Build the whole system from source, stage by stage (bootstrap/plan.toml)
@@ -238,6 +241,11 @@ fn run(cli: Cli) -> Result<()> {
         Cmd::Verify => verify(&cli.root),
         Cmd::Systems => systems(&cli.root),
         Cmd::Rollback { id } => rollback(&cli.root, id.as_deref()),
+        Cmd::BootMenu => {
+            live_system(&cli.root)?.refresh_boot_menu()?;
+            anstream::println!("{} boot menu updated", "✓".green());
+            Ok(())
+        }
         Cmd::Build(args) => build_cmd(args),
         Cmd::Bootstrap(args) => bootstrap_cmd(&args),
         Cmd::RepoAdd {
