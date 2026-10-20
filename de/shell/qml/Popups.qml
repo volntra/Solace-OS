@@ -239,7 +239,12 @@ ShellWindow {
                     about.show()
                 else if (name === "dnd")
                     popups.shell.notifications.dnd = !Notifications.dnd
+                else if (name === "nightshift")
+                    popups.shell.toggleNightShift()
                 popups.dismiss()
+                // After Search has gone from the screen.
+                if (name === "screenshot")
+                    Qt.callLater(() => popups.shell.screenshot(Qt.rect(0, 0, 0, 0)))
             }
         }
     }

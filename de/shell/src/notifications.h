@@ -48,13 +48,14 @@ class Notifications : public QAbstractListModel
     Q_PROPERTY(bool serving READ serving CONSTANT)
 
 public:
-    enum Role { IdRole = Qt::UserRole + 1, AppRole, IconRole, SummaryRole, BodyRole, ActionsRole, TimeRole, BannerRole, UrgentRole };
+    enum Role { IdRole = Qt::UserRole + 1, AppRole, IconRole, SummaryRole, BodyRole, ActionsRole, TimeRole, BannerRole, UrgentRole, ImageRole };
     enum Reason { Expired = 1, Dismissed = 2, Closed = 3 };
 
     struct Item
     {
         uint id = 0;
         QString app, icon, summary, body;
+        QString image; // file URL of a picture to show, or empty
         QStringList actions; // key, label, key, label...
         QDateTime time;
         bool banner = false;
@@ -86,6 +87,12 @@ public:
     Q_INVOKABLE void invoke(int id, const QString &action);
     // The banner stays while the pointer is on it.
     Q_INVOKABLE void hold(int id, bool held);
+    // The shell's own notifications (a screenshot was saved).
+    Q_INVOKABLE int post(const QString &app, const QString &summary, const QString &body, const QString &image = {});
+
+    // A local picture's file URL; empty for anything else (URLs to fetch,
+    // missing files). Public for tests.
+    static QString localImage(const QString &pathOrUrl);
 
 signals:
     void dndChanged();

@@ -15,6 +15,7 @@ pub mod layers;
 pub mod nightshift;
 pub mod placement;
 pub mod render;
+pub mod screenshot;
 pub mod spring;
 pub mod state;
 pub mod stats;

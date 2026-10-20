@@ -12,11 +12,12 @@ Material {
     required property string body
     required property var actions
     required property date time
+    required property string image
     property bool banner: false
     kind: "popover"
     radius: Theme.radiusCard + 4
     implicitWidth: 340
-    implicitHeight: content.implicitHeight + 24
+    implicitHeight: Math.max(content.implicitHeight, picture.visible ? picture.y + picture.height - 12 : 0) + 24
     width: implicitWidth
     height: implicitHeight
 
@@ -29,11 +30,24 @@ Material {
         onClicked: Notifications.invoke(card.notificationId, "default")
         onContainsMouseChanged: if (card.banner) Notifications.hold(card.notificationId, containsMouse)
     }
+    // A picture sent with it, on the right.
+    Image {
+        id: picture
+        visible: card.image.length > 0 && status === Image.Ready
+        x: parent.width - width - 14
+        y: 34
+        width: 52
+        height: 52
+        source: card.image
+        sourceSize: Qt.size(104, 104)
+        fillMode: Image.PreserveAspectCrop
+        asynchronous: true
+    }
     Column {
         id: content
         x: 14
         y: 12
-        width: parent.width - 28
+        width: parent.width - 28 - (picture.visible ? picture.width + 10 : 0)
         spacing: 3
         Row {
             width: parent.width

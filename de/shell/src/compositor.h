@@ -4,6 +4,7 @@
 // singleton.
 #pragma once
 
+#include <QImage>
 #include <QObject>
 #include <QPointer>
 #include <QQmlEngine>
@@ -24,10 +25,14 @@ public:
 signals:
     void keyBinding(int id);
     void appMenu(const QString &service, const QString &path);
+    void screenshotTaken(int id, const QImage &image);
+    void screenshotFailed(int id);
 
 protected:
     void fern_shell_v1_key_binding(uint32_t id) override { emit keyBinding(int(id)); }
     void fern_shell_v1_app_menu(const QString &service, const QString &path) override { emit appMenu(service, path); }
+    void fern_shell_v1_screenshot_done(uint32_t id, int32_t fd, uint32_t width, uint32_t height) override;
+    void fern_shell_v1_screenshot_failed(uint32_t id) override { emit screenshotFailed(int(id)); }
 };
 
 class Compositor : public QObject
@@ -58,6 +63,10 @@ public:
     Q_INVOKABLE void setWallpaper(const QString &path);
     // Night Shift: colours as warm as this many kelvin; 0 is neutral.
     Q_INVOKABLE void setColorTemperature(int kelvin);
+    // A screenshot of this rectangle of the desktop (empty: the display
+    // under the pointer) on the next frame; screenshotTaken or
+    // screenshotFailed follow with the returned id (-1: no compositor).
+    Q_INVOKABLE int screenshot(const QRect &area);
 
     static wl_surface *surfaceOf(QWindow *window);
 
@@ -65,6 +74,8 @@ signals:
     void activeChanged();
     void keyBinding(int id);
     void appMenuChanged();
+    void screenshotTaken(int id, const QImage &image);
+    void screenshotFailed(int id);
 
 private:
     ShellExtension *m_ext;
@@ -72,5 +83,6 @@ private:
     QString m_wallpaper;
     QString m_menuService, m_menuPath;
     int m_kelvin = 0;
+    int m_lastShot = 0;
     bool m_wallpaperSet = false;
 };

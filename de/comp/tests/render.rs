@@ -1191,6 +1191,7 @@ fn wm_shell_desktop(h: &mut Harness) -> Result {
     let apps = data.join("applications");
     std::fs::create_dir_all(&apps).map_err(|e| e.to_string())?;
     std::fs::create_dir_all(config.join("fern")).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(tmp.join("home")).map_err(|e| e.to_string())?;
     let client = env!("CARGO_BIN_EXE_fern-testclient");
     for (id, name, color) in [
         ("org.fern.Notes", "Notes", "ff5a5fff"),
@@ -1249,6 +1250,7 @@ fn wm_shell_desktop(h: &mut Harness) -> Result {
 
     let env: Vec<(String, std::ffi::OsString)> = vec![
         ("DBUS_SESSION_BUS_ADDRESS".into(), address.clone().into()),
+        ("HOME".into(), tmp.join("home").into()),
         ("XDG_DATA_HOME".into(), data.clone().into()),
         ("XDG_DATA_DIRS".into(), data.clone().into()),
         ("XDG_CONFIG_HOME".into(), config.clone().into()),
@@ -1483,6 +1485,47 @@ fn wm_shell_desktop(h: &mut Harness) -> Result {
     wait_long(h, "Night Shift did not end", |h| {
         h.data.state.color_temperature == 0
     })?;
+
+    // Screenshots, saved by the shell in ~/Pictures/Screenshots: the
+    // whole display (Shift+Super+3), then a dragged rectangle
+    // (Shift+Super+4).
+    let shots = tmp.join("home/Pictures/Screenshots");
+    let saved = |n: usize| {
+        let shots = shots.clone();
+        move |_: &Harness| std::fs::read_dir(&shots).is_ok_and(|d| d.count() >= n)
+    };
+    key(h, 9, 0x33)?;
+    wait_long(h, "no screenshot of the display was saved", saved(1))?;
+    key(h, 9, 0x34)?;
+    wait_long(h, "the rectangle chooser did not open", |h| {
+        has_layer(h, "fern-screenshot")
+    })?;
+    settle_for(h, Duration::from_millis(500))?;
+    h.data.state.pointer_to((100.0, 100.0).into(), 0);
+    settle_for(h, Duration::from_millis(300))?;
+    h.data.state.pointer_button(0x110, true, 1);
+    for (x, y) in [(150.0, 140.0), (250.0, 220.0), (300.0, 250.0)] {
+        h.data.state.pointer_to((x, y).into(), 2);
+        settle_for(h, Duration::from_millis(100))?;
+    }
+    h.shot("screenshot-select")?;
+    h.data.state.pointer_button(0x110, false, 3);
+    wait_long(h, "no screenshot of the rectangle was saved", saved(2))?;
+    let mut sizes: Vec<(u32, u32)> = std::fs::read_dir(tmp.join("home/Pictures/Screenshots"))
+        .map_err(|e| e.to_string())?
+        .filter_map(|e| {
+            let f = std::fs::File::open(e.ok()?.path()).ok()?;
+            let info = png::Decoder::new(std::io::BufReader::new(f))
+                .read_info()
+                .ok()?;
+            Some((info.info().width, info.info().height))
+        })
+        .collect();
+    sizes.sort_unstable();
+    check(
+        sizes == vec![(200, 150), (SIZE.0.cast_unsigned(), SIZE.1.cast_unsigned())],
+        || format!("screenshot sizes {sizes:?}"),
+    )?;
     Ok(())
 }
 

@@ -82,6 +82,8 @@ pub struct Comp {
     /// Night Shift's colour temperature, kelvin; 0 is neutral
     /// (`crate::nightshift`). The DRM backend applies it.
     pub color_temperature: u32,
+    /// Screenshots the shell asked for (`crate::screenshot`).
+    pub screenshots: Vec<crate::screenshot::Request>,
     /// The shell's bindings and blur, and the work areas (`crate::layers`).
     pub shell: crate::layers::Shell,
     /// A wallpaper the shell asked for, for the backends to load and fade
@@ -183,6 +185,7 @@ impl Comp {
             toplevels: crate::toplevels::Toplevels::default(),
             appmenus: crate::appmenu::AppMenus::default(),
             color_temperature: 0,
+            screenshots: Vec::new(),
             shell: crate::layers::Shell::default(),
             wallpaper_request: None,
         }

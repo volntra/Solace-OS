@@ -1,6 +1,10 @@
 #include "compositor.h"
 
 #include <QGuiApplication>
+
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <QWindow>
 #include <qpa/qplatformnativeinterface.h>
 
@@ -14,6 +18,28 @@ ShellExtension::ShellExtension()
     initialize();
 }
 
+void ShellExtension::fern_shell_v1_screenshot_done(uint32_t id, int32_t fd, uint32_t width, uint32_t height)
+{
+    // Checked before mapping: a short file would fault on read.
+    const qint64 bytes = qint64(width) * height * 4;
+    struct stat st {};
+    QImage image;
+    if (width > 0 && height > 0 && width <= 16384 && height <= 16384 && fstat(fd, &st) == 0 && st.st_size >= bytes) {
+        void *p = mmap(nullptr, size_t(bytes), PROT_READ, MAP_PRIVATE, fd, 0);
+        if (p != MAP_FAILED) {
+            image = QImage(static_cast<const uchar *>(p), int(width), int(height), int(width) * 4,
+                           QImage::Format_RGBA8888)
+                        .convertToFormat(QImage::Format_RGB32);
+            munmap(p, size_t(bytes));
+        }
+    }
+    close(fd);
+    if (image.isNull())
+        emit screenshotFailed(int(id));
+    else
+        emit screenshotTaken(int(id), image);
+}
+
 Compositor::Compositor(QObject *parent)
     : QObject(parent)
     , m_ext(new ShellExtension)
@@ -21,6 +47,8 @@ Compositor::Compositor(QObject *parent)
     s_instance = this;
     m_ext->setParent(this);
     connect(m_ext, &ShellExtension::keyBinding, this, &Compositor::keyBinding);
+    connect(m_ext, &ShellExtension::screenshotTaken, this, &Compositor::screenshotTaken);
+    connect(m_ext, &ShellExtension::screenshotFailed, this, &Compositor::screenshotFailed);
     connect(m_ext, &ShellExtension::appMenu, this, [this](const QString &service, const QString &path) {
         if (service == m_menuService && path == m_menuPath)
             return;
@@ -99,6 +127,15 @@ void Compositor::setColorTemperature(int kelvin)
     m_kelvin = kelvin;
     if (m_ext->isActive())
         m_ext->set_color_temperature(uint32_t(kelvin));
+}
+
+int Compositor::screenshot(const QRect &area)
+{
+    if (!m_ext->isActive())
+        return -1;
+    const int id = ++m_lastShot;
+    m_ext->screenshot(uint32_t(id), area.x(), area.y(), std::max(area.width(), 0), std::max(area.height(), 0));
+    return id;
 }
 
 void Compositor::bindKey(int id, int modifiers, int keysym)

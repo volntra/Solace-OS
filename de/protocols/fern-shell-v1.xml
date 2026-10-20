@@ -53,6 +53,22 @@
       <arg name="kelvin" type="uint"/>
     </request>
 
+    <request name="screenshot">
+      <description summary="a picture of the screen">
+        On its next frame the compositor draws this rectangle of the
+        desktop (global logical coordinates; a width or height of 0 means
+        the whole display under the pointer) without the pointer, and
+        answers with screenshot_done or screenshot_failed carrying the same
+        id. A rectangle across displays is cut to the display holding its
+        centre.
+      </description>
+      <arg name="id" type="uint"/>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="width" type="int"/>
+      <arg name="height" type="int"/>
+    </request>
+
     <request name="bind_key">
       <description summary="a global shortcut for the shell">
         Pressing keysym with exactly these modifiers (shift 1, ctrl 2, alt
@@ -70,6 +86,22 @@
     </request>
 
     <event name="key_binding">
+      <arg name="id" type="uint"/>
+    </event>
+
+    <event name="screenshot_done">
+      <description summary="the picture">
+        The pixels, in a file to map or read: width x height, rows top to
+        bottom, 4 bytes a pixel in the order red, green, blue, alpha
+        (alpha 255). The receiver closes the descriptor.
+      </description>
+      <arg name="id" type="uint"/>
+      <arg name="pixels" type="fd"/>
+      <arg name="width" type="uint"/>
+      <arg name="height" type="uint"/>
+    </event>
+
+    <event name="screenshot_failed">
       <arg name="id" type="uint"/>
     </event>
 

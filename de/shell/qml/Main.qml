@@ -76,6 +76,11 @@ QtObject {
         Compositor.bindKey(4, 0, 0x1008FF12)
         Compositor.bindKey(5, 0, 0x1008FF02)
         Compositor.bindKey(6, 0, 0x1008FF03)
+        // Shift+Super+3: a screenshot of the display; Shift+Super+4: of a
+        // rectangle. Print: the display.
+        Compositor.bindKey(7, 9, 0x33)
+        Compositor.bindKey(8, 9, 0x34)
+        Compositor.bindKey(9, 0, 0xff61)
     }
     readonly property Connections keys: Connections {
         target: Compositor
@@ -88,8 +93,32 @@ QtObject {
             } else if (id === 5 || id === 6) {
                 Devices.stepBrightness(id === 5 ? 1 : -1)
                 hud.show("brightness")
+            } else if (id === 7 || id === 9) {
+                shell.screenshot(Qt.rect(0, 0, 0, 0))
+            } else if (id === 8) {
+                popups.dismiss()
+                screenshotSelect.start()
             }
         }
+        function onScreenshotTaken(id, image) {
+            const path = Screenshots.saveNow(image)
+            if (path.length)
+                Notifications.post(qsTr("Screenshot"), qsTr("Screenshot saved"), path.split("/").pop(), path)
+            else
+                Notifications.post(qsTr("Screenshot"), qsTr("The screenshot could not be saved"), Screenshots.folder())
+        }
+        function onScreenshotFailed(id) {
+            Notifications.post(qsTr("Screenshot"), qsTr("The screenshot could not be taken"), "")
+        }
+    }
+
+    // A screenshot of `area` (desktop coordinates; empty: the display).
+    function screenshot(area) {
+        if (Compositor.screenshot(area) < 0)
+            Notifications.post(qsTr("Screenshot"), qsTr("The screenshot could not be taken"), "")
+    }
+    readonly property ScreenshotSelect screenshotSelect: ScreenshotSelect {
+        onChosen: area => Qt.callLater(() => shell.screenshot(area))
     }
 
     readonly property Popups popups: Popups {

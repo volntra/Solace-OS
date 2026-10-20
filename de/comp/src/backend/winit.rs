@@ -185,6 +185,22 @@ impl Nested<'_> {
                 Err(e) => tracing::warn!("render: {e:?}"),
             }
         }
+        let shots = state.take_screenshots(Rectangle::from_size(logical));
+        if !shots.is_empty() {
+            let renderer = backend.renderer();
+            let elements = render::output_elements(
+                renderer,
+                &self.shaders,
+                &state.space,
+                Some(&self.output),
+                &self.wallpapers,
+                Rectangle::from_size(logical),
+                1.0,
+                &|w| state.visual(w),
+                &state.overlay(),
+            );
+            crate::screenshot::answer(renderer, &elements, Rectangle::from_size(logical), shots);
+        }
         // Present only what changed. With no damage the frame is skipped
         // and the next one checked a frame later.
         let idle = damage.is_none() && !animating;

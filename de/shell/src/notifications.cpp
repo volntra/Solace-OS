@@ -1,5 +1,8 @@
 #include "notifications.h"
 
+#include <QFileInfo>
+#include <QUrl>
+
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
 
@@ -31,8 +34,14 @@ uint NotificationsAdaptor::Notify(const QString &app_name, uint replaces_id, con
     const QVariant urgency = hints.value(QStringLiteral("urgency"));
     item.urgent = urgency.isValid() && urgency.toInt() == 2;
     item.resident = hints.value(QStringLiteral("resident")).toBool();
+    // A picture to show with it (a screenshot, a sender's photo): a local
+    // file only, never fetched from anywhere.
+    QString image = hints.value(QStringLiteral("image-path")).toString();
+    if (image.isEmpty())
+        image = hints.value(QStringLiteral("image_path")).toString();
+    item.image = Notifications::localImage(image);
     if (item.icon.isEmpty())
-        item.icon = hints.value(QStringLiteral("image-path")).toString();
+        item.icon = image;
     return m_n->add(item, replaces_id);
 }
 
@@ -82,6 +91,7 @@ QVariant Notifications::data(const QModelIndex &index, int role) const
     case IdRole: return n.id;
     case AppRole: return n.app;
     case IconRole: return n.icon;
+    case ImageRole: return n.image;
     case Qt::DisplayRole:
     case SummaryRole: return n.summary;
     case BodyRole: return n.body;
@@ -100,7 +110,7 @@ QVariant Notifications::data(const QModelIndex &index, int role) const
 
 QHash<int, QByteArray> Notifications::roleNames() const
 {
-    return {{IdRole, "notificationId"}, {AppRole, "app"}, {IconRole, "icon"}, {SummaryRole, "summary"},
+    return {{IdRole, "notificationId"}, {AppRole, "app"}, {IconRole, "icon"}, {ImageRole, "image"}, {SummaryRole, "summary"},
             {BodyRole, "body"}, {ActionsRole, "actions"}, {TimeRole, "time"}, {BannerRole, "banner"},
             {UrgentRole, "urgent"}};
 }
@@ -240,4 +250,22 @@ void Notifications::hold(int id, bool held)
         if (m_bannerUntil.value(uint(id)))
             m_bannerUntil[uint(id)] = std::max(m_bannerUntil[uint(id)], QDateTime::currentMSecsSinceEpoch() + 1500);
     }
+}
+
+QString Notifications::localImage(const QString &pathOrUrl)
+{
+    const QUrl url = pathOrUrl.startsWith(QLatin1Char('/')) ? QUrl::fromLocalFile(pathOrUrl) : QUrl(pathOrUrl);
+    if (!url.isLocalFile() || !QFileInfo(url.toLocalFile()).isFile())
+        return {};
+    return url.toString();
+}
+
+int Notifications::post(const QString &app, const QString &summary, const QString &body, const QString &image)
+{
+    Item item;
+    item.app = app;
+    item.summary = summary;
+    item.body = body;
+    item.image = localImage(image);
+    return int(add(item, 0));
 }

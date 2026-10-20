@@ -645,6 +645,7 @@ impl Drm {
                 }
             }
         }
+        let pointer = elements.len();
         elements.extend(render::output_elements(
             &mut self.renderer,
             &self.shaders,
@@ -656,6 +657,9 @@ impl Drm {
             &|w| state.visual(w),
             &state.overlay(),
         ));
+        // Screenshots: what is shown, without the pointer.
+        let shots = state.take_screenshots(area);
+        crate::screenshot::answer(&mut self.renderer, &elements[pointer..], area, shots);
         let queued = match screen.drm.render_frame(
             &mut self.renderer,
             &elements,

@@ -182,6 +182,14 @@ impl Headless {
             BACKGROUND,
         )?;
         let changed = animating || result.damage.is_some_and(|d| !d.is_empty());
+        drop(target);
+        let shots = state.take_screenshots(Rectangle::from_size(logical));
+        crate::screenshot::answer(
+            &mut self.renderer,
+            &elements,
+            Rectangle::from_size(logical),
+            shots,
+        );
         self.frames += 1;
         state.frame_shown(&self.output);
         Ok(changed)

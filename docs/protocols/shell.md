@@ -66,6 +66,16 @@ XML: `de/protocols/fern-shell-v1.xml`.
   `nightshift` settings (by hand, or a schedule: sunset is 19:00 to 7:00
   until location services exist), and resends it after a restart. A
   nested compositor has no ramps and stays neutral.
+- `screenshot(id, x, y, width, height)`: the compositor draws the next
+  frame of that rectangle (or, when empty, the whole display under the
+  pointer) again offscreen without the pointer and answers
+  `screenshot_done(id, fd, width, height)` with RGBA pixels in a memfd, or
+  `screenshot_failed(id)`. Only the shell can ask (the global is
+  trusted-only), so apps cannot read the screen this way; they get the
+  portal in Phase 11. The shell saves PNGs in `~/Pictures/Screenshots`
+  ("Screenshot 2026-10-20 at 21.04.07.png", never overwriting) and posts
+  a notification with a thumbnail. Keys: Shift+Super+3 (and Print) the
+  display, Shift+Super+4 a dragged rectangle; also in Search.
 - `app_menu(service, path)` (event): where the active window's menus are,
   sent on bind and whenever it changes; empty strings when it has none.
 

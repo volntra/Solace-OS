@@ -511,6 +511,20 @@ impl Dispatch<FernShellV1, ()> for Comp {
                 };
                 state.request_redraw();
             }
+            R::Screenshot {
+                id,
+                x,
+                y,
+                width,
+                height,
+            } => {
+                let area = Rectangle::new((x, y).into(), (width.max(0), height.max(0)).into());
+                state.screenshot_request(crate::screenshot::Request {
+                    shell: resource.clone(),
+                    id,
+                    area,
+                });
+            }
             R::BindKey {
                 id,
                 modifiers,
@@ -530,6 +544,7 @@ impl Dispatch<FernShellV1, ()> for Comp {
 
     fn destroyed(state: &mut Self, _client: ClientId, resource: &FernShellV1, _data: &()) {
         state.shell.globals.retain(|g| g != resource);
+        state.screenshots.retain(|r| &r.shell != resource);
         state.shell.bindings.retain(|_, (_, _, r)| r != resource);
     }
 }
