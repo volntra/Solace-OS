@@ -455,6 +455,8 @@ impl GlobalDispatch<FernShellV1, ()> for Comp {
         data_init: &mut DataInit<'_, Self>,
     ) {
         let r = data_init.init(resource, ());
+        let (service, path) = state.active_app_menu();
+        r.app_menu(service, path);
         state.shell.globals.push(r);
     }
 
@@ -521,6 +523,15 @@ impl Dispatch<FernShellV1, ()> for Comp {
     fn destroyed(state: &mut Self, _client: ClientId, resource: &FernShellV1, _data: &()) {
         state.shell.globals.retain(|g| g != resource);
         state.shell.bindings.retain(|_, (_, _, r)| r != resource);
+    }
+}
+
+impl Comp {
+    /// Tells the shell where the active window's menus are.
+    pub(crate) fn shell_app_menu(&self, service: &str, path: &str) {
+        for g in &self.shell.globals {
+            g.app_menu(service.to_owned(), path.to_owned());
+        }
     }
 }
 

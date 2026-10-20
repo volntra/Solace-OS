@@ -77,6 +77,10 @@ Exec=should-not-win
         QCOMPARE(apps.idForWindow(QStringLiteral("org.fern.Files")), QStringLiteral("org.fern.Files"));
         QCOMPARE(apps.idForWindow(QStringLiteral("terminal")), QStringLiteral("org.fern.Terminal"));
         QCOMPARE(apps.idForWindow(QStringLiteral("unknown")), QStringLiteral("unknown"));
+        // Names: the entry's, else the id's last part.
+        QCOMPARE(apps.displayName(QStringLiteral("terminal")), QStringLiteral("Terminal"));
+        QCOMPARE(apps.displayName(QStringLiteral("org.example.Editor")), QStringLiteral("Editor"));
+        QCOMPARE(apps.displayName(QStringLiteral("plain")), QStringLiteral("plain"));
     }
 };
 

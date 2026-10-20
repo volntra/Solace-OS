@@ -9,15 +9,28 @@ import Fern.Shell
 ShellWindow {
     id: popups
     required property QtObject shell
+    // The menu bar, for Left and Right between its menus.
+    property MenuBar bar
 
-    // "", a menu ("fern", "app", "file", "window", "dock"), or a panel
-    // ("control", "notifications", "search", "stack").
+    // "", a menu ("fern", "app", "file", "window", "appmenu:N" for the
+    // active app's own menu N, "tray", "dock"), or a panel ("control",
+    // "notifications", "search", "stack").
     property string current: ""
     property real anchorX: 0
     property point anchorPoint: Qt.point(0, 0)
     property Item dockItem: null
     property string stackName: ""
-    readonly property bool isMenu: ["fern", "app", "file", "window"].includes(current)
+    readonly property bool isMenu: ["fern", "app", "file", "window", "tray"].includes(current) || current.startsWith("appmenu:")
+    // The status icon whose menu is open.
+    property string trayKey: ""
+
+    // The active window's own menus, where it says they are; and the open
+    // status icon's menu.
+    readonly property DBusMenu appMenu: DBusMenu {
+        service: Compositor.appMenuService
+        path: Compositor.appMenuPath
+    }
+    readonly property DBusMenu trayMenu: DBusMenu {}
     readonly property bool ownerIsDock: current === "dock" || current === "stack"
 
     layer: ShellWindow.Overlay
@@ -31,7 +44,42 @@ ShellWindow {
 
     function show(name, x) {
         anchorX = x ?? 0
+        if (name.startsWith("appmenu:")) {
+            const top = appMenu.items[Number(name.slice(8))]
+            if (top)
+                appMenu.aboutToShow(top.id)
+        }
         current = name
+    }
+    // The menu bar's menu before (-1) or after (1) the open one.
+    function step(d) {
+        if (!isMenu || !bar)
+            return
+        const order = bar.menuOrder()
+        const i = order.findIndex(m => m.menu === current)
+        if (i < 0)
+            return
+        const next = order[(i + d + order.length) % order.length]
+        show(next.menu, next.x)
+    }
+    function showTray(key, service, path, x) {
+        trayKey = key
+        trayMenu.service = service
+        trayMenu.path = path
+        trayMenu.aboutToShow(0)
+        show("tray", x)
+    }
+    // A dbusmenu's entries as MenuPanel items.
+    function menuItems(source, nodes) {
+        return (nodes ?? []).map(n => n.separator ? { separator: true } : {
+            text: n.text,
+            shortcut: n.shortcut,
+            enabled: n.enabled,
+            checked: n.checked,
+            children: menuItems(source, n.children),
+            opened: () => source.aboutToShow(n.id),
+            act: () => source.activate(n.id)
+        })
     }
     function toggle(name, x) {
         if (current === name)
@@ -62,14 +110,16 @@ ShellWindow {
         focus: true
         // Escape closes whatever is open (keys rise from the panel to here).
         Keys.onEscapePressed: popups.dismiss()
+        Keys.onLeftPressed: popups.step(-1)
+        Keys.onRightPressed: popups.step(1)
         sourceComponent: {
             switch (popups.current) {
-            case "fern": case "app": case "file": case "window": case "dock": return menu
+            case "fern": case "app": case "file": case "window": case "dock": case "tray": return menu
             case "control": return control
             case "notifications": return center
             case "search": return search
             case "stack": return stackPanel
-            default: return null
+            default: return popups.current.startsWith("appmenu:") ? menu : null
             }
         }
     }
@@ -78,10 +128,13 @@ ShellWindow {
 
     readonly property string activeApp: Windows.activeAppId
     readonly property var activeWindows: Windows.windowsOf(activeApp)
-    readonly property string appName: Apps.get(Apps.idForWindow(activeApp)).name ?? activeApp
+    readonly property string appName: Apps.displayName(activeApp)
 
     function itemsFor(name) {
+        if (name.startsWith("appmenu:"))
+            return menuItems(appMenu, appMenu.items[Number(name.slice(8))]?.children)
         switch (name) {
+        case "tray": return menuItems(trayMenu, trayMenu.items)
         case "fern": return [
             { text: qsTr("About Fern"), act: () => about.show() },
             { separator: true },

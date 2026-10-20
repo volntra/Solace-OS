@@ -120,6 +120,7 @@ impl Comp {
             h.state(state_array(rec.states));
             h.done();
         }
+        self.app_menu_update();
     }
 
     /// Window `id` is gone.
@@ -127,6 +128,7 @@ impl Comp {
         for h in self.toplevels.handles.remove(&id).unwrap_or_default() {
             h.closed();
         }
+        self.app_menu_update();
     }
 
     /// Where a surface's top-left is in the desktop, if it is a window's.

@@ -3,14 +3,16 @@ import Fern.Design
 
 // One row of a menu: text, an optional shortcut, highlighted with the
 // accent while hovered or chosen with the keyboard. `triggered` on click.
+// A row that opens a submenu shows a chevron instead of a shortcut.
 MouseArea {
     id: item
     property string text
     property string shortcut: ""
     property bool highlighted: containsMouse
     property bool checked: false
+    property bool submenu: false
     signal triggered()
-    implicitWidth: label.implicitWidth + keys.implicitWidth + Theme.space(14)
+    implicitWidth: label.implicitWidth + (submenu ? 16 : keys.implicitWidth) + Theme.space(14)
     implicitHeight: 24
     hoverEnabled: true
     onClicked: if (enabled) triggered()
@@ -43,7 +45,17 @@ MouseArea {
         anchors.right: parent.right
         anchors.rightMargin: 14
         anchors.verticalCenter: parent.verticalCenter
+        visible: !item.submenu
         text: item.shortcut
+        color: item.highlighted && item.enabled ? Theme.textOnAccent : Theme.secondaryText
+    }
+    Symbol {
+        anchors.right: parent.right
+        anchors.rightMargin: 12
+        anchors.verticalCenter: parent.verticalCenter
+        visible: item.submenu
+        name: "chevron-right"
+        size: 12
         color: item.highlighted && item.enabled ? Theme.textOnAccent : Theme.secondaryText
     }
 }

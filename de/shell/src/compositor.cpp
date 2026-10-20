@@ -21,6 +21,13 @@ Compositor::Compositor(QObject *parent)
     s_instance = this;
     m_ext->setParent(this);
     connect(m_ext, &ShellExtension::keyBinding, this, &Compositor::keyBinding);
+    connect(m_ext, &ShellExtension::appMenu, this, [this](const QString &service, const QString &path) {
+        if (service == m_menuService && path == m_menuPath)
+            return;
+        m_menuService = service;
+        m_menuPath = path;
+        emit appMenuChanged();
+    });
     connect(m_ext, &QWaylandClientExtension::activeChanged, this, [this] {
         // Re-send our shortcuts if the global (re)appeared.
         if (m_ext->isActive())

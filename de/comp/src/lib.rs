@@ -3,6 +3,7 @@
 //! policy lives in the separate fern-wm process, the menu bar and dock in
 //! the shell (layer surfaces, `layers`).
 
+pub mod appmenu;
 pub mod backdrop;
 pub mod backend;
 pub mod blur;

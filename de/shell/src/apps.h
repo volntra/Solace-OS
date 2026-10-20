@@ -38,6 +38,9 @@ public:
     // The desktop entry for a window's app id (exact, StartupWMClass, or
     // case-insensitive), or the app id itself when none matches.
     Q_INVOKABLE QString idForWindow(const QString &appId) const;
+    // What to call a window's app: its entry's name, else the last part
+    // of a reverse-DNS id ("org.example.Editor" -> "Editor").
+    Q_INVOKABLE QString displayName(const QString &appId) const;
     // Apps matching `text`, best first: name prefix, word prefix, name,
     // keywords, comment.
     Q_INVOKABLE QVariantList search(const QString &text, int limit = 8) const;

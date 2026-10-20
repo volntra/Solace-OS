@@ -231,6 +231,15 @@ QVariantMap Apps::get(const QString &id) const
     return {};
 }
 
+QString Apps::displayName(const QString &appId) const
+{
+    const QString name = get(idForWindow(appId)).value(QStringLiteral("name")).toString();
+    if (!name.isEmpty())
+        return name;
+    const QString last = appId.section(QLatin1Char('.'), -1);
+    return last.isEmpty() ? appId : last;
+}
+
 QString Apps::idForWindow(const QString &appId) const
 {
     for (const DesktopEntry &e : m_apps)

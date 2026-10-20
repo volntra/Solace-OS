@@ -156,6 +156,33 @@ wm-demo: fonts
 qemu-test-wm:
     image/qemu-test-wm.py
 
+# --- Desktop: settings, design system, shell (Phase 6) ----------------------
+
+# Build the Qt desktop (design system, shell) and its tests into build/de
+shell-build:
+    cmake -S de -B build/de -G Ninja -DCMAKE_BUILD_TYPE=Debug -DFERN_BUILD_TESTS=ON
+    cmake --build build/de
+
+# Design-system tests: every control, WCAG AA for every colour pair, springs
+design-test: shell-build
+    QT_QPA_PLATFORM=offscreen build/de/design/tst_design
+
+# Models run offscreen, tray and menus on a private bus, then the real
+# shell on the compositor drives the menu bar, dock, Search, menus, the
+# global menu, a status icon, the control center and a banner; screenshots
+# in target/tmp/fern-comp-render/wm_shell_*.png.
+# Shell tests, unit and end to end (the Phase 6 demo, automated)
+shell-test: shell-build fonts
+    for t in calculator apps badges; do QT_QPA_PLATFORM=offscreen build/de/shell/tst_$t; done
+    dbus-run-session --config-file="$(dirname "$(dirname "$(command -v dbus-daemon)")")/share/dbus-1/session.conf" -- build/de/shell/tst_tray
+    cargo build -p fern-settingsd -p fern-wm
+    FERN_SHELL_BIN="$PWD/build/de/shell/fern-shell" cargo test -p fern-comp --test render -- wm_shell
+
+# Phase 6 demo, nested in your desktop: the whole desktop with demo apps
+shell-demo: shell-build fonts
+    cargo build -p fern-comp -p fern-wm -p fern-settingsd
+    tools/shell-demo.sh
+
 # --- System updates (Phase 3) -----------------------------------------------
 
 # Build the demo update (fern-base 0.1.1) and the update disk carrying it

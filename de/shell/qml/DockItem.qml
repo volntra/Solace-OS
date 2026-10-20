@@ -13,7 +13,7 @@ Item {
     property int order: 0
 
     readonly property var app: appId.length ? Apps.get(appId) : ({})
-    readonly property string label: stack === "downloads" ? qsTr("Downloads") : stack === "trash" ? qsTr("Trash") : (app.name ?? appId)
+    readonly property string label: stack === "downloads" ? qsTr("Downloads") : stack === "trash" ? qsTr("Trash") : Apps.displayName(appId)
     // The app id its windows carry (it may differ from the entry's id).
     readonly property string matchingWindowId: {
         for (const w of Windows.appIds)
@@ -38,6 +38,14 @@ Item {
     width: owner.vertical ? owner.thickness : owner.iconSize * zoom
     height: owner.vertical ? owner.iconSize * zoom : owner.thickness
 
+    // What the app asks its icon to show (LauncherEntry): a count, a
+    // progress bar, urgency (bounces until the app is brought forward).
+    property var badge: Badges.get(appId)
+    Connections {
+        target: Badges
+        function onChanged(id) { if (id === item.appId) item.badge = Badges.get(item.appId) }
+    }
+
     // Launching: bounce until a window shows (at most 10 s).
     property bool launching: false
     onRunningChanged: {
@@ -48,7 +56,7 @@ Item {
     Timer { running: item.launching; interval: 10000; onTriggered: item.launching = false }
     property real bounce: 0
     SequentialAnimation on bounce {
-        running: item.launching && !Theme.reduceMotion
+        running: (item.launching || (item.badge.urgent && Windows.activeAppId !== item.matchingWindowId)) && !Theme.reduceMotion
         loops: Animation.Infinite
         NumberAnimation { from: 0; to: 1; duration: 300; easing.type: Easing.OutQuad }
         NumberAnimation { from: 1; to: 0; duration: 300; easing.type: Easing.InQuad }
@@ -65,6 +73,45 @@ Item {
         // Grows away from the screen edge.
         x: owner.vertical ? (owner.position === "left" ? owner.pad : parent.width - owner.pad - size) - (owner.position === "left" ? -1 : 1) * item.bounce * 18 : 0
         y: owner.vertical ? 0 : parent.height - owner.pad - size - item.bounce * 18
+    }
+
+    // The count, top right of the icon.
+    Rectangle {
+        visible: item.badge.count > 0
+        readonly property string label: item.badge.count > 99 ? "99+" : String(item.badge.count)
+        x: icon.x + icon.size - width * 0.75
+        y: icon.y - height * 0.25
+        height: Math.max(18, icon.size * 0.36)
+        width: Math.max(height, countText.implicitWidth + 10)
+        radius: height / 2
+        color: "#E5484D"
+        border.width: 1.5
+        border.color: Qt.alpha("#FFFFFF", 0.9)
+        Text {
+            id: countText
+            anchors.centerIn: parent
+            text: parent.label
+            color: "#FFFFFF"
+            font.family: Theme.fontFamily
+            font.pixelSize: parent.height * 0.62
+            font.weight: Font.Bold
+        }
+    }
+    // Progress, along the bottom of the icon.
+    Rectangle {
+        visible: item.badge.progress >= 0
+        x: icon.x + icon.size * 0.12
+        y: icon.y + icon.size * 0.8
+        width: icon.size * 0.76
+        height: Math.max(5, icon.size * 0.1)
+        radius: height / 2
+        color: Qt.alpha("#000000", 0.45)
+        Rectangle {
+            width: parent.width * Math.max(0, item.badge.progress)
+            height: parent.height
+            radius: parent.radius
+            color: "#FFFFFF"
+        }
     }
 
     // Running: a dot on the edge side.

@@ -3,7 +3,9 @@ import Fern.Design
 import Fern.Shell
 
 // The menu bar: the Fern menu, the active app's name and menus on the
-// left; status, control center, search and the clock on the right.
+// left (its own, exported over dbusmenu, or our fallback File and Window
+// menus); apps' status icons, control center, search and the clock on the
+// right.
 ShellWindow {
     id: bar
     required property QtObject shell
@@ -20,7 +22,7 @@ ShellWindow {
 
     readonly property string appId: Apps.idForWindow(Windows.activeAppId)
     readonly property var app: Apps.get(appId)
-    readonly property string appName: Windows.activeAppId.length ? (app.name ?? Windows.activeAppId) : ""
+    readonly property string appName: Windows.activeAppId.length ? Apps.displayName(Windows.activeAppId) : ""
     readonly property color fg: Theme.text
 
     Rectangle {
@@ -73,19 +75,95 @@ ShellWindow {
         }
     }
 
+    // The menus on the left, in order, with where each starts.
+    function menuOrder() {
+        const out = []
+        for (const c of menus.children)
+            if (c.visible && typeof c.menu === "string" && c.menu.length)
+                out.push({ menu: c.menu, x: c.mapToItem(null, 0, 0).x })
+        return out
+    }
+
     Row {
+        id: menus
         x: 8
         height: bar.barHeight
         BarItem { symbol: "fern-mark"; menu: "fern" }
         BarItem { text: bar.appName; bold: true; menu: "app"; visible: bar.appName.length > 0 }
-        BarItem { text: qsTr("File"); menu: "file"; visible: bar.appName.length > 0 }
-        BarItem { text: qsTr("Window"); menu: "window"; visible: bar.appName.length > 0 }
+        Repeater {
+            model: bar.popups.appMenu.items
+            BarItem {
+                required property var modelData
+                required property int index
+                text: modelData.text
+                menu: "appmenu:" + index
+                visible: bar.appName.length > 0 && modelData.visible !== false
+            }
+        }
+        BarItem { text: qsTr("File"); menu: "file"; visible: bar.appName.length > 0 && !bar.popups.appMenu.valid }
+        BarItem { text: qsTr("Window"); menu: "window"; visible: bar.appName.length > 0 && !bar.popups.appMenu.valid }
+    }
+
+    // An app's status icon: its menu on a click, or, without one, the
+    // app's own action.
+    component TrayItem: MouseArea {
+        id: tray
+        required property string key
+        required property string icon
+        required property string title
+        required property string service
+        required property string menu
+        readonly property bool hasMenu: menu.length > 0 && menu !== "/NO_DBUSMENU"
+        readonly property bool active: bar.popups.current === "tray" && bar.popups.trayKey === key
+        implicitWidth: 36
+        height: bar.barHeight
+        hoverEnabled: true
+        onPressed: {
+            const p = mapToItem(null, 0, 0)
+            if (hasMenu) {
+                if (active)
+                    bar.popups.dismiss()
+                else
+                    bar.popups.showTray(key, service, menu, p.x)
+            } else {
+                const g = mapToGlobal(width / 2, height)
+                Tray.activate(key, g.x, g.y)
+            }
+        }
+        Rectangle {
+            anchors.fill: parent
+            anchors.topMargin: 3
+            anchors.bottomMargin: 3
+            radius: Theme.radiusSmall
+            color: tray.active ? Theme.fillPressed : "transparent"
+        }
+        Image {
+            anchors.centerIn: parent
+            width: 16
+            height: 16
+            sourceSize: Qt.size(32, 32)
+            source: tray.icon
+            fillMode: Image.PreserveAspectFit
+            smooth: true
+            visible: tray.icon.length > 0
+        }
+        Label {
+            anchors.centerIn: parent
+            visible: tray.icon.length === 0
+            text: tray.title.slice(0, 1).toUpperCase()
+            font.weight: Font.Bold
+            color: bar.fg
+        }
     }
 
     Row {
         anchors.right: parent.right
         anchors.rightMargin: 8
         height: bar.barHeight
+        Repeater {
+            model: Tray
+            TrayItem {}
+        }
         BarItem {
             visible: Devices.wifiAvailable
             symbol: Devices.wifiEnabled ? "wifi" : "wifi-off"

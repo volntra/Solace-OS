@@ -77,6 +77,8 @@ pub struct Comp {
     pub wm: crate::wm::WmHost,
     /// The dock's view of the windows (`crate::toplevels`).
     pub toplevels: crate::toplevels::Toplevels,
+    /// Apps' menu addresses for the global menu (`crate::appmenu`).
+    pub appmenus: crate::appmenu::AppMenus,
     /// The shell's bindings and blur, and the work areas (`crate::layers`).
     pub shell: crate::layers::Shell,
     /// A wallpaper the shell asked for, for the backends to load and fade
@@ -176,6 +178,7 @@ impl Comp {
             session_request: None,
             wm: crate::wm::WmHost::default(),
             toplevels: crate::toplevels::Toplevels::default(),
+            appmenus: crate::appmenu::AppMenus::default(),
             shell: crate::layers::Shell::default(),
             wallpaper_request: None,
         }
@@ -282,6 +285,7 @@ impl Comp {
         self.init_wm();
         self.init_toplevels();
         self.init_shell();
+        self.init_appmenu();
         self
     }
 

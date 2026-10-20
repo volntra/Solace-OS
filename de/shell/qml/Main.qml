@@ -60,6 +60,7 @@ QtObject {
 
     readonly property Popups popups: Popups {
         shell: shell
+        bar: shell.bar
     }
     readonly property MenuBar bar: MenuBar {
         shell: shell

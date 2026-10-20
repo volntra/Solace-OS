@@ -12,6 +12,7 @@
 
 use std::path::PathBuf;
 use std::process::{Child, Command, ExitCode, Stdio};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use ferncomp::{
@@ -1181,14 +1182,19 @@ fn wm_shell_desktop(h: &mut Harness) -> Result {
         return Ok(());
     };
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let tmp = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!("shell-{}", std::process::id()));
+    let tmp =
+        PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join(format!("shell-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
     let (data, config) = (tmp.join("data"), tmp.join("config"));
     let apps = data.join("applications");
     std::fs::create_dir_all(&apps).map_err(|e| e.to_string())?;
     std::fs::create_dir_all(config.join("fern")).map_err(|e| e.to_string())?;
     let client = env!("CARGO_BIN_EXE_fern-testclient");
-    for (id, name, color) in [("org.fern.Notes", "Notes", "ff5a5fff"), ("org.fern.Mail", "Mail", "3a86ffff"), ("org.fern.Photos", "Photos", "2ec4b6ff")] {
+    for (id, name, color) in [
+        ("org.fern.Notes", "Notes", "ff5a5fff"),
+        ("org.fern.Mail", "Mail", "3a86ffff"),
+        ("org.fern.Photos", "Photos", "2ec4b6ff"),
+    ] {
         std::fs::write(
             apps.join(format!("{id}.desktop")),
             format!("[Desktop Entry]\nType=Application\nName={name}\nExec={client} --title {name} --app-id {id} --color {color} --size 520x340\n"),
@@ -1202,9 +1208,9 @@ fn wm_shell_desktop(h: &mut Harness) -> Result {
     .map_err(|e| e.to_string())?;
 
     // A private session bus, and the user's settings daemon on it.
-    let conf = tmp.join("bus.conf");
+    let bus_conf = tmp.join("bus.conf");
     std::fs::write(
-        &conf,
+        &bus_conf,
         format!(
             "<busconfig><type>session</type><listen>unix:path={}/bus</listen><policy context=\"default\"><allow send_destination=\"*\" eavesdrop=\"true\"/><allow eavesdrop=\"true\"/><allow own=\"*\"/></policy></busconfig>",
             tmp.display()
@@ -1212,7 +1218,7 @@ fn wm_shell_desktop(h: &mut Harness) -> Result {
     )
     .map_err(|e| e.to_string())?;
     let mut bus = Command::new("dbus-daemon")
-        .arg(format!("--config-file={}", conf.display()))
+        .arg(format!("--config-file={}", bus_conf.display()))
         .args(["--nofork", "--print-address"])
         .stdout(Stdio::piped())
         .spawn()
@@ -1231,7 +1237,12 @@ fn wm_shell_desktop(h: &mut Harness) -> Result {
         .args(["--address", &address, "--dir"])
         .arg(config.join("fern"))
         .spawn()
-        .map_err(|e| format!("{} (cargo build -p fern-settingsd): {e}", settingsd.display()))?;
+        .map_err(|e| {
+            format!(
+                "{} (cargo build -p fern-settingsd): {e}",
+                settingsd.display()
+            )
+        })?;
     h.clients.push(daemon);
 
     let env: Vec<(String, std::ffi::OsString)> = vec![
@@ -1247,37 +1258,48 @@ fn wm_shell_desktop(h: &mut Harness) -> Result {
             "QML_IMPORT_PATH".into(),
             format!(
                 "{}:{}",
-                shell.parent().and_then(|p| p.parent()).map(|p| p.join("qml").display().to_string()).unwrap_or_default(),
+                shell
+                    .parent()
+                    .and_then(|p| p.parent())
+                    .map(|p| p.join("qml").display().to_string())
+                    .unwrap_or_default(),
                 std::env::var("QML_IMPORT_PATH").unwrap_or_default()
             )
             .into(),
         ),
     ];
     let socket = h.data.state.socket_name.clone();
-    h.data
-        .state
-        .set_shell_launcher(Box::new(move || {
-            let (ours, theirs) = std::os::unix::net::UnixStream::pair()?;
-            let mut cmd = Command::new(&shell);
-            cmd.stdin(Stdio::from(std::os::fd::OwnedFd::from(theirs)))
-                .env("WAYLAND_SOCKET", "0")
-                .env("WAYLAND_DISPLAY", &socket);
-            for (k, v) in &env {
-                cmd.env(k, v);
-            }
-            cmd.spawn()?;
-            Ok(ours)
-        }))?;
+    h.data.state.set_shell_launcher(Box::new(move || {
+        let (ours, theirs) = std::os::unix::net::UnixStream::pair()?;
+        let mut cmd = Command::new(&shell);
+        cmd.stdin(Stdio::from(std::os::fd::OwnedFd::from(theirs)))
+            .env("WAYLAND_SOCKET", "0")
+            .env("WAYLAND_DISPLAY", &socket);
+        for (k, v) in &env {
+            cmd.env(k, v);
+        }
+        cmd.spawn()?;
+        Ok(ours)
+    }))?;
 
     // The menu bar and the dock, and the room they keep.
-    wait_long(h, "the menu bar and dock did not appear", |h| h.layers() >= 2)?;
+    wait_long(h, "the menu bar and dock did not appear", |h| {
+        h.layers() >= 2
+    })?;
     wait_long(h, "the work area did not shrink", |h| {
-        h.data.state.shell.work_areas.get(&1).is_some_and(|a| a.loc.y >= 28 && a.size.h < SIZE.1 - 28 - 40)
+        h.data
+            .state
+            .shell
+            .work_areas
+            .get(&1)
+            .is_some_and(|a| a.loc.y >= 28 && a.size.h < SIZE.1 - 28 - 40)
     })?;
     settle_for(h, Duration::from_secs(3))?;
     let img = h.shot("desktop")?;
     let bar = img.pixel(SIZE.0 / 2, 14);
-    check(!near(bar, GREY, 6), || format!("no menu bar at the top: {bar:?}"))?;
+    check(!near(bar, GREY, 6), || {
+        format!("no menu bar at the top: {bar:?}")
+    })?;
 
     // An app from its dock icon's desktop entry: its window, and the dock
     // marks it running (the shell's window list follows).
@@ -1300,41 +1322,62 @@ fn wm_shell_desktop(h: &mut Harness) -> Result {
     key_press(h, 0xff0d)?;
     wait_long(h, "Search did not close", |h| !has_layer(h, "fern-popups"))?;
     h.wait_for_window("Mail, from Search")?;
-    check(h.windows[1].toplevel().is_some_and(|t| {
-        smithay::wayland::compositor::with_states(t.wl_surface(), |st| {
-            st.data_map
-                .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
-                .and_then(|d| d.lock().ok().and_then(|d| d.app_id.clone()))
-        }) == Some("org.fern.Mail".into())
-    }), || "Search did not open Mail".into())?;
+    check(
+        h.windows[1].toplevel().is_some_and(|t| {
+            smithay::wayland::compositor::with_states(t.wl_surface(), |st| {
+                st.data_map
+                    .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
+                    .and_then(|d| d.lock().ok().and_then(|d| d.app_id.clone()))
+            }) == Some("org.fern.Mail".into())
+        }),
+        || "Search did not open Mail".into(),
+    )?;
 
     // The Fern menu and the control center, from the menu bar.
     click_at(h, 26.0, 14.0)?;
-    wait_long(h, "the Fern menu did not open", |h| has_layer(h, "fern-popups"))?;
+    wait_long(h, "the Fern menu did not open", |h| {
+        has_layer(h, "fern-popups")
+    })?;
     settle_for(h, Duration::from_secs(1))?;
     h.shot("fern-menu")?;
     key_press(h, 0xff1b)?;
-    wait_long(h, "the menu did not close", |h| !has_layer(h, "fern-popups"))?;
+    wait_long(h, "the menu did not close", |h| {
+        !has_layer(h, "fern-popups")
+    })?;
     click_at(h, f64::from(SIZE.0) - 209.0, 14.0)?;
-    wait_long(h, "the control center did not open", |h| has_layer(h, "fern-popups"))?;
+    wait_long(h, "the control center did not open", |h| {
+        has_layer(h, "fern-popups")
+    })?;
     settle_for(h, Duration::from_secs(1))?;
     h.shot("control-center")?;
     key_press(h, 0xff1b)?;
-    wait_long(h, "the control center did not close", |h| !has_layer(h, "fern-popups"))?;
+    wait_long(h, "the control center did not close", |h| {
+        !has_layer(h, "fern-popups")
+    })?;
 
     // A notification: a banner at the top right.
     let conn = zbus::blocking::connection::Builder::address(address.as_str())
         .map_err(|e| e.to_string())?
         .build()
         .map_err(|e| e.to_string())?;
-    let hints: std::collections::HashMap<&str, zbus::zvariant::Value<'_>> = std::collections::HashMap::new();
+    let hints: std::collections::HashMap<&str, zbus::zvariant::Value<'_>> =
+        std::collections::HashMap::new();
     let reply = conn
         .call_method(
             Some("org.freedesktop.Notifications"),
             "/org/freedesktop/Notifications",
             Some("org.freedesktop.Notifications"),
             "Notify",
-            &("Mail", 0u32, "", "Lunch on Friday?", "Sam: the place by the river at noon.", Vec::<&str>::new(), hints, -1i32),
+            &(
+                "Mail",
+                0u32,
+                "",
+                "Lunch on Friday?",
+                "Sam: the place by the river at noon.",
+                Vec::<&str>::new(),
+                hints,
+                -1i32,
+            ),
         )
         .map_err(|e| format!("Notify: {e}"))?;
     let id: u32 = reply.body().deserialize().map_err(|e| e.to_string())?;
@@ -1351,7 +1394,184 @@ fn wm_shell_desktop(h: &mut Harness) -> Result {
             .collect();
         format!("no banner at the top right: {corner:?}; layers {layers:?}")
     })?;
+
+    // An app's own menus in the menu bar (the global menu): a window says
+    // where they are (org_kde_kwin_appmenu); from the Fern menu, Right
+    // twice reaches the app's first menu, and choosing in it reaches the
+    // app.
+    let seen = Arc::new(Mutex::new(Vec::<String>::new()));
+    let saw = |what: &str| seen.lock().is_ok_and(|s| s.iter().any(|x| x == what));
+    conn.object_server()
+        .at("/Menu", fake::FakeMenu(seen.clone()))
+        .map_err(|e| e.to_string())?;
+    conn.object_server()
+        .at("/StatusNotifierItem", fake::FakeItem(seen.clone()))
+        .map_err(|e| e.to_string())?;
+    conn.request_name("org.fern.TestApp")
+        .map_err(|e| e.to_string())?;
+    h.open("--title Editor --app-id org.fern.Editor --color f4f1faff --size 520x340 --appmenu org.fern.TestApp,/Menu")?;
+    wait_long(h, "the shell did not read the app's menus", |_| {
+        saw("GetLayout")
+    })?;
+    settle_for(h, Duration::from_secs(1))?;
+    h.shot("app-menus")?;
+    click_at(h, 26.0, 14.0)?;
+    wait_long(h, "the Fern menu did not open", |h| {
+        has_layer(h, "fern-popups")
+    })?;
+    settle_for(h, Duration::from_millis(500))?;
+    key_press(h, 0xff53)?;
+    key_press(h, 0xff53)?;
+    wait_long(h, "Right did not reach the app's first menu", |_| {
+        saw("AboutToShow 1")
+    })?;
+    settle_for(h, Duration::from_secs(1))?;
+    h.shot("app-menu-open")?;
+    key_press(h, 0xff54)?;
+    key_press(h, 0xff0d)?;
+    wait_long(h, "choosing Open did not reach the app", |_| {
+        saw("clicked 2")
+    })?;
+    wait_long(h, "the app's menu did not close", |h| {
+        !has_layer(h, "fern-popups")
+    })?;
+
+    // An app's status icon (StatusNotifierItem): it registers with the
+    // shell, shows in the menu bar (its magenta pixmap), and a click
+    // reaches the app.
+    conn.call_method(
+        Some("org.kde.StatusNotifierWatcher"),
+        "/StatusNotifierWatcher",
+        Some("org.kde.StatusNotifierWatcher"),
+        "RegisterStatusNotifierItem",
+        &("/StatusNotifierItem",),
+    )
+    .map_err(|e| format!("RegisterStatusNotifierItem: {e}"))?;
+    settle_for(h, Duration::from_secs(2))?;
+    let img = h.shot("tray")?;
+    let icon = (0..SIZE.0)
+        .find(|&x| near(img.pixel(x, 14), [255, 0, 255], 40))
+        .ok_or("no status icon in the menu bar")?;
+    click_at(h, f64::from(icon), 14.0)?;
+    wait_long(
+        h,
+        "a click on the status icon did not reach the app",
+        |_| saw("Activate"),
+    )?;
     Ok(())
+}
+
+/// Fake apps on the session bus for the shell to talk to.
+mod fake {
+    // The interface macro reads every argument, unused or not, and
+    // properties are methods even when they are constants.
+    #![allow(clippy::used_underscore_binding, clippy::unused_self)]
+
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
+
+    use zbus::zvariant::{OwnedValue, Value};
+
+    /// A fake app's menus (com.canonical.dbusmenu): File with Open, a
+    /// separator and a disabled Quit; and Edit. It notes what it is asked.
+    pub struct FakeMenu(pub Arc<Mutex<Vec<String>>>);
+
+    pub type MenuNode = (i32, HashMap<String, OwnedValue>, Vec<OwnedValue>);
+
+    fn menu_node(id: i32, props: &[(&str, Value<'static>)], children: Vec<MenuNode>) -> MenuNode {
+        let props = props
+            .iter()
+            .filter_map(|(k, v)| {
+                Some((
+                    (*k).to_owned(),
+                    OwnedValue::try_from(v.try_clone().ok()?).ok()?,
+                ))
+            })
+            .collect();
+        let children = children
+            .into_iter()
+            .filter_map(|c| OwnedValue::try_from(Value::from(c)).ok())
+            .collect();
+        (id, props, children)
+    }
+
+    #[zbus::interface(name = "com.canonical.dbusmenu")]
+    impl FakeMenu {
+        fn get_layout(&self, _parent: i32, _depth: i32, _props: Vec<String>) -> (u32, MenuNode) {
+            if let Ok(mut s) = self.0.lock() {
+                s.push("GetLayout".into());
+            }
+            let file = menu_node(
+                1,
+                &[("label", "_File".into())],
+                vec![
+                    menu_node(2, &[("label", "Open".into())], vec![]),
+                    menu_node(3, &[("type", "separator".into())], vec![]),
+                    menu_node(
+                        4,
+                        &[("label", "Quit".into()), ("enabled", false.into())],
+                        vec![],
+                    ),
+                ],
+            );
+            let edit = menu_node(
+                5,
+                &[("label", "Edit".into())],
+                vec![menu_node(6, &[("label", "Copy".into())], vec![])],
+            );
+            (1, menu_node(0, &[], vec![file, edit]))
+        }
+
+        fn event(&self, id: i32, event: &str, _data: OwnedValue, _time: u32) {
+            if let Ok(mut s) = self.0.lock() {
+                s.push(format!("{event} {id}"));
+            }
+        }
+
+        fn about_to_show(&self, id: i32) -> bool {
+            if let Ok(mut s) = self.0.lock() {
+                s.push(format!("AboutToShow {id}"));
+            }
+            false
+        }
+    }
+
+    /// A fake app's status icon (org.kde.StatusNotifierItem): magenta, no
+    /// menu, so a click activates it.
+    pub struct FakeItem(pub Arc<Mutex<Vec<String>>>);
+
+    #[zbus::interface(name = "org.kde.StatusNotifierItem")]
+    impl FakeItem {
+        fn activate(&self, _x: i32, _y: i32) {
+            if let Ok(mut s) = self.0.lock() {
+                s.push("Activate".into());
+            }
+        }
+        #[zbus(property)]
+        fn id(&self) -> String {
+            "fake".into()
+        }
+        #[zbus(property)]
+        fn title(&self) -> String {
+            "Fake".into()
+        }
+        #[zbus(property)]
+        fn status(&self) -> String {
+            "Active".into()
+        }
+        #[zbus(property)]
+        fn menu(&self) -> zbus::zvariant::OwnedObjectPath {
+            zbus::zvariant::OwnedObjectPath::try_from("/NO_DBUSMENU").unwrap_or_default()
+        }
+        #[zbus(property)]
+        fn item_is_menu(&self) -> bool {
+            false
+        }
+        #[zbus(property)]
+        fn icon_pixmap(&self) -> Vec<(i32, i32, Vec<u8>)> {
+            vec![(16, 16, [0xff, 0xff, 0x00, 0xff].repeat(256))]
+        }
+    }
 }
 
 /// Like `wait_until`, for the shell's slower start (Qt, QML, a bus).
@@ -1395,12 +1615,15 @@ fn click_at(h: &mut Harness, x: f64, y: f64) -> Result {
 fn key_press(h: &mut Harness, keysym: u32) -> Result {
     // xkb keycodes are evdev + 8.
     let evdev = match keysym {
-        0xff1b => 1,  // Escape
-        0xff0d => 28, // Return
-        0x61 => 30,   // a
-        0x69 => 23,   // i
-        0x6c => 38,   // l
-        0x6d => 50,   // m
+        0xff1b => 1,   // Escape
+        0xff0d => 28,  // Return
+        0x61 => 30,    // a
+        0x69 => 23,    // i
+        0x6c => 38,    // l
+        0x6d => 50,    // m
+        0xff51 => 105, // Left
+        0xff53 => 106, // Right
+        0xff54 => 108, // Down
         _ => return Err(format!("no keycode for {keysym:#x}")),
     };
     let code = evdev + 8u32;

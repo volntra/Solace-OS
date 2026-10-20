@@ -8,6 +8,7 @@
 //!                [--dock TITLE] [--app-id ID]
 //!                [--layer LAYER --anchor EDGES [--exclusive N] [--keyboard K]]
 //!                [--shell-blur X,Y,W,H,R] [--bind MODS,KEYSYM]
+//!                [--appmenu SERVICE,PATH]
 //! ```
 //!
 //! Like most apps it asks for server-side decoration (our titlebar) when
@@ -30,6 +31,9 @@
 //! a rounded blur behind a rectangle of it; `--bind` asks for a global
 //! shortcut and prints `binding` when it fires. A layer surface prints
 //! `key SYM` for every key it is given.
+//!
+//! `--appmenu SERVICE,PATH` says (with `org_kde_kwin_appmenu`) the window's
+//! menus are exported over D-Bus there, for the global menu bar.
 
 use std::os::fd::AsFd;
 use std::os::unix::fs::FileExt;
@@ -59,6 +63,9 @@ use wayland_protocols::xdg::shell::client::{
     xdg_surface::{self, XdgSurface},
     xdg_toplevel::{self, XdgToplevel},
     xdg_wm_base::{self, XdgWmBase},
+};
+use wayland_protocols_plasma::appmenu::client::{
+    org_kde_kwin_appmenu::OrgKdeKwinAppmenu, org_kde_kwin_appmenu_manager::OrgKdeKwinAppmenuManager,
 };
 use wayland_protocols_plasma::blur::client::{
     org_kde_kwin_blur::OrgKdeKwinBlur, org_kde_kwin_blur_manager::OrgKdeKwinBlurManager,
@@ -102,6 +109,8 @@ struct Options {
     shell_blur: Option<(i32, i32, i32, i32, i32)>,
     /// Modifier bits and keysym.
     bind: Option<(u32, u32)>,
+    /// D-Bus service and object path of the window's menus.
+    appmenu: Option<(String, String)>,
 }
 
 impl Default for Options {
@@ -124,6 +133,7 @@ impl Default for Options {
             keyboard: 0,
             shell_blur: None,
             bind: None,
+            appmenu: None,
         }
     }
 }
@@ -230,6 +240,12 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
             "--bind" => {
                 let [m, k] = parse_ints(value()?).ok_or("--bind wants MODS,KEYSYM")?;
                 opts.bind = Some((m.cast_unsigned(), k.cast_unsigned()));
+            }
+            "--appmenu" => {
+                let (service, path) = value()?
+                    .split_once(',')
+                    .ok_or("--appmenu wants SERVICE,PATH")?;
+                opts.appmenu = Some((service.into(), path.into()));
             }
             "--blur" => opts.blur = true,
             "--blur-region" => {
@@ -459,6 +475,14 @@ fn run(options: Options) -> Result<(), String> {
         if let Some((m, k)) = options.bind {
             shell.bind_key(1, m, k);
         }
+    }
+    if let Some((service, path)) = &options.appmenu {
+        let manager: OrgKdeKwinAppmenuManager = globals
+            .bind(&qh, 1..=2, ())
+            .map_err(|e| format!("appmenu protocol: {e}"))?;
+        manager
+            .create(&surface, &qh, ())
+            .set_address(service.clone(), path.clone());
     }
     if options.blur {
         let manager: OrgKdeKwinBlurManager = globals
@@ -749,6 +773,8 @@ delegate_noop!(App: WlCompositor);
 delegate_noop!(App: WlShmPool);
 delegate_noop!(App: WlRegion);
 delegate_noop!(App: OrgKdeKwinBlurManager);
+delegate_noop!(App: OrgKdeKwinAppmenuManager);
+delegate_noop!(App: OrgKdeKwinAppmenu);
 delegate_noop!(App: OrgKdeKwinBlur);
 delegate_noop!(App: ignore WlShm);
 delegate_noop!(App: ignore WlSurface);

@@ -61,5 +61,19 @@
     <event name="key_binding">
       <arg name="id" type="uint"/>
     </event>
+
+    <event name="app_menu">
+      <description summary="where the active window's menus are">
+        The active window changed, or it told the compositor (with
+        org_kde_kwin_appmenu) where its menus are: a D-Bus service on the
+        session bus and an object path exporting com.canonical.dbusmenu.
+        Both are empty when the active window has none (or there is no
+        active window); the shell then shows its own fallback menus. Sent
+        once on bind, then on every change. The address is the app's own
+        claim; the shell treats it as untrusted.
+      </description>
+      <arg name="service" type="string"/>
+      <arg name="path" type="string"/>
+    </event>
   </interface>
 </protocol>

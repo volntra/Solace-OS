@@ -1,9 +1,10 @@
 # Koi Human Interface Guidelines
 
-**Status: outline only.** The values below are the fixed starting points
-from CLAUDE.md. Everything marked *(Phase 6)* is defined, implemented in
-`de/design/`, and documented with screenshots in Phase 6. The GRUB theme
-(Phase 2) uses the palette and type from here.
+The design system (`de/design`), the shell (`de/shell`) and the window
+manager follow these values. The GRUB theme (Phase 2) uses the palette
+and type from here. Screenshots of the shell are in
+`docs/design/img/shell-*.png`; they are the render test's, so
+`just shell-test` regenerates them.
 
 ## Principles
 
@@ -18,22 +19,200 @@ from CLAUDE.md. Everything marked *(Phase 6)* is defined, implemented in
 
 ## Foundations
 
-| Area | Fixed now | To define *(Phase 6)* |
+Implemented in `de/design` (the `Fern.Design` QML module). Components
+read every value from `Theme`; none writes a colour or size literal.
+
+**Colour.** Light and dark palettes are built from the brand colours
+(Brand, below). The tokens are:
+
+| Token | Light | Dark |
 |---|---|---|
-| Spacing | 4 px grid | named steps |
-| Type | Inter (UI), JetBrains Mono (mono) | size/weight/leading scale |
-| Symbols | Phosphor or Lucide, plus our own | final choice + sizes |
-| Icon shape | continuous-curvature squircle (superellipse) | exponent, sizes |
-| Color | light + dark palettes + accent; every pair passes WCAG AA | tokens, contrast table |
-| Materials | window, sidebar, popover, menu, HUD, sheet = blur + tint + noise | blur radii, tint alphas |
-| Radii | | window, control, popover radii; corner style presets |
-| Motion | critically damped springs, never fixed durations | spring presets; reduce-motion mapping |
+| window | Paper `#F6F7F3` | `#1A1F1C` |
+| sidebar | `#ECEFE9` | `#202622` |
+| surface | `#FFFFFF` | `#232A25` |
+| text | Ink `#101512` | `#F2F4F0` |
+| secondaryText | `#5A625D` | `#AEB6B1` |
+| separator | Ink 10 % | white 10 % |
+| fill / hover / pressed | Ink 6 / 9 / 13 % | white 9 / 13 / 18 % |
+| destructive | `#B3261E` | `#FF8A7A` |
 
-## Controls *(Phase 6)*
+**Accent.** The accent presets are fern (the default), blue, purple,
+pink, orange, amber and graphite. Each preset has three values: a fill
+for light mode, which carries white text; a fill for dark mode, which
+carries Ink text; and a darker shade for accent-coloured text in light
+mode. A custom `#rrggbb` accent is lightened for dark mode. "From
+wallpaper" will extract the accent from the wallpaper in Phase 7; until
+then it is Fern green.
 
-Buttons, toggles, checkboxes, segmented controls, sliders, steppers, text
-fields, search fields, popovers, sheets, alerts, menus, sidebars, toolbars
-with unified titlebars, tables, outline views, column views.
+The tests in `de/design/tests/tst_theme.qml` check WCAG AA (4.5:1) for
+every text and background pair:
+
+- text, secondary text, accent text and destructive text on window,
+  surface and sidebar, in both modes;
+- the label on every accent, in both modes;
+- text on every material, laid over pure white and pure black.
+
+**Type.** Inter at these sizes:
+
+| Style | Size and weight |
+|---|---|
+| largeTitle | 26 Bold |
+| title1 | 22 Bold |
+| title2 | 17 SemiBold |
+| title3 | 15 SemiBold |
+| headline | 13 SemiBold |
+| body | 13 |
+| callout | 12 |
+| subheadline | 11 |
+| footnote | 10 |
+
+The appearance setting `text_size` scales every size: small ×0.92,
+default, large ×1.12, larger ×1.25.
+
+**Space and shape.** Spacing follows a 4 px grid (`Theme.space(n)`).
+
+| Radius | Value |
+|---|---|
+| small (menu rows) | 5 |
+| control | 7 |
+| menu | 9 |
+| card | 10 |
+| window | 12 |
+| popover | 14 |
+| panel, dock, HUD | 18 |
+
+Controls are 28 px tall, and 34 px in the large size.
+
+**Symbols.** UI glyphs are Lucide (ISC). The design system's
+`image://symbol/NAME?color=` provider recolours them
+(assets/symbols/README.md).
+
+**Motion.** All motion uses critically damped springs, the same three
+the compositor uses:
+
+| Spring | Response | Settles in | For |
+|---|---|---|---|
+| snappy | 0.25 s | 368 ms | hover, toggles, segments |
+| smooth | 0.42 s | 617 ms | panels, the dock sliding, banners |
+| gentle | 0.6 s | 882 ms | large moves, wallpaper crossfades |
+
+In QML a spring is
+`NumberAnimation { duration: Theme.smooth; easing: Motion.curve }`. With
+reduce motion on, every duration becomes 0: things change in place, and
+only fades remain.
+
+**Materials.** A material is a tint over the compositor's background
+blur, plus a light inner edge and a faint outline. The blur's dither
+supplies the grain. A shell surface asks for its blur with
+`fern_shell_v1.set_blur`.
+
+| Material | Light | Dark |
+|---|---|---|
+| menubar | Paper 62 % | `#141815` 68 % |
+| dock | white 42 % | `#1C221E` 52 % |
+| popover | Paper 80 % | `#1E2420` 80 % |
+| menu | Paper 86 % | `#1E2420` 84 % |
+| HUD | Ink 78 % | Ink 78 % |
+| sidebar | `#ECEFE9` 72 % | `#1A1F1C` 70 % |
+| sheet | Paper 94 % | `#1E2420` 92 % |
+
+With reduce transparency on, every tint is opaque.
+
+## Controls
+
+These are in `Fern.Design`, built on Qt Quick Templates, and covered by
+`tst_controls.qml`:
+
+- **Button.** Kinds: primary (accent; one per view), secondary and plain.
+  It can carry an optional symbol.
+- **Toggle.** A 38×22 switch whose knob springs across.
+- **Checkbox.**
+- **SegmentedControl.** The selection slides between segments; arrow keys
+  move it.
+- **Slider.**
+- **TextField** and **SearchField.** SearchField has the search symbol
+  and a clear button.
+- **MenuItem** and **MenuSeparator.**
+- **Label.** Text in the type scale.
+- **Symbol.**
+- **Material.**
+
+Focus shows as a 3 px accent ring at 45 %. Still to come, with the apps
+that need them (Phase 8 and later): stepper, popover and sheet controls,
+alert, sidebar, toolbar with unified titlebar, table, outline view and
+column view.
+
+## Shell
+
+The shell is `de/shell`, fern-shell. Each part is a layer surface
+(docs/protocols/shell.md).
+
+**Menu bar.** 28 px tall, full width, in the menubar material, or solid
+when `menubar.translucent` is off.
+
+- Left: the Fern mark (the Fern menu), then the active app's name in
+  bold, then its menus.
+- Right: Wi-Fi and sound (when available), the control center, Search,
+  then the clock. The clock shows the date, and seconds or a 24-hour
+  time if those settings are on. Clicking it opens the notifications.
+
+Menus drop down 2 px below the bar, in the menu material, with radius 9
+and 24 px rows. Moving the pointer along the bar while a menu is open
+opens the next one.
+
+**Dock.** It sits on the bottom, left or right edge, 6 px from the edge.
+
+- Icons are 52 px by default (32–96). The pad around them is 14 % of the
+  icon size, with 6 px between icons.
+- Magnification is a cosine bump about three icons wide, growing to
+  `magnified_size` (76 px by default).
+- Order: pinned apps, then running apps that aren't pinned, then up to
+  three recent apps, then a divider, then Downloads and Trash.
+- A running app has a 4 px dot on the edge side. A launching app bounces
+  until its window appears (at most 10 s).
+- The app's name appears above its icon on hover.
+- Right-click an icon for its menu: the app's windows, Open,
+  Keep in Dock or Remove from Dock, and Quit.
+- Drag a pinned app to reorder it.
+- With autohide, the dock slides out of sight on the smooth spring, and a
+  3 px strip at the screen edge brings it back.
+- Until the adaptive icons arrive (Phase 7), an app without an icon gets
+  a tile: a gradient picked from its id, with its initial.
+
+**Search** (Super+Space). A 640 px popover 18 % down the screen, with a
+44 px field in Inter 20. Results come in this order:
+
+1. a sum or unit conversion (Return copies it);
+2. apps;
+3. actions: dark or light mode, Do Not Disturb, About, restart and shut
+   down.
+
+Arrow keys move through the results, Return opens one and Escape closes
+Search.
+
+**Notifications.**
+
+- Banners are 340 px wide, at the top right, 6 px below the menu bar.
+  They slide in on the smooth spring and stay for `banner_seconds`, or
+  until dismissed if the app asks for that. They stay while the pointer
+  is over them.
+- Do Not Disturb sends new notifications straight to the history.
+  Critical ones still show.
+- The history is a full-height panel on the right, with Clear All.
+
+**Control center.** A 324 px popover with a radius of 18.
+
+- Four 2×2 tiles: Wi-Fi, Bluetooth, Do Not Disturb and Appearance. Each
+  is a round 30 px symbol (the accent when on), a title and a status. A
+  tile with nothing behind it says "Not available" and does nothing.
+- Then the Sound and Display sliders, then what is playing (MPRIS).
+
+**Volume HUD.** A 180 px HUD-material square 140 px above the bottom.
+It shows a symbol and a 16-step level, and fades after 1.5 s.
+
+**Wallpaper.** The compositor draws the wallpaper. A change crossfades
+over 0.88 s on the gentle curve. In dark mode the shell shows the dark
+partner, which by default is Grove at night.
 
 ## Windows *(Phase 5)*
 
