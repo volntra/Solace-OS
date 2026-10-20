@@ -1,0 +1,8 @@
+description = "NVIDIA device nodes"
+enabled = true
+# Before anything opens the GPU through NVIDIA's libraries.
+after = ["udev-trigger"]
+
+[service]
+type = "oneshot"
+exec = ["/usr/lib/sol/nvidia-devices"]

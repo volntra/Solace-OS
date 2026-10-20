@@ -1,0 +1,23 @@
+#!/bin/sh
+# Creates NVIDIA's control device nodes once its modules are loaded. The
+# kernel modules register the devices but no device class, so nothing
+# else creates the nodes (other systems use the setuid nvidia-modprobe).
+# Group video, like the DRM nodes.
+set -eu
+[ -d /proc/driver/nvidia ] || exit 0
+node() { # name major minor
+  [ -e "/dev/$1" ] || mknod -m 0660 "/dev/$1" c "$2" "$3"
+  chgrp video "/dev/$1"
+}
+node nvidiactl 195 255
+node nvidia-modeset 195 254
+for info in /proc/driver/nvidia/gpus/*/information; do
+  [ -e "$info" ] || continue
+  minor=$(sed -n 's/^Device Minor:[[:space:]]*//p' "$info")
+  node "nvidia$minor" 195 "$minor"
+done
+uvm=$(sed -n 's/^\([0-9]*\) nvidia-uvm$/\1/p' /proc/devices)
+if [ -n "$uvm" ]; then
+  node nvidia-uvm "$uvm" 0
+  node nvidia-uvm-tools "$uvm" 1
+fi

@@ -39,7 +39,7 @@ entry names a recipe that does not exist.
 - `libinput`: input devices (pointer acceleration, touchpads) for sol-comp.
 - `libxcrypt`: crypt(3) with yescrypt for Linux-PAM and shadow password hashing.
 - `libxkbcommon`: keymaps and keyboard state for sol-comp and every Wayland client.
-- `linux`: the kernel, with our configuration (boot/kernel/solace.config).
+- `linux`: the kernel, with our configuration (boot/kernel/solace.config); its `linux-build` split is the tree out-of-tree modules (NVIDIA) compile against.
 - `linux-headers`: kernel API headers for glibc and everything else.
 - `lz4`: fast compression for zram swap tooling, libarchive, and kernel/initramfs images.
 - `m4`: macro processor needed by autoconf-generated builds and bison.
@@ -51,6 +51,7 @@ entry names a recipe that does not exist.
 - `mtdev`: multitouch protocol translation; required by libinput.
 - `ncurses`: terminal handling for bash, readline, util-linux, less.
 - `ninja`: build executor for meson and cmake builds.
+- `nvidia`: NVIDIA's driver (open kernel modules, GSP firmware, EGL/GBM userspace); optional, offered by the installer for NVIDIA GPUs.
 - `openssl`: TLS/crypto; the kernel's certificate tool needs libcrypto, and so will networking.
 - `patch`: applying recipe patches.
 - `pcre2`: regular expressions for grep, GLib, and Qt.
@@ -636,4 +637,41 @@ entry names a recipe that does not exist.
   SVGs with resvg from the dev workbench until resvg has a recipe.
 - **Standard groups** added to the factory /etc/group (render, kvm, lp,
   cdrom, ...): udev's rules assign device nodes to them.
+
+### 2026-10-19: NVIDIA, GPU clients and kernel modules (Phase 4, stage 6)
+
+- **Driver:** NVIDIA 595.104.02 (the production branch Gentoo marks
+  stable; supports kernels up to 7.3 and Blackwell), open kernel modules
+  (the only ones for the RTX 50 series). One source, NVIDIA's .run, which
+  carries the open modules' source; cross-checked against Gentoo's
+  Manifest. Packaged as `nvidia` (userspace) and `nvidia-kmod` (modules
+  for exactly linux 7.2-3, GSP firmware, the module list, device nodes).
+  Not in the base image: the installer offers it on NVIDIA hardware. The
+  userspace is NVIDIA's binary, redistributed unmodified (as distributions
+  do). Vulkan, CUDA, VDPAU and NVENC are left out for now.
+- **Device nodes:** NVIDIA's modules register /dev/nvidia* without a
+  device class, so a oneshot unit creates them (group video) instead of
+  the setuid nvidia-modprobe (spk packages carry no setuid files).
+- **Kernel modules without kmod:** sol-init loads the modules packages
+  list (`/usr/lib/sol/modules.d/*.conf`, overridable in /etc) with
+  `finit_module`, letting the kernel decompress `.ko.zst`
+  (`CONFIG_MODULE_DECOMPRESS`). No depmod, no dependency resolution (a list
+  orders its modules), no hotplug autoloading. Alternatives: kmod (another
+  package and a second module configuration format, for features we do not
+  use yet). zram became a module so every QEMU boot exercises the loader.
+- **linux-build:** the kernel recipe also ships the build tree out-of-tree
+  modules need (as distributions' headers packages), depending on elfutils
+  for objtool.
+- **GPU clients:** linux-dmabuf with the renderer's formats and the GPU's
+  render node as feedback; each buffer is test-imported before it is
+  accepted (the backend owns the renderer and provides the check);
+  linux-drm-syncobj when the kernel driver supports syncobj eventfds. A
+  commit with a GPU buffer waits on its explicit acquire point, or else
+  on the buffer's implicit fence, before it is applied.
+- **Measuring on the real display:** `SOL_COMP_STATS=1` makes the DRM
+  backend report frames per second, frame intervals and missed refreshes
+  from the kernel's presentation timestamps; `just comp-drm` runs it on
+  the host's display with an animated test window (double-buffered, one
+  frame per frame callback), so the 165 Hz target can be checked on the
+  human's machine before Solace itself runs there.
 

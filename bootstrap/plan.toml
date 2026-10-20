@@ -67,4 +67,6 @@ recipes = [
     "libdrm", "wayland", "wayland-protocols", "xkeyboard-config",
     "libxkbcommon", "libevdev", "mtdev", "libinput", "seatd", "libglvnd",
     "mesa", "solace-wallpapers", "sol-comp",
+    # Optional hardware support (not in the base image).
+    "nvidia",
 ]

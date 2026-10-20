@@ -8,9 +8,24 @@ Repository: https://github.com/volntra/Solace-OS (`main`).
 
 Stages: 1 foundation ✓, 2 renderer ✓ (corners, shadows, wallpaper,
 background blur), 3 headless backend + pixel tests ✓, 4 graphics base
-recipes ✓, 5 DRM backend on the QEMU image ✓; next: NVIDIA (open kernel
-modules + userspace recipes) and 165 Hz on the human's machine, which
-only the human can run.
+recipes ✓, 5 DRM backend on the QEMU image ✓, 6 NVIDIA support ✓ (built,
+not run: no NVIDIA GPU here); left: 165 Hz on the human's machine, which
+only the human can run (below).
+
+**On the human's NVIDIA machine (the Phase 4 hardware check):**
+
+```sh
+# NixOS, in a text console: Ctrl+Alt+F3, log in, then
+cd ~/solace-os && nix develop
+just comp-drm            # sol-comp on the real display + an animated window
+                         # Ctrl+Alt+Backspace quits; timing in build/comp-drm.log
+```
+
+It uses the host's driver (NixOS `/run/opengl-driver`: NVIDIA's EGL and
+GBM) through libseat/logind. The log reports, every 5 s per display,
+frames shown per second, the frame interval and missed refreshes: the
+target is 165 fps with no missed refreshes at 2560x1440 @ 165 Hz. Also
+worth trying: `just comp` (nested in the NixOS desktop).
 
 **On the QEMU image (sol-comp drives the display):**
 
@@ -57,6 +72,19 @@ just comp-test             # pixel tests, headless (also run by `just check`)
 ![sol-comp nested in Xvfb: wallpaper, rounded corners, shadows](design/img/comp-nested.png)
 ![just comp-demo: background blur under a translucent window](design/img/comp-blur.png)
 
+Stage 6 (NVIDIA, 2026-10-19): sol-comp offers linux-dmabuf (GPU
+buffers from clients, each checked by importing it) and linux-drm-syncobj
+(explicit sync, which NVIDIA relies on) and waits for a client's GPU work
+before showing a commit; frame timing (`SOL_COMP_STATS=1`); sol-init
+loads kernel modules from `/usr/lib/sol/modules.d` (docs/formats/
+modules.md; zram is loaded on every QEMU boot as the test); the kernel
+ships its modules and a `linux-build` tree; the `nvidia` and
+`nvidia-kmod` packages (595.104.02: open kernel modules built against our
+kernel, GSP firmware, EGL/GLES/GBM/Wayland-EGL userspace, nvidia-smi,
+device nodes) are built but not in the base image (the installer will
+offer them). Not testable here: NVIDIA itself, and GPU (dmabuf) clients,
+which need a real GPU; only that the protocols are offered is tested.
+
 What works: xdg-shell windows, placement (centred, cascading), focus on
 open and on click, move/resize grabs, rounded corners (12 px, antialiased
 in the shader), focus-dependent soft shadows (analytic Gaussian), the
@@ -88,8 +116,8 @@ dependency resolved; in the image since stage 5.
 
 Not yet: server-side titlebars (Phase 5, sol-wm), every protocol beyond
 xdg-shell and blur, layer-shell (the dock and menu bar need it),
-linux-dmabuf (so GPU clients can share buffers: shm clients only for now),
-explicit sync, multi-GPU, measured frame times. Several displays are laid
+multi-GPU, Vulkan on NVIDIA (needs the Vulkan loader), hotplug module
+loading. GPU clients and NVIDIA have not run yet. Several displays are laid
 out side by side but only tested with one. The idle render loop checks
 each display once per refresh period rather than waking only on change. Rotated
 outputs are not handled by the corner clip yet. udev has no seat ACLs
@@ -372,7 +400,7 @@ Phase 1's demo still works: `just demo`.
    demo with a window (`just qemu --update build/demo/update.img`), and
    look at the desktop in a window (`just qemu`; with host 3D, try
    `-device virtio-vga-gl -display gtk,gl=on` for virgl).
-2. Phase 4, last stage: NVIDIA. Recipes for the open kernel modules and
-   NVIDIA's userspace (EGL/GBM through libglvnd), then sol-comp at 165 Hz
-   on the human's RTX 5070 Ti, nested first (`just comp`) and then on the
-   real display from a live image. Only the human can run this part.
+2. The Phase 4 hardware check on the human's PC (`just comp-drm`, above):
+   sol-comp at 165 Hz on the RTX 5070 Ti, plus whether GPU clients
+   (e.g. a browser or `glxgears`-style EGL demos) show windows. Then
+   Phase 5 (sol-wm).
