@@ -102,6 +102,12 @@ pub enum Event {
     },
     RestoreWm(String),
     Done,
+    /// Whether we draw the titlebar (server side) and how tall it is.
+    Decoration {
+        id: u32,
+        server_side: bool,
+        titlebar: i32,
+    },
     Button {
         window: u32,
         part: u32,
@@ -111,6 +117,7 @@ pub enum Event {
         pressed: bool,
         mods: u32,
         clicks: u32,
+        edges: u32,
     },
     Motion {
         x: f64,
@@ -258,6 +265,12 @@ pub struct Win {
     pub size: Option<(i32, i32)>,
     /// Content size we last configured (0: the client chooses).
     pub cfg: (i32, i32),
+    /// Height of our titlebar above the content (0: none).
+    pub tb: i32,
+    /// Zoomed: the frame it had before, to return to.
+    pub unzoomed: Option<Rect>,
+    /// Minimized (hidden until restored).
+    pub minimized: bool,
     pub x: i32,
     pub y: i32,
     pub visible: bool,
@@ -271,10 +284,10 @@ impl Win {
         self.size.is_some()
     }
 
-    /// The frame on screen.
+    /// The frame on screen (titlebar included).
     pub fn rect(&self) -> Rect {
         let (w, h) = self.size.unwrap_or((0, 0));
-        Rect::new(self.x, self.y, w, h)
+        Rect::new(self.x, self.y, w, h + self.tb)
     }
 }
 
@@ -288,6 +301,9 @@ pub struct Wm {
     pub focused: Option<u32>,
     /// Between bind and `done`: the core is describing the desktop.
     restoring: bool,
+    /// A traffic light pressed and not yet released: (window, part). It
+    /// acts on release over the same button, as buttons do.
+    pressed: Option<(u32, u32)>,
 }
 
 impl Wm {
@@ -344,11 +360,13 @@ impl Wm {
             }
             Event::Size { id, w, h } => self.on_size(id, w, h, &mut out),
             Event::Closed(id) => self.on_closed(id, &mut out),
-            Event::Request { id, kind, .. } => {
-                if kind == request::ACTIVATE {
-                    self.focus(Some(id), &mut out);
-                }
-            }
+            Event::Request { id, kind, .. } => match kind {
+                request::ACTIVATE => self.restore_and_focus(id, &mut out),
+                request::MAXIMIZE => self.zoom(id, Some(true), &mut out),
+                request::UNMAXIMIZE => self.zoom(id, Some(false), &mut out),
+                request::MINIMIZE => self.minimize(id, &mut out),
+                _ => {}
+            },
             Event::Restore {
                 id,
                 x,
@@ -381,16 +399,26 @@ impl Wm {
                 out.push(Cmd::Stack(self.stack.clone()));
                 out.push(Cmd::Focus(self.focused.unwrap_or(0)));
             }
-            Event::Button {
-                window,
-                part: _,
-                pressed,
-                ..
+            Event::Decoration {
+                id,
+                server_side,
+                titlebar,
             } => {
-                if pressed && window != 0 {
-                    self.focus(Some(window), &mut out);
+                if let Some(w) = self.windows.get_mut(&id) {
+                    w.tb = if server_side { titlebar } else { 0 };
+                    if server_side {
+                        out.push(Cmd::Decoration { id, titlebar: true });
+                    }
                 }
             }
+            Event::Button {
+                window,
+                part,
+                pressed,
+                clicks,
+                edges,
+                ..
+            } => self.on_button(window, part, pressed, clicks, edges, &mut out),
             Event::MoveEnd { id, x, y, .. } | Event::MoveUpdate { id, x, y, .. } => {
                 if let Some(w) = self.windows.get_mut(&id) {
                     w.x = x;
@@ -419,6 +447,160 @@ impl Wm {
             .unwrap_or(Rect::new(0, 0, 1280, 800))
     }
 
+    fn on_button(
+        &mut self,
+        window: u32,
+        part: u32,
+        pressed: bool,
+        clicks: u32,
+        edges: u32,
+        out: &mut Vec<Cmd>,
+    ) {
+        if !pressed {
+            // A traffic light acts when released over itself.
+            if let Some((w, p)) = self.pressed.take()
+                && (w, p) == (window, part)
+            {
+                match p {
+                    part::CLOSE => out.push(Cmd::Close(w)),
+                    part::MINIMIZE => self.minimize(w, out),
+                    part::ZOOM => self.zoom(w, None, out),
+                    _ => {}
+                }
+            }
+            return;
+        }
+        if window == 0 {
+            return;
+        }
+        match part {
+            part::CLOSE | part::MINIMIZE | part::ZOOM => {
+                self.pressed = Some((window, part));
+            }
+            part::TITLEBAR => {
+                self.focus(Some(window), out);
+                if clicks >= 2 {
+                    self.zoom(window, None, out);
+                } else {
+                    out.push(Cmd::BeginMove(window));
+                }
+            }
+            part::EDGE => {
+                self.focus(Some(window), out);
+                out.push(Cmd::BeginResize(window, edges));
+            }
+            _ => self.focus(Some(window), out),
+        }
+    }
+
+    /// The area windows may use on the output holding `r`.
+    pub fn work_area(&self, r: &Rect) -> Rect {
+        self.output_of(r)
+    }
+
+    /// Zoom: fills the work area, or returns to the frame it had (`None`
+    /// toggles). The content gets the room left under the titlebar.
+    pub fn zoom(&mut self, id: u32, on: Option<bool>, out: &mut Vec<Cmd>) {
+        let Some(win) = self.windows.get(&id) else {
+            return;
+        };
+        let zoomed = win.unzoomed.is_some();
+        let on = on.unwrap_or(!zoomed);
+        if on == zoomed {
+            return;
+        }
+        let frame = win.rect();
+        let target = if on {
+            self.work_area(&frame)
+        } else {
+            win.unzoomed.unwrap_or(frame)
+        };
+        let Some(win) = self.windows.get_mut(&id) else {
+            return;
+        };
+        win.unzoomed = on.then_some(frame);
+        win.states = if on {
+            win.states | state::MAXIMIZED
+        } else {
+            win.states & !state::MAXIMIZED
+        };
+        win.cfg = (target.w, target.h - win.tb);
+        win.x = target.x;
+        win.y = target.y;
+        out.push(Cmd::Configure {
+            id,
+            w: win.cfg.0,
+            h: win.cfg.1,
+            states: win.states,
+        });
+        out.push(Cmd::Place {
+            id,
+            x: target.x,
+            y: target.y,
+            scale: 1.0,
+            alpha: 1.0,
+            motion: motion::SMOOTH,
+        });
+    }
+
+    /// Minimize: shrinks and fades towards the bottom of the screen (where
+    /// the dock will be), then hides; focus passes to the next window.
+    pub fn minimize(&mut self, id: u32, out: &mut Vec<Cmd>) {
+        let Some(win) = self.windows.get_mut(&id) else {
+            return;
+        };
+        if win.minimized || !win.visible {
+            return;
+        }
+        win.minimized = true;
+        win.visible = false;
+        let frame = win.rect();
+        let screen = self.output_of(&frame);
+        let scale = 0.12;
+        #[allow(clippy::cast_possible_truncation)]
+        let (w, h) = (
+            (f64::from(frame.w) * scale) as i32,
+            (f64::from(frame.h) * scale) as i32,
+        );
+        out.push(Cmd::Place {
+            id,
+            x: screen.x + (screen.w - w) / 2,
+            y: screen.y + screen.h - h - 8,
+            scale,
+            alpha: 0.0,
+            motion: motion::GENTLE,
+        });
+        out.push(Cmd::Visible { id, visible: false });
+        self.stack.retain(|&i| i != id);
+        out.push(Cmd::Stack(self.stack.clone()));
+        if self.focused == Some(id) {
+            self.set_states(id, |s| s & !state::ACTIVATED, out);
+            self.focused = None;
+            let next = self.stack.last().copied();
+            self.focus(next, out);
+        }
+    }
+
+    /// Brings a minimized window back where it was, and focuses it.
+    pub fn restore_and_focus(&mut self, id: u32, out: &mut Vec<Cmd>) {
+        if let Some(win) = self.windows.get_mut(&id)
+            && win.minimized
+        {
+            win.minimized = false;
+            win.visible = true;
+            out.push(Cmd::Visible { id, visible: true });
+            out.push(Cmd::Place {
+                id,
+                x: win.x,
+                y: win.y,
+                scale: 1.0,
+                alpha: 1.0,
+                motion: motion::GENTLE,
+            });
+        }
+        self.focus(Some(id), out);
+    }
+
     fn on_size(&mut self, id: u32, w: i32, h: i32, out: &mut Vec<Cmd>) {
         let first = match self.windows.get_mut(&id) {
             Some(win) => {
@@ -445,7 +627,8 @@ impl Wm {
             .filter_map(|i| self.windows.get(i))
             .map(Win::rect)
             .collect();
-        let (x, y) = place(area, (w, h), &others);
+        let tb = self.windows.get(&id).map_or(0, |w| w.tb);
+        let (x, y) = place(area, (w, h + tb), &others);
         if let Some(win) = self.windows.get_mut(&id) {
             win.x = x;
             win.y = y;
@@ -647,6 +830,7 @@ mod tests {
             pressed: true,
             mods: 0,
             clicks: 1,
+            edges: 0,
         });
         assert!(cmds.contains(&Cmd::Configure {
             id: 2,

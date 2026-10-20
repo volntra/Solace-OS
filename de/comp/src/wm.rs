@@ -159,6 +159,8 @@ fn preset(motion: u32) -> Spring {
 }
 
 /// What the core knows about one window.
+// Independent facts about the window, not a state machine in disguise.
+#[allow(clippy::struct_excessive_bools)]
 #[derive(Debug)]
 pub struct WinRecord {
     pub window: Window,
@@ -173,7 +175,27 @@ pub struct WinRecord {
     pub anim: Anim,
     /// Hidden, but still drawn while it fades out; never hit.
     pub leaving: bool,
+    /// The client agreed to server-side decoration (xdg-decoration): we
+    /// may draw its titlebar.
+    pub ssd: bool,
 }
+
+/// What the pointer is on (see [`Comp::hit`]).
+#[derive(Debug, Clone)]
+pub struct Hit {
+    pub window: Window,
+    pub id: u32,
+    pub part: fern_wm_v1::Part,
+    /// For `Part::Edge`: which edges (top 1, bottom 2, left 4, right 8).
+    pub edges: u32,
+    /// Where the window's surface tree is drawn from.
+    pub origin: Point<i32, Logical>,
+}
+
+/// How far outside a decorated window's frame the resize edges reach, and
+/// how long a corner is along each edge.
+const EDGE_REACH: f64 = 6.0;
+const CORNER: f64 = 14.0;
 
 /// Something the window manager draws above all windows.
 #[derive(Debug, Clone, PartialEq)]
@@ -267,6 +289,8 @@ pub struct WmHost {
     last_press: Option<(Instant, Point<f64, Logical>, u32)>,
     /// When the animations last advanced.
     last_tick: Option<Instant>,
+    /// The window whose traffic lights the pointer is over.
+    pub hover: Option<u32>,
 }
 
 impl std::fmt::Debug for WmHost {
@@ -360,6 +384,7 @@ impl Comp {
             let (app_id, title) = names(&rec.window);
             resource.window(id, app_id, title, 0);
             send_hints(resource, id, &rec.window);
+            resource.window_decoration(id, u32::from(rec.ssd), crate::render::TITLEBAR_HEIGHT);
             if let Some((w, h)) = rec.size {
                 resource.window_size(id, w, h);
             }
@@ -431,10 +456,36 @@ impl Comp {
         }
     }
 
-    /// Height of a window's titlebar (none until decorations are drawn).
+    /// Height of a window's titlebar: ours when the window manager asked
+    /// for it and the client agreed to server-side decoration.
     pub fn titlebar_height(&self, rec: &WinRecord) -> i32 {
-        let _ = rec;
-        0
+        if rec.decorated && rec.ssd {
+            crate::render::TITLEBAR_HEIGHT
+        } else {
+            0
+        }
+    }
+
+    /// The client agreed to (or asked for) server-side decoration.
+    pub fn wm_server_side(&mut self, window: &Window) {
+        let Some(id) = win_id(window) else {
+            return;
+        };
+        let Some(rec) = self.wm.windows.get_mut(&id) else {
+            return;
+        };
+        if rec.ssd {
+            return;
+        }
+        rec.ssd = true;
+        // Already mapped: the window manager hears it now (otherwise with
+        // the first window_size).
+        if rec.size.is_some()
+            && let Some(r) = &self.wm.resource
+        {
+            r.window_decoration(id, 1, crate::render::TITLEBAR_HEIGHT);
+        }
+        self.sync_mapping(id);
     }
 
     // --- Windows: events to the window manager ------------------------------
@@ -456,6 +507,7 @@ impl Comp {
                 place: Place::default(),
                 anim: Anim::default(),
                 leaving: false,
+                ssd: false,
             },
         );
         if let Some(r) = &self.wm.resource {
@@ -483,9 +535,11 @@ impl Comp {
         }
         let first = rec.size.is_none();
         rec.size = Some(size);
+        let ssd = rec.ssd;
         if let Some(r) = &self.wm.resource {
             if first {
                 send_hints(r, id, window);
+                r.window_decoration(id, u32::from(ssd), crate::render::TITLEBAR_HEIGHT);
             }
             r.window_size(id, size.0, size.1);
         } else if first {
@@ -575,10 +629,10 @@ impl Comp {
         let Some(r) = self.wm.resource.clone() else {
             return true;
         };
-        let (window, part) = match self.window_under(pos) {
-            Some((w, _)) => (win_id(&w).unwrap_or(0), fern_wm_v1::Part::Content),
-            None if self.wm.grab_pointer => (0, fern_wm_v1::Part::Overlay),
-            None => (0, fern_wm_v1::Part::None),
+        let (window, part, edges) = match self.hit(pos) {
+            Some(h) => (h.id, h.part, h.edges),
+            None if self.wm.grab_pointer => (0, fern_wm_v1::Part::Overlay, 0),
+            None => (0, fern_wm_v1::Part::None, 0),
         };
         let mut clicks = 1;
         if pressed {
@@ -607,8 +661,22 @@ impl Comp {
             u32::from(pressed),
             fern_wm_v1::Modifiers::from_bits_truncate(mods),
             clicks,
+            fern_wm_v1::Edges::from_bits_truncate(edges),
         );
-        !self.wm.grab_pointer
+        // Clients get presses on their own content only.
+        !self.wm.grab_pointer && part == fern_wm_v1::Part::Content
+    }
+
+    /// Updates which window's traffic lights are hovered.
+    pub fn update_hover(&mut self, pos: Point<f64, Logical>) {
+        use fern_wm_v1::Part;
+        let hover = self.hit(pos).and_then(|h| {
+            matches!(h.part, Part::Close | Part::Minimize | Part::Zoom).then_some(h.id)
+        });
+        if hover != self.wm.hover {
+            self.wm.hover = hover;
+            self.request_redraw();
+        }
     }
 
     /// Pointer motion. Returns whether clients should still get it.
@@ -1046,8 +1114,13 @@ impl Comp {
         let Some(rec) = self.wm.record(window) else {
             return Visual::IDENTITY;
         };
+        let deco = Visual {
+            titlebar: self.titlebar_height(rec),
+            hover: self.wm.hover.is_some_and(|h| Some(h) == win_id(window)),
+            ..Visual::IDENTITY
+        };
         if !rec.anim.started {
-            return Visual::IDENTITY;
+            return deco;
         }
         // The spring's remaining way to its target: a window moved
         // directly (a drag) is drawn where it is.
@@ -1057,21 +1130,92 @@ impl Comp {
             dy: rec.anim.y.value - f64::from(rec.place.y),
             scale: rec.anim.scale.value.max(0.0),
             alpha: rec.anim.alpha.value.clamp(0.0, 1.0) as f32,
+            ..deco
         }
     }
 
-    /// The topmost window that takes input at `pos` (not one fading out),
-    /// and where its surface tree is drawn from.
+    /// The window whose content takes input at `pos`, and where its
+    /// surface tree is drawn from (`None` over a titlebar or edge).
     pub fn window_under(&self, pos: Point<f64, Logical>) -> Option<(Window, Point<i32, Logical>)> {
+        self.hit(pos)
+            .filter(|h| h.part == fern_wm_v1::Part::Content)
+            .map(|h| (h.window, h.origin))
+    }
+
+    /// What is under `pos`: the topmost window's content, titlebar, one of
+    /// its traffic lights, or a resize edge (windows fading out are not
+    /// hit).
+    pub fn hit(&self, pos: Point<f64, Logical>) -> Option<Hit> {
+        use crate::render::{BUTTON_DIAMETER, BUTTON_FIRST_X, BUTTON_STEP};
+        use fern_wm_v1::Part;
         use smithay::desktop::space::SpaceElement;
-        self.space.elements().rev().find_map(|w| {
-            if self.wm.record(w).is_some_and(|r| r.leaving) {
-                return None;
+        for w in self.space.elements().rev() {
+            let Some(rec) = self.wm.record(w) else {
+                continue;
+            };
+            if rec.leaving {
+                continue;
             }
-            let at = self.space.element_location(w)? - w.geometry().loc;
-            w.is_in_input_region(&(pos - at.to_f64()))
-                .then(|| (w.clone(), at))
-        })
+            let Some(loc) = self.space.element_location(w) else {
+                continue;
+            };
+            let id = win_id(w).unwrap_or(0);
+            let origin = loc - w.geometry().loc;
+            let hit = |part, edges| Hit {
+                window: w.clone(),
+                id,
+                part,
+                edges,
+                origin,
+            };
+            if w.is_in_input_region(&(pos - origin.to_f64())) {
+                return Some(hit(Part::Content, 0));
+            }
+            let tb = f64::from(self.titlebar_height(rec));
+            if tb <= 0.0 {
+                continue;
+            }
+            let size = w.geometry().size;
+            let (fx, fy) = (f64::from(loc.x), f64::from(loc.y) - tb);
+            let (fw, fh) = (f64::from(size.w), f64::from(size.h) + tb);
+            let inside = |x: f64, y: f64| x >= fx && x < fx + fw && y >= fy && y < fy + fh;
+            if inside(pos.x, pos.y) && pos.y < fy + tb {
+                let cy = fy + tb / 2.0;
+                for (i, part) in [Part::Close, Part::Minimize, Part::Zoom]
+                    .into_iter()
+                    .enumerate()
+                {
+                    #[allow(clippy::cast_precision_loss)]
+                    let cx = fx + BUTTON_FIRST_X + BUTTON_STEP * i as f64;
+                    if (pos.x - cx).hypot(pos.y - cy) <= BUTTON_DIAMETER / 2.0 + 2.0 {
+                        return Some(hit(part, 0));
+                    }
+                }
+                return Some(hit(Part::Titlebar, 0));
+            }
+            let near = pos.x >= fx - EDGE_REACH
+                && pos.x < fx + fw + EDGE_REACH
+                && pos.y >= fy - EDGE_REACH
+                && pos.y < fy + fh + EDGE_REACH;
+            if near && !inside(pos.x, pos.y) {
+                // Which sides; near a corner, both.
+                let mut e = 0;
+                if pos.y < fy + CORNER {
+                    e |= 1;
+                }
+                if pos.y >= fy + fh - CORNER {
+                    e |= 2;
+                }
+                if pos.x < fx + CORNER {
+                    e |= 4;
+                }
+                if pos.x >= fx + fw - CORNER {
+                    e |= 8;
+                }
+                return Some(hit(Part::Edge, e));
+            }
+        }
+        None
     }
 
     fn wm_begin_move(&mut self, id: u32) {

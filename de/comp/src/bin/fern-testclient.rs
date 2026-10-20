@@ -4,8 +4,11 @@
 //!
 //! ```text
 //! fern-testclient [--size WxH] [--color RRGGBBAA] [--stripes] [--animate]
-//!                [--blur | --blur-region X,Y,W,H] [--title T] [--globals]
+//!                [--blur | --blur-region X,Y,W,H] [--title T] [--csd] [--globals]
 //! ```
+//!
+//! Like most apps it asks for server-side decoration (our titlebar) when
+//! the compositor offers xdg-decoration; `--csd` does not ask.
 //!
 //! `--animate` moves the stripes every frame the compositor asks for, so
 //! it draws at the display's refresh rate (for frame timing). `--globals`
@@ -27,6 +30,10 @@ use wayland_client::{
         wl_shm_pool::WlShmPool,
         wl_surface::WlSurface,
     },
+};
+use wayland_protocols::xdg::decoration::zv1::client::{
+    zxdg_decoration_manager_v1::ZxdgDecorationManagerV1,
+    zxdg_toplevel_decoration_v1::{self, ZxdgToplevelDecorationV1},
 };
 use wayland_protocols::xdg::shell::client::{
     xdg_surface::{self, XdgSurface},
@@ -54,6 +61,8 @@ struct Options {
     /// Blur only this part of the surface (implies `blur`).
     blur_region: Option<(i32, i32, i32, i32)>,
     title: String,
+    /// Do not ask for server-side decoration.
+    csd: bool,
 }
 
 impl Default for Options {
@@ -67,6 +76,7 @@ impl Default for Options {
             blur: false,
             blur_region: None,
             title: "Test".into(),
+            csd: false,
         }
     }
 }
@@ -107,6 +117,7 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
             "--color" => o.color = parse_color(value()?).ok_or("--color wants RRGGBBAA")?,
             "--title" => o.title.clone_from(value()?),
             "--stripes" => o.stripes = true,
+            "--csd" => o.csd = true,
             "--globals" => o.globals = true,
             "--animate" => {
                 o.animate = true;
@@ -284,6 +295,12 @@ fn run(options: Options) -> Result<(), String> {
     let toplevel = xdg.get_toplevel(&qh, ());
     toplevel.set_title(options.title.clone());
     toplevel.set_app_id("org.fern.TestClient".into());
+    if !options.csd
+        && let Ok(manager) = globals.bind::<ZxdgDecorationManagerV1, _, _>(&qh, 1..=1, ())
+    {
+        let deco = manager.get_toplevel_decoration(&toplevel, &qh, ());
+        deco.set_mode(zxdg_toplevel_decoration_v1::Mode::ServerSide);
+    }
     if options.blur {
         let manager: OrgKdeKwinBlurManager = globals
             .bind(&qh, 1..=1, ())
@@ -329,6 +346,30 @@ impl Dispatch<WlRegistry, GlobalListContents> for App {
         _: &WlRegistry,
         _: <WlRegistry as wayland_client::Proxy>::Event,
         _: &GlobalListContents,
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<ZxdgDecorationManagerV1, ()> for App {
+    fn event(
+        _: &mut Self,
+        _: &ZxdgDecorationManagerV1,
+        _: <ZxdgDecorationManagerV1 as wayland_client::Proxy>::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+    }
+}
+
+impl Dispatch<ZxdgToplevelDecorationV1, ()> for App {
+    fn event(
+        _: &mut Self,
+        _: &ZxdgToplevelDecorationV1,
+        _: zxdg_toplevel_decoration_v1::Event,
+        (): &(),
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {

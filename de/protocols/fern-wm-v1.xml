@@ -145,6 +145,19 @@
       <arg name="height" type="int"/>
     </event>
 
+    <event name="window_decoration">
+      <description summary="who draws the window's titlebar">
+        Sent before the first window_size, and again if it changes. With
+        server-side decoration a titlebar of titlebar_height sits above the
+        content once the window manager asks for it (decoration request);
+        with client-side decoration the client draws its own and the frame
+        is the content.
+      </description>
+      <arg name="id" type="uint"/>
+      <arg name="server_side" type="uint"/>
+      <arg name="titlebar_height" type="int"/>
+    </event>
+
     <event name="window_closed">
       <arg name="id" type="uint"/>
     </event>
@@ -193,6 +206,7 @@
       <arg name="pressed" type="uint"/>
       <arg name="modifiers" type="uint" enum="modifiers"/>
       <arg name="clicks" type="uint" summary="1, or 2 for a double click"/>
+      <arg name="edges" type="uint" enum="edges" summary="for part edge: which"/>
     </event>
 
     <event name="pointer_motion">

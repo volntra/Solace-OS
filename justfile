@@ -184,3 +184,9 @@ doctor:
     @qemu-system-x86_64 --version | head -1
     @grub-mkimage --version
     @echo "OVMF_FV=${OVMF_FV:-unset}"
+
+# Inter, unpacked for development (the compositor draws titles with it;
+# the image has it from the `inter` package): build/fonts/.
+fonts: grub-theme
+    mkdir -p build/fonts
+    python3 -c 'import sys, zipfile; z = zipfile.ZipFile("build/Inter-4.1.zip"); [open("build/fonts/" + n.split("/")[-1], "wb").write(z.read(n)) for n in ("extras/ttf/Inter-Regular.ttf", "extras/ttf/Inter-SemiBold.ttf", "LICENSE.txt")]'

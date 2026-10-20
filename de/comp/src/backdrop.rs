@@ -374,7 +374,7 @@ pub struct Backdrop {
     program: GlesTexProgram,
     /// The window's rounded rectangle relative to `geometry`.
     clip: Rectangle<f64, Physical>,
-    radius: f32,
+    radii: [f32; 4],
     fb_height: f32,
 }
 
@@ -412,7 +412,7 @@ impl RenderElement<GlesRenderer> for Backdrop {
             frame.transformation(),
             dst.loc,
             self.clip,
-            self.radius,
+            self.radii,
             self.fb_height,
         );
         frame.render_texture_from_to(
@@ -438,7 +438,8 @@ impl RenderElement<GlesRenderer> for Backdrop {
 pub struct Clip {
     /// The window's rounded rectangle, output pixels.
     pub window: Rectangle<f64, Physical>,
-    pub radius: f32,
+    /// Corner radii: top-left, top-right, bottom-right, bottom-left.
+    pub radii: [f32; 4],
     pub fb_height: f32,
 }
 
@@ -505,7 +506,7 @@ pub fn backdrops<E: RenderElement<GlesRenderer>>(
                 geometry: rect,
                 program: program.clone(),
                 clip: Rectangle::new(clip.window.loc - rect.loc.to_f64(), clip.window.size),
-                radius: clip.radius,
+                radii: clip.radii,
                 fb_height: clip.fb_height,
             })
         })

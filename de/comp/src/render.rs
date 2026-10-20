@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 
 use crate::backdrop::{self, Backdrop, BlurShaders, Clip};
 use crate::blur::surface_blur;
+use crate::text::{Fonts, Weight};
 
 use smithay::{
     backend::{
@@ -79,10 +80,11 @@ uniform sampler2D tex;
 uniform float alpha;
 varying vec2 v_coords;
 // The rounded rectangle (x, y, w, h) in output pixels and its corner
-// radius. gl_FragCoord is in framebuffer pixels; output y is
-// fb_y.x + fb_y.y * gl_FragCoord.y (the framebuffer may be upside down).
+// radii (top-left, top-right, bottom-right, bottom-left). gl_FragCoord is
+// in framebuffer pixels; output y is fb_y.x + fb_y.y * gl_FragCoord.y (the
+// framebuffer may be upside down).
 uniform vec4 geo;
-uniform float radius;
+uniform vec4 radii;
 uniform vec2 fb_y;
 
 #if defined(DEBUG_FLAGS)
@@ -100,7 +102,10 @@ void main() {
     color = vec4(color.rgb, 1.0);
 #endif
     vec2 p = vec2(gl_FragCoord.x, fb_y.x + fb_y.y * gl_FragCoord.y);
-    float d = rounded_rect_sdf(p, geo.xy + geo.zw * 0.5, geo.zw * 0.5, radius);
+    vec2 center = geo.xy + geo.zw * 0.5;
+    float radius = p.x < center.x ? (p.y < center.y ? radii.x : radii.w)
+                                  : (p.y < center.y ? radii.y : radii.z);
+    float d = rounded_rect_sdf(p, center, geo.zw * 0.5, radius);
     // One pixel of antialiasing along the edge.
     float coverage = clamp(0.5 - d, 0.0, 1.0);
     color = color * alpha * coverage;
@@ -183,12 +188,55 @@ void main() {
 }
 ";
 
+/// A solid rounded rectangle (titlebars, traffic lights, overlay boxes),
+/// optionally with a border ring of another colour. Colours premultiplied.
+const SHAPE_FRAG: &str = r"
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
+precision mediump float;
+#endif
+varying vec2 v_coords;
+uniform vec2 size;
+uniform float alpha;
+uniform vec4 color;
+uniform vec4 radii;
+uniform vec4 border_color;
+uniform float border;
+
+float rounded_rect_sdf(vec2 p, vec2 center, vec2 half_size, float r) {
+    vec2 q = abs(p - center) - half_size + r;
+    return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r;
+}
+
+void main() {
+    vec2 p = v_coords * size;
+    vec2 center = size * 0.5;
+    float r = p.x < center.x ? (p.y < center.y ? radii.x : radii.w)
+                             : (p.y < center.y ? radii.y : radii.z);
+    float d = rounded_rect_sdf(p, center, center, r);
+    float coverage = clamp(0.5 - d, 0.0, 1.0);
+    vec4 c = color;
+    if (border > 0.0) {
+        float inside = clamp(0.5 - (d + border), 0.0, 1.0);
+        c = mix(border_color, color, inside);
+    }
+    gl_FragColor = c * coverage * alpha;
+}
+";
+
 /// The compiled shaders (one set per renderer).
 #[derive(Debug, Clone)]
 pub struct Shaders {
     rounded: GlesTexProgram,
     shadow: GlesPixelProgram,
+    shape: GlesPixelProgram,
     blur: BlurShaders,
+    /// Inter, for titles and overlay text.
+    pub fonts: Fonts,
+    /// The traffic lights' hover glyphs (close, minimize, zoom), made on
+    /// first use.
+    glyphs: RefCell<Option<[Rendered; 3]>>,
 }
 
 impl Shaders {
@@ -199,8 +247,17 @@ impl Shaders {
             ROUNDED_FRAG,
             &[
                 UniformName::new("geo", UniformType::_4f),
-                UniformName::new("radius", UniformType::_1f),
+                UniformName::new("radii", UniformType::_4f),
                 UniformName::new("fb_y", UniformType::_2f),
+            ],
+        )?;
+        let shape = renderer.compile_custom_pixel_shader(
+            SHAPE_FRAG,
+            &[
+                UniformName::new("color", UniformType::_4f),
+                UniformName::new("radii", UniformType::_4f),
+                UniformName::new("border_color", UniformType::_4f),
+                UniformName::new("border", UniformType::_1f),
             ],
         )?;
         let shadow = renderer.compile_custom_pixel_shader(
@@ -217,7 +274,10 @@ impl Shaders {
         Ok(Shaders {
             rounded,
             shadow,
+            shape,
             blur,
+            fonts: Fonts::load(),
+            glyphs: RefCell::new(None),
         })
     }
 }
@@ -232,7 +292,7 @@ pub struct Rounded {
     /// The window's rounded rectangle, relative to this element's
     /// geometry (so it follows the element when drawn offscreen).
     clip: Rectangle<f64, Physical>,
-    radius: f32,
+    radii: [f32; 4],
     fb_height: f32,
 }
 
@@ -287,7 +347,7 @@ impl RenderElement<GlesRenderer> for Rounded {
             frame.transformation(),
             dst.loc,
             self.clip,
-            self.radius,
+            self.radii,
             self.fb_height,
         );
         frame.override_default_tex_program(self.program.clone(), uniforms.into());
@@ -320,7 +380,7 @@ pub fn clip_uniforms(
     transform: Transform,
     dst: Point<i32, Physical>,
     clip: Rectangle<f64, Physical>,
-    radius: f32,
+    radii: [f32; 4],
     fb_height: f32,
 ) -> [Uniform<'static>; 3] {
     let loc = clip.loc + dst.to_f64();
@@ -333,7 +393,7 @@ pub fn clip_uniforms(
     ];
     [
         Uniform::new("geo", geo),
-        Uniform::new("radius", radius),
+        Uniform::new("radii", radii),
         Uniform::new("fb_y", fb_y(transform, fb_height)),
     ]
 }
@@ -407,6 +467,10 @@ pub struct Visual {
     /// 1.0: actual size.
     pub scale: f64,
     pub alpha: f32,
+    /// Height of our titlebar above the content (0: none), logical px.
+    pub titlebar: i32,
+    /// The pointer is over the traffic lights: show their glyphs.
+    pub hover: bool,
 }
 
 impl Visual {
@@ -415,6 +479,8 @@ impl Visual {
         dy: 0.0,
         scale: 1.0,
         alpha: 1.0,
+        titlebar: 0,
+        hover: false,
     };
 }
 
@@ -467,6 +533,18 @@ pub fn output_elements(
         let geo_px = geo_f.to_physical(s);
         #[allow(clippy::cast_possible_truncation)]
         let radius = (WINDOW_RADIUS * scale * v.scale) as f32;
+        // With our titlebar on top, the frame is titlebar plus content and
+        // only the content's bottom corners are rounded.
+        let titlebar = f64::from(v.titlebar) * v.scale;
+        let frame_f: Rectangle<f64, Logical> = Rectangle::new(
+            (geo_f.loc.x, geo_f.loc.y - titlebar).into(),
+            (geo_f.size.w, geo_f.size.h + titlebar).into(),
+        );
+        let radii = if v.titlebar > 0 {
+            [0.0, 0.0, radius, radius]
+        } else {
+            [radius; 4]
+        };
         let origin_f = geo_f.loc - window.geometry().loc.to_f64().upscale(v.scale);
         let moved = v.dx != 0.0 || v.dy != 0.0;
         // Blur behind a window that is moving or scaled waits until it
@@ -482,7 +560,7 @@ pub fn output_elements(
         if !blurred.is_empty() {
             let clip = Clip {
                 window: geo_px,
-                radius,
+                radii,
                 fb_height,
             };
             match backdrop::backdrops(
@@ -501,10 +579,13 @@ pub fn output_elements(
             }
         }
         out.push_front(OutputElement::Shadow(shadow_element(
-            window, geo_f, shaders, v.scale, v.alpha,
+            window, frame_f, shaders, v.scale, v.alpha,
         )));
         for b in backdrops {
             out.push_front(OutputElement::Backdrop(b));
+        }
+        if v.titlebar > 0 {
+            decorations(renderer, shaders, window, frame_f, &v, &mut out);
         }
         let origin_px = origin_f.to_physical_precise_round(s);
         let surfaces: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
@@ -516,12 +597,328 @@ pub fn output_elements(
                 inner,
                 program: shaders.rounded.clone(),
                 clip: Rectangle::new(geo_px.loc - at, geo_px.size),
-                radius,
+                radii,
                 fb_height,
             }));
         }
     }
     out.into()
+}
+
+/// Text rendered into a buffer, with its size in pixels.
+type Rendered = (MemoryRenderBuffer, (i32, i32));
+
+/// Titlebar height, logical pixels (HIG: Window).
+pub const TITLEBAR_HEIGHT: i32 = 28;
+/// The traffic lights: diameter, the first one's centre from the frame's
+/// left edge, the distance between centres; all on the titlebar's middle.
+pub const BUTTON_DIAMETER: f64 = 12.0;
+pub const BUTTON_FIRST_X: f64 = 20.0;
+pub const BUTTON_STEP: f64 = 20.0;
+/// The title keeps clear of the buttons on both sides.
+const TITLE_INSET: f64 = 76.0;
+const TITLE_SIZE: f32 = 13.0;
+
+const fn rgb(r: u8, g: u8, b: u8) -> [f32; 4] {
+    [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 1.0]
+}
+const TITLEBAR_ACTIVE: [f32; 4] = rgb(0xEA, 0xEC, 0xE7);
+const TITLEBAR_INACTIVE: [f32; 4] = rgb(0xF3, 0xF4, 0xF1);
+const SEPARATOR: [f32; 4] = [0.0, 0.0, 0.0, 0.09];
+/// Close, minimize, zoom (our own colours, not anyone else's).
+const LIGHTS: [[f32; 4]; 3] = [
+    rgb(0xEE, 0x5D, 0x50),
+    rgb(0xF2, 0xB5, 0x3A),
+    rgb(0x3D, 0xB8, 0x62),
+];
+const LIGHT_OFF: [f32; 4] = rgb(0xD3, 0xD6, 0xD0);
+const TITLE_ACTIVE: [f32; 4] = [0.063, 0.082, 0.071, 0.85];
+const TITLE_INACTIVE: [f32; 4] = [0.063, 0.082, 0.071, 0.40];
+
+/// Premultiplies `c` and fades it by `alpha`.
+fn premul(c: [f32; 4], alpha: f32) -> [f32; 4] {
+    let a = c[3] * alpha;
+    [c[0] * a, c[1] * a, c[2] * a, a]
+}
+
+/// A darker ring for a traffic light (premultiplied).
+fn ring(c: [f32; 4], alpha: f32) -> [f32; 4] {
+    premul([c[0] * 0.82, c[1] * 0.82, c[2] * 0.82, c[3]], alpha)
+}
+
+// One element after another down the titlebar: long, but a list.
+#[allow(clippy::too_many_lines)]
+/// The titlebar of `window`, drawn at the top of `frame`: background,
+/// separator, title, and the traffic lights (with glyphs on hover; grey
+/// when the window is inactive and not hovered).
+fn decorations(
+    renderer: &mut GlesRenderer,
+    shaders: &Shaders,
+    window: &Window,
+    frame: Rectangle<f64, Logical>,
+    vis: &Visual,
+    out: &mut VecDeque<OutputElement>,
+) {
+    let zoom = vis.scale;
+    let active = is_focused(window);
+    let bar = Rectangle::<f64, Logical>::new(
+        frame.loc,
+        (frame.size.w, f64::from(TITLEBAR_HEIGHT) * zoom).into(),
+    );
+    #[allow(clippy::cast_possible_truncation)]
+    let r = (WINDOW_RADIUS * zoom) as f32;
+    let bg = if active {
+        TITLEBAR_ACTIVE
+    } else {
+        TITLEBAR_INACTIVE
+    };
+    let shape = |slot, rect, color, radii, border: f32, border_color| {
+        OutputElement::Shadow(cached_shape(
+            window,
+            slot,
+            shaders,
+            rect,
+            color,
+            radii,
+            border,
+            border_color,
+        ))
+    };
+    out.push_front(shape(
+        0,
+        bar,
+        premul(bg, vis.alpha),
+        [r, r, 0.0, 0.0],
+        0.0,
+        [0.0; 4],
+    ));
+    let line = Rectangle::new(
+        (bar.loc.x, bar.loc.y + bar.size.h - 1.0).into(),
+        (bar.size.w, 1.0).into(),
+    );
+    out.push_front(shape(
+        1,
+        line,
+        premul(SEPARATOR, vis.alpha),
+        [0.0; 4],
+        0.0,
+        [0.0; 4],
+    ));
+    // The title, centred, clear of the buttons.
+    if let Some((buffer, (tw, th))) = title_buffer(shaders, window, active, frame.size.w / zoom) {
+        let (tw, th) = (f64::from(tw) * zoom, f64::from(th) * zoom);
+        let x = (bar.loc.x + (bar.size.w - tw) / 2.0).max(bar.loc.x + TITLE_INSET * zoom);
+        let y = bar.loc.y + (bar.size.h - th) / 2.0;
+        #[allow(clippy::cast_possible_truncation)]
+        let size = Size::<i32, Logical>::from((tw.round() as i32, th.round() as i32));
+        if let Ok(e) = MemoryRenderBufferRenderElement::from_buffer(
+            renderer,
+            Point::<f64, Logical>::from((x, y)).to_physical(1.0),
+            &buffer,
+            Some(vis.alpha),
+            None,
+            Some(size),
+            Kind::Unspecified,
+        ) {
+            out.push_front(OutputElement::Image(e));
+        }
+    }
+    // The traffic lights.
+    let d = BUTTON_DIAMETER * zoom;
+    #[allow(clippy::cast_possible_truncation)]
+    let half = (d / 2.0) as f32;
+    let glyphs = vis.hover.then(|| traffic_light_glyphs(shaders)).flatten();
+    for (i, colour) in LIGHTS.iter().enumerate() {
+        #[allow(clippy::cast_precision_loss)]
+        let cx = bar.loc.x + (BUTTON_FIRST_X + BUTTON_STEP * i as f64) * zoom;
+        let cy = bar.loc.y + bar.size.h / 2.0;
+        let rect = Rectangle::new((cx - d / 2.0, cy - d / 2.0).into(), (d, d).into());
+        let c = if active || vis.hover {
+            *colour
+        } else {
+            LIGHT_OFF
+        };
+        #[allow(clippy::cast_possible_truncation)]
+        let slot = 2 + i as u8;
+        out.push_front(shape(
+            slot,
+            rect,
+            premul(c, vis.alpha),
+            [half; 4],
+            0.5,
+            ring(c, vis.alpha),
+        ));
+        if let Some(glyphs) = &glyphs
+            && let Some(g) = glyphs.get(i)
+        {
+            let (gw, gh) = (f64::from(g.1.0) * zoom, f64::from(g.1.1) * zoom);
+            #[allow(clippy::cast_possible_truncation)]
+            let size = Size::<i32, Logical>::from((gw.round() as i32, gh.round() as i32));
+            if let Ok(e) = MemoryRenderBufferRenderElement::from_buffer(
+                renderer,
+                Point::<f64, Logical>::from((cx - gw / 2.0, cy - gh / 2.0)).to_physical(1.0),
+                &g.0,
+                Some(vis.alpha),
+                None,
+                Some(size),
+                Kind::Unspecified,
+            ) {
+                out.push_front(OutputElement::Image(e));
+            }
+        }
+    }
+}
+
+/// Shapes already made for a window, by slot, so a titlebar that does not
+/// change is the same element (no damage) frame after frame.
+#[derive(Default)]
+struct ShapeCache(RefCell<std::collections::HashMap<u8, (PixelShaderElement, ShapeKey)>>);
+
+#[derive(Clone, Copy, PartialEq)]
+struct ShapeKey {
+    rect: Rectangle<i32, Logical>,
+    params: [u32; 13],
+}
+
+#[allow(clippy::too_many_arguments)]
+fn cached_shape(
+    window: &Window,
+    slot: u8,
+    shaders: &Shaders,
+    rect: Rectangle<f64, Logical>,
+    color: [f32; 4],
+    radii: [f32; 4],
+    border: f32,
+    border_color: [f32; 4],
+) -> PixelShaderElement {
+    let rect = rect.to_i32_round();
+    let mut params = [0u32; 13];
+    for (p, v) in params.iter_mut().zip(
+        color
+            .iter()
+            .chain(&radii)
+            .chain(&border_color)
+            .chain([&border]),
+    ) {
+        *p = v.to_bits();
+    }
+    let key = ShapeKey { rect, params };
+    let uniforms = || {
+        vec![
+            Uniform::new("color", color),
+            Uniform::new("radii", radii),
+            Uniform::new("border_color", border_color),
+            Uniform::new("border", border),
+        ]
+    };
+    let cache = window.user_data().get_or_insert(ShapeCache::default);
+    let mut map = cache.0.borrow_mut();
+    if let Some((e, old)) = map.get_mut(&slot) {
+        if old.rect != key.rect {
+            e.resize(key.rect, None);
+        }
+        if old.params != key.params {
+            e.update_uniforms(uniforms());
+        }
+        *old = key;
+        return e.clone();
+    }
+    let e = PixelShaderElement::new(
+        shaders.shape.clone(),
+        key.rect,
+        None,
+        1.0,
+        uniforms(),
+        Kind::Unspecified,
+    );
+    map.insert(slot, (e.clone(), key));
+    e
+}
+
+/// A window's rendered title, remade only when it or its state changes.
+#[derive(Default)]
+struct TitleCache(RefCell<Option<TitleEntry>>);
+
+/// What a title was rendered from (text, active, room) and the result.
+type TitleEntry = (String, bool, i32, Option<Rendered>);
+
+fn title_buffer(
+    shaders: &Shaders,
+    window: &Window,
+    active: bool,
+    frame_width: f64,
+) -> Option<Rendered> {
+    let title = window.toplevel().map(|t| {
+        smithay::wayland::compositor::with_states(t.wl_surface(), |states| {
+            states
+                .data_map
+                .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
+                .and_then(|d| d.lock().ok())
+                .and_then(|d| d.title.clone())
+                .unwrap_or_default()
+        })
+    })?;
+    #[allow(clippy::cast_possible_truncation)]
+    let max = (frame_width - 2.0 * TITLE_INSET).max(0.0) as i32;
+    let cache = window.user_data().get_or_insert(TitleCache::default);
+    let mut slot = cache.0.borrow_mut();
+    if let Some((t, a, m, buf)) = slot.as_ref()
+        && *t == title
+        && *a == active
+        && *m == max
+    {
+        return buf.clone();
+    }
+    let colour = if active { TITLE_ACTIVE } else { TITLE_INACTIVE };
+    #[allow(clippy::cast_precision_loss)]
+    let line = shaders
+        .fonts
+        .line(&title, TITLE_SIZE, Weight::SemiBold, colour, max as f32);
+    let buf = line.map(|l| {
+        (
+            MemoryRenderBuffer::from_slice(
+                &l.pixels,
+                Fourcc::Argb8888,
+                (l.width, l.height),
+                1,
+                Transform::Normal,
+                None,
+            ),
+            (l.width, l.height),
+        )
+    });
+    *slot = Some((title, active, max, buf.clone()));
+    buf
+}
+
+/// The glyphs shown on the traffic lights while hovered (close,
+/// minimize, zoom) and their sizes; made once.
+fn traffic_light_glyphs(shaders: &Shaders) -> Option<Vec<Rendered>> {
+    let mut slot = shaders.glyphs.borrow_mut();
+    if slot.is_none() {
+        let make = |c: &str| {
+            shaders
+                .fonts
+                .line(c, 11.0, Weight::SemiBold, [0.0, 0.0, 0.0, 0.6], 20.0)
+                .map(|l| {
+                    (
+                        MemoryRenderBuffer::from_slice(
+                            &l.pixels,
+                            Fourcc::Argb8888,
+                            (l.width, l.height),
+                            1,
+                            Transform::Normal,
+                            None,
+                        ),
+                        (l.width, l.height),
+                    )
+                })
+        };
+        if let (Some(a), Some(b), Some(c)) = (make("\u{00D7}"), make("\u{2212}"), make("+")) {
+            *slot = Some([a, b, c]);
+        }
+    }
+    slot.as_ref().map(|g| g.to_vec())
 }
 
 /// The blurred parts of a window's main surface, in output pixels,

@@ -219,6 +219,15 @@ impl Dispatch<FernWmV1, ()> for App {
             },
             E::RestoreWm { data } => Event::RestoreWm(data),
             E::Done => Event::Done,
+            E::WindowDecoration {
+                id,
+                server_side,
+                titlebar_height,
+            } => Event::Decoration {
+                id,
+                server_side: server_side != 0,
+                titlebar: titlebar_height,
+            },
             E::PointerButton {
                 window,
                 part,
@@ -228,6 +237,7 @@ impl Dispatch<FernWmV1, ()> for App {
                 pressed,
                 modifiers,
                 clicks,
+                edges,
             } => Event::Button {
                 window,
                 part: bits(part),
@@ -237,6 +247,7 @@ impl Dispatch<FernWmV1, ()> for App {
                 pressed: pressed != 0,
                 mods: flags(modifiers, |m| m.bits()),
                 clicks,
+                edges: flags(edges, |e| e.bits()),
             },
             E::PointerMotion { x, y } => Event::Motion { x, y },
             E::Key {

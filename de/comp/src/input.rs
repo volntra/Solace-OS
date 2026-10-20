@@ -99,6 +99,7 @@ impl Comp {
             return;
         };
         let pos = self.clamp_to_outputs(pointer.current_location() + event.delta());
+        self.update_hover(pos);
         let under = if self.wm_motion(pos) {
             self.surface_under(pos)
         } else {
@@ -150,6 +151,7 @@ impl Comp {
             return;
         };
         let pos = event.position_transformed(output_geo.size) + output_geo.loc.to_f64();
+        self.update_hover(pos);
         let under = if self.wm_motion(pos) {
             self.surface_under(pos)
         } else {

@@ -40,6 +40,15 @@ with unified titlebars, tables, outline views, column views.
 Traffic-light buttons top-left (close / minimize / zoom), glyphs on hover,
 dimmed when inactive; shadows tied to focus.
 
+| Element | Spec |
+|---|---|
+| Titlebar | 28 px, part of the window's rounded frame (top corners rounded, content below keeps the bottom ones); active #EAECE7, inactive #F3F4F1 |
+| Title | Inter SemiBold 13 px, centred, ellipsis when it would reach the lights (76 px inset each side) |
+| Lights | 12 px circles, first centre 20 px from the left edge, 20 px apart; close #EE5D50, minimize #F2B53A, zoom #3DB862; inactive and not hovered #D3D6D0 |
+| Glyphs | × − + drawn on hover over the lights, dark at 60 % |
+| Hit areas | each light: its circle plus 2 px; resize: 6 px outside the frame, 14 px corner squares |
+| Behaviour | a light acts on release over the same light; titlebar drag moves; double-click zooms; edges resize |
+
 ## Brand
 
 <img src="../../assets/brand/fern-icon-512.png" width="128" alt="Fern icon">

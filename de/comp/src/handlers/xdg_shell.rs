@@ -2,7 +2,7 @@
 // https://github.com/Smithay/smithay), for fern-comp.
 
 use smithay::{
-    delegate_xdg_shell,
+    delegate_xdg_decoration, delegate_xdg_shell,
     desktop::{PopupKind, Window, find_popup_root_surface, get_popup_toplevel_coords},
     input::{
         Seat,
@@ -30,6 +30,8 @@ use crate::{
     grabs::{MoveSurfaceGrab, ResizeSurfaceGrab},
 };
 use fern_wm_proto::server::fern_wm_v1::RequestKind;
+use smithay::reexports::wayland_protocols::xdg::decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode as DecorationMode;
+use smithay::wayland::shell::xdg::decoration::XdgDecorationHandler;
 
 impl XdgShellHandler for Comp {
     fn xdg_shell_state(&mut self) -> &mut XdgShellState {
@@ -186,6 +188,24 @@ impl XdgShellHandler for Comp {
 // Xdg Shell
 delegate_xdg_shell!(Comp);
 
+// Server-side decoration: we always draw our own titlebar when a client
+// lets us (whatever mode it prefers), so every window looks the same.
+impl XdgDecorationHandler for Comp {
+    fn new_decoration(&mut self, toplevel: ToplevelSurface) {
+        self.use_server_side(&toplevel);
+    }
+
+    fn request_mode(&mut self, toplevel: ToplevelSurface, _mode: DecorationMode) {
+        self.use_server_side(&toplevel);
+    }
+
+    fn unset_mode(&mut self, toplevel: ToplevelSurface) {
+        self.use_server_side(&toplevel);
+    }
+}
+
+delegate_xdg_decoration!(Comp);
+
 fn check_grab(
     seat: &Seat<Comp>,
     surface: &WlSurface,
@@ -221,6 +241,16 @@ impl Comp {
                     .is_some_and(|t| t.wl_surface() == surface)
             })
             .map(|r| r.window.clone())
+    }
+
+    fn use_server_side(&mut self, toplevel: &ToplevelSurface) {
+        toplevel.with_pending_state(|s| s.decoration_mode = Some(DecorationMode::ServerSide));
+        if toplevel.is_initial_configure_sent() {
+            toplevel.send_pending_configure();
+        }
+        if let Some(window) = self.window_for(toplevel.wl_surface()) {
+            self.wm_server_side(&window);
+        }
     }
 
     fn forward_request(&mut self, surface: &ToplevelSurface, kind: RequestKind) {

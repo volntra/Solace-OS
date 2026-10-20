@@ -1,0 +1,37 @@
+# Inter, the UI typeface (CLAUDE.md 3: Fonts/symbols). The compositor draws
+# window titles and the window manager's overlay text with it; the shell
+# and apps will too. Static Regular and SemiBold, plus the licence.
+name = "inter"
+version = "4.1"
+release = 1
+summary = "Inter typeface"
+license = "OFL-1.1"
+
+# A working directory for the build (this recipe's own folder); the
+# archive lands next to it.
+[[source]]
+local = "recipes/inter"
+dir = "inter"
+
+[[source]]
+url = "https://github.com/rsms/inter/releases/download/v4.1/Inter-4.1.zip"
+sha256 = "9883fdd4a49d4fb66bd8177ba6625ef9a64aa45899767dde3d36aa425756b11e"
+extract = false
+
+[build]
+system = "custom"
+toolchain = "host"
+compile = '''
+python3 - ../Inter-4.1.zip <<'PY'
+import sys, zipfile
+z = zipfile.ZipFile(sys.argv[1])
+for n in ("extras/ttf/Inter-Regular.ttf", "extras/ttf/Inter-SemiBold.ttf", "LICENSE.txt"):
+    with open(n.split("/")[-1], "wb") as f:
+        f.write(z.read(n))
+PY
+'''
+install = '''
+install -Dm644 Inter-Regular.ttf "$DESTDIR/usr/share/fonts/inter/Inter-Regular.ttf"
+install -Dm644 Inter-SemiBold.ttf "$DESTDIR/usr/share/fonts/inter/Inter-SemiBold.ttf"
+install -Dm644 LICENSE.txt "$DESTDIR/usr/share/licenses/inter/LICENSE.txt"
+'''

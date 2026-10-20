@@ -15,7 +15,7 @@ include = ["Cargo.toml", "Cargo.lock", "init", "boot/bootgen", "pkg", "tools/fer
 
 [deps]
 build = ["pkgconf", "seatd", "libinput", "libudev", "mesa", "libglvnd", "libdrm", "libxkbcommon"]
-runtime = ["seatd", "libinput", "libudev", "mesa", "libglvnd", "libxkbcommon", "xkeyboard-config", "gcc-libs", "fern-wallpapers", "udev"]
+runtime = ["seatd", "libinput", "libudev", "mesa", "libglvnd", "libxkbcommon", "xkeyboard-config", "gcc-libs", "fern-wallpapers", "inter", "udev"]
 
 [build]
 system = "custom"

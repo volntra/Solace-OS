@@ -7,8 +7,22 @@ Repository: https://github.com/volntra/Solace-OS (`main`).
 ## Current phase: 5 (window manager): in progress
 
 Phase 5 stages: 1 protocol + fern-wm process + crash recovery ✓, 2 spring
-animations ✓; next 3 titlebars with traffic lights, 4 tiling, 5 Spaces,
+animations ✓, 3 titlebars with traffic lights ✓; next 4 tiling, 5 Spaces,
 6 minimize, 7 Overview and the app switcher, 8 QEMU test and demo.
+
+Stage 3 (2026-10-20): every window gets a server-side titlebar drawn by the
+core (28 px, rounded top corners, title in Inter SemiBold, centred and
+shortened with an ellipsis), with close / minimize / zoom lights top-left:
+grey when the window is inactive, coloured when active or hovered, glyphs
+(× − +) on hover. A light acts on release over the same light. Dragging the
+titlebar moves the window, a double-click zooms it (to the whole display
+for now; to the area between the menu bar and the dock once the shell
+exists), and the window's edges and corners resize it. Minimize shrinks
+the window toward the bottom of the display and hides it (the dock target
+comes in stage 6). Clients asking for maximize/minimize are handled by the
+window manager. Inter is now a package (`inter`) and the compositor's
+runtime dependency. Tests: `cargo test -p fern-comp --test render` (10
+scenarios, including `wm_titlebar` and `wm_zoom`).
 
 Stage 2 (2026-10-20): the core animates every placement the window manager
 asks for on the HIG springs (instant, snappy, smooth, gentle): position,
@@ -163,7 +177,7 @@ Mesa 26.2 (EGL, GBM, GLES2; virgl + softpipe; no LLVM). All built in the
 cloud container; a scratch root with them installed has every library
 dependency resolved; in the image since stage 5.
 
-Not yet: server-side titlebars (Phase 5, fern-wm), every protocol beyond
+Not yet (server-side titlebars came in Phase 5): every protocol beyond
 xdg-shell and blur, layer-shell (the dock and menu bar need it),
 multi-GPU, Vulkan on NVIDIA (needs the Vulkan loader), hotplug module
 loading. GPU clients and NVIDIA have not run yet. Several displays are laid

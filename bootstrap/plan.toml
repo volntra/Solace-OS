@@ -66,7 +66,7 @@ recipes = [
     "python-packaging", "python-pyyaml", "gperf", "libcap", "udev",
     "libdrm", "wayland", "wayland-protocols", "xkeyboard-config",
     "libxkbcommon", "libevdev", "mtdev", "libinput", "seatd", "libglvnd",
-    "mesa", "fern-wallpapers", "fern-comp",
+    "mesa", "fern-wallpapers", "inter", "fern-comp",
     # Optional hardware support (not in the base image).
     "nvidia",
 ]

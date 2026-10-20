@@ -468,6 +468,94 @@ fn wm_restart_keeps_windows(h: &mut Harness) -> Result {
     check(h.focused(2), || "the new window does not have focus".into())
 }
 
+/// Clicks (press and release) with the left button at (x, y).
+fn click(h: &mut Harness, x: f64, y: f64, times: u32) -> Result {
+    let at = smithay::utils::Point::from((x, y));
+    for _ in 0..times {
+        h.data.state.wm_button(at, 0x110, true);
+        h.data.state.wm_button(at, 0x110, false);
+    }
+    h.settle()
+}
+
+fn wm_titlebar(h: &mut Harness) -> Result {
+    use fern_wm_proto::server::fern_wm_v1::Part;
+    h.open("--color 3a86ffff --size 400x260 --title Notes")?;
+    let img = h.shot("titlebar")?;
+    let (x, y) = h.location(0);
+    let tb = ferncomp::render::TITLEBAR_HEIGHT;
+    // The titlebar sits above the content: light, with a red close light
+    // (the window is focused) and the content below it.
+    let bar = img.pixel(x + 200, y - tb + 4);
+    check(near(bar, [0xEA, 0xEC, 0xE7], 6), || {
+        format!("titlebar colour {bar:?}")
+    })?;
+    let close = img.pixel(x + 20, y - tb / 2);
+    check(near(close, [0xEE, 0x5D, 0x50], 30), || {
+        format!("close light {close:?}")
+    })?;
+    let content = img.pixel(x + 200, y + 10);
+    check(near(content, [0x3a, 0x86, 0xff], 4), || {
+        format!("content {content:?}")
+    })?;
+    // The core hits the parts where they are drawn.
+    let part_at = |h: &Harness, dx: f64| {
+        h.data
+            .state
+            .hit((f64::from(x) + dx, f64::from(y - tb / 2)).into())
+            .map(|hit| hit.part)
+    };
+    check(part_at(h, 20.0) == Some(Part::Close), || {
+        "close not hit".into()
+    })?;
+    check(part_at(h, 40.0) == Some(Part::Minimize), || {
+        "minimize not hit".into()
+    })?;
+    check(part_at(h, 60.0) == Some(Part::Zoom), || {
+        "zoom not hit".into()
+    })?;
+    check(part_at(h, 200.0) == Some(Part::Titlebar), || {
+        "titlebar not hit".into()
+    })?;
+    // Close acts on release over the button: the client is asked to close
+    // and goes away.
+    click(h, f64::from(x) + 20.0, f64::from(y - tb / 2), 1)?;
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while h.data.state.space.elements().next().is_some() {
+        check(Instant::now() < deadline, || {
+            "the window did not close".into()
+        })?;
+        h.turn()?;
+    }
+    Ok(())
+}
+
+fn wm_zoom(h: &mut Harness) -> Result {
+    h.open("--color 2ec4b6ff --size 300x200 --title Zoom")?;
+    let (x, y) = h.location(0);
+    let tb = ferncomp::render::TITLEBAR_HEIGHT;
+    // A double click on the titlebar fills the screen, content under the
+    // titlebar; another one brings it back.
+    click(h, f64::from(x) + 150.0, f64::from(y - tb / 2), 2)?;
+    let size = h.windows[0].geometry().size;
+    check(h.location(0) == (0, tb), || {
+        format!("zoomed to {:?}", h.location(0))
+    })?;
+    check((size.w, size.h) == (SIZE.0, SIZE.1 - tb), || {
+        format!("zoomed size {size:?}")
+    })?;
+    h.shot("zoomed")?;
+    let (zx, zy) = h.location(0);
+    click(h, f64::from(zx) + 400.0, f64::from(zy - tb / 2), 2)?;
+    let size = h.windows[0].geometry().size;
+    check(h.location(0) == (x, y), || {
+        format!("unzoomed to {:?}", h.location(0))
+    })?;
+    check((size.w, size.h) == (300, 200), || {
+        format!("unzoomed size {size:?}")
+    })
+}
+
 const SCENARIOS: &[Scenario] = &[
     ("orientation", orientation),
     ("corners_and_shadow", corners_and_shadow),
@@ -477,6 +565,8 @@ const SCENARIOS: &[Scenario] = &[
     ("idle_frames_have_no_damage", idle_frames_have_no_damage),
     ("wm_places_and_focuses", wm_places_and_focuses),
     ("wm_restart_keeps_windows", wm_restart_keeps_windows),
+    ("wm_titlebar", wm_titlebar),
+    ("wm_zoom", wm_zoom),
 ];
 
 fn main() -> ExitCode {
@@ -493,6 +583,11 @@ fn main() -> ExitCode {
     unsafe {
         std::env::set_var("XDG_RUNTIME_DIR", &runtime);
         std::env::set_var("LIBGL_ALWAYS_SOFTWARE", "1");
+        // Titles in screenshots, when `just fonts` has unpacked Inter.
+        std::env::set_var(
+            "FERN_FONTS",
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../build/fonts"),
+        );
         if let Some(mesa) = std::env::var_os("MESA_EGL_VENDOR_DIR") {
             std::env::set_var("__EGL_VENDOR_LIBRARY_DIRS", mesa);
         }

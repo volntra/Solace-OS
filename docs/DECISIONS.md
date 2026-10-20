@@ -72,6 +72,7 @@ entry names a recipe that does not exist.
 - `fern-grub-theme`: ours (boot/grub-theme/): boot menu theme + Inter fonts for GRUB.
 - `fern-comp`: our compositor (Phase 4); the image's display server.
 - `fern-wallpapers`: our wallpapers, rendered from assets/wallpapers.
+- `inter`: the UI typeface (CLAUDE.md 3); the core draws window titles with it.
 - `spk`: ours (pkg/): the package manager; system transactions on a running Fern.
 - `tar`: unpacking sources; archives.
 - `udev`: device manager from the systemd tree (standalone, locked stack): hotplug, device nodes, libudev for libinput.
@@ -783,3 +784,27 @@ frame missed the next vblank (about 5 a second).
   can animate out without the window manager timing anything.
 - **Not done:** closing windows cannot fade (the client destroys its
   buffers); that needs a snapshot of the last frame, later.
+
+### 2026-10-20: Titlebars are drawn by the core (Phase 5, stage 3)
+
+- **Decision:** fern-comp answers every xdg-decoration request with
+  server-side, and draws titlebars itself: a rounded rectangle and circle
+  shader (`SHAPE_FRAG`) for the bar and the traffic lights, and Inter
+  rasterized with `ab_glyph` for titles and glyphs, cached per window so an
+  idle desktop damages nothing. The window manager decides *whether* a
+  window has a titlebar (`decoration`) and what clicks on it do; the core
+  reports which part was hit (`pointer_button.part`, with resize `edges`).
+- **Alternatives:** the window manager draws decorations as its own
+  surfaces (one more buffer per window, and a crashed WM would leave
+  windows bare); clients draw their own (Qt and GTK would each look
+  different, contrary to CLAUDE.md 6.6).
+- **Why:** decorations stay on screen through a WM crash, move with the
+  window's spring for free, and look the same for every toolkit. Clients
+  that insist on drawing their own (no xdg-decoration) are still placed
+  and managed; they simply get no titlebar.
+- **Inter** becomes a package (`inter`, upstream release zip, SIL OFL);
+  without it the core still runs and draws titlebars without titles.
+- **Not done:** zoom fills the whole display until the shell reserves the
+  menu bar and dock (Phase 6); minimize targets the bottom centre until
+  the dock reports icon rectangles; dark-mode titlebars arrive with
+  settingsd.
