@@ -122,6 +122,12 @@ def main():
         if not sock.startswith("wayland-"):
             fail(f"no Wayland socket in /run/user/0: {sock!r}")
         c.run(f"export XDG_RUNTIME_DIR=/run/user/0 WAYLAND_DISPLAY={sock}", "the client environment")
+        globals = c.run(f"{CLIENT} --globals", "the compositor's globals")
+        for g in ("zwp_linux_dmabuf_v1", "org_kde_kwin_blur_manager", "xdg_wm_base"):
+            if g not in globals:
+                fail(f"sol-comp does not offer {g}: {globals!r}")
+        sync = "with" if "wp_linux_drm_syncobj_manager_v1" in globals else "without"
+        ok(f"protocols: GPU buffers (linux-dmabuf), blur, xdg-shell; {sync} explicit sync on this GPU")
         start_client(c, "--stripes --size 600x400")
         sx, sy = placed(600, 400, size)
         wait_for(c, "stripes", lambda s: has_stripes(s, sy + 200, sx + 50, sx + 550), "the striped window")

@@ -2,6 +2,8 @@
 // https://github.com/Smithay/smithay), for sol-comp.
 
 mod compositor;
+mod dmabuf;
+pub use dmabuf::wait_for_gpu_before_commit;
 mod xdg_shell;
 
 use crate::state::Comp;

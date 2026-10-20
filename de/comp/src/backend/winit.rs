@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use smithay::{
     backend::{
-        renderer::{damage::OutputDamageTracker, gles::GlesRenderer},
+        renderer::{ImportDma, damage::OutputDamageTracker, gles::GlesRenderer},
         winit::{self, WinitEvent, WinitGraphicsBackend},
     },
     output::{Mode, Output, PhysicalProperties, Subpixel},
@@ -18,6 +18,9 @@ use smithay::{
     },
     utils::{Rectangle, Transform},
 };
+
+#[cfg(feature = "drm")]
+use smithay::wayland::dmabuf::DmabufFeedbackBuilder;
 
 use crate::{
     Comp, LoopData,
@@ -73,8 +76,17 @@ pub fn init(
     output.set_preferred(mode);
     data.state.space.map_output(&output, (0, 0));
     let shaders = Shaders::compile(backend.renderer())?;
+    gpu_clients(&mut backend, &mut data.state);
+    let backend_rc = Rc::new(RefCell::new(backend));
+    let weak = Rc::downgrade(&backend_rc);
+    data.state.dmabuf_import = Some(Box::new(move |dmabuf| {
+        weak.upgrade().is_some_and(|b| {
+            b.try_borrow_mut()
+                .is_ok_and(|mut b| b.renderer().import_dmabuf(dmabuf, None).is_ok())
+        })
+    }));
     let mut nested = Nested {
-        backend: Rc::new(RefCell::new(backend)),
+        backend: Rc::clone(&backend_rc),
         damage_tracker: OutputDamageTracker::from_output(&output),
         output,
         shaders,
@@ -102,6 +114,35 @@ pub fn init(
             WinitEvent::Focus(_) => (),
         })?;
     Ok(())
+}
+
+/// GPU buffers from clients: linux-dmabuf with the renderer's formats,
+/// with feedback when the host GPU's render node is known.
+fn gpu_clients(backend: &mut WinitGraphicsBackend<GlesRenderer>, state: &mut Comp) {
+    let formats = backend.renderer().dmabuf_formats();
+    // Finding the render node needs the DRM support; without it, clients
+    // get the formats without device feedback.
+    #[cfg(feature = "drm")]
+    let feedback = smithay::backend::egl::EGLDevice::device_for_display(
+        backend.renderer().egl_context().display(),
+    )
+    .ok()
+    .and_then(|d| d.try_get_render_node().ok().flatten())
+    .and_then(|n| {
+        DmabufFeedbackBuilder::new(n.dev_id(), formats.clone())
+            .build()
+            .ok()
+    });
+    #[cfg(not(feature = "drm"))]
+    let feedback: Option<smithay::wayland::dmabuf::DmabufFeedback> = None;
+    let dh = state.display_handle.clone();
+    let global = match feedback {
+        Some(feedback) => state
+            .dmabuf_state
+            .create_global_with_default_feedback::<Comp>(&dh, &feedback),
+        None => state.dmabuf_state.create_global::<Comp>(&dh, formats),
+    };
+    state.dmabuf_global = Some(global);
 }
 
 impl Nested<'_> {

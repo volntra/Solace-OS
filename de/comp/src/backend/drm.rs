@@ -22,7 +22,7 @@ use smithay::{
             gbm::{GbmAllocator, GbmBufferFlags, GbmDevice},
         },
         drm::{
-            DrmDevice, DrmDeviceFd, DrmDeviceNotifier, DrmEvent, DrmNode,
+            DrmDevice, DrmDeviceFd, DrmDeviceNotifier, DrmEvent, DrmEventTime, DrmNode, NodeType,
             compositor::FrameFlags,
             exporter::gbm::GbmFramebufferExporter,
             output::{DrmOutput, DrmOutputManager, DrmOutputRenderElements},
@@ -30,13 +30,17 @@ use smithay::{
         egl::{EGLContext, EGLDevice, EGLDisplay},
         libinput::{LibinputInputBackend, LibinputSessionInterface},
         renderer::{
+            ImportDma,
             element::{
                 Kind,
                 memory::{MemoryRenderBuffer, MemoryRenderBufferRenderElement},
             },
             gles::GlesRenderer,
         },
-        session::{Event as SessionEvent, Session, libseat::LibSeatSession},
+        session::{
+            Event as SessionEvent, Session,
+            libseat::{LibSeatSession, LibSeatSessionNotifier},
+        },
         udev::{UdevBackend, UdevEvent, all_gpus, primary_gpu},
     },
     output::{Mode as WlMode, Output, PhysicalProperties, Subpixel},
@@ -50,6 +54,10 @@ use smithay::{
         rustix::fs::OFlags,
     },
     utils::{DeviceFd, Logical, Point, Rectangle, Transform},
+    wayland::{
+        dmabuf::DmabufFeedbackBuilder,
+        drm_syncobj::{DrmSyncobjState, supports_syncobj_eventfd},
+    },
 };
 
 use crate::{
@@ -58,6 +66,7 @@ use crate::{
     cursor,
     render::{self, OutputElement, Shaders, Wallpaper},
     state::SessionRequest,
+    stats::FrameStats,
 };
 
 type Allocator = GbmAllocator<DrmDeviceFd>;
@@ -76,6 +85,8 @@ struct Screen {
     refresh: Duration,
     /// Its render loop is running (stops while the session is paused).
     running: bool,
+    /// Frame timing, when `SOL_COMP_STATS` is set.
+    stats: Option<FrameStats>,
 }
 
 struct Drm {
@@ -152,8 +163,76 @@ pub fn init(
         })
     });
 
-    let handle = event_loop.handle();
-    let d = Rc::clone(&drm);
+    register_sources(
+        &event_loop.handle(),
+        &drm,
+        libinput,
+        notifier,
+        drm_events,
+        &seat,
+    )?;
+    gpu_clients(&drm, node, &mut data.state);
+
+    drm.borrow_mut().scan(&mut data.state);
+    if drm.borrow().screens.is_empty() {
+        return Err("no connected display".into());
+    }
+    // The loop's sources own the backend from here on.
+    Ok(())
+}
+
+/// Lets clients render on the GPU: linux-dmabuf with the renderer's
+/// formats (clients render on the GPU's render node), every buffer
+/// checked by importing it, and explicit sync when the kernel driver
+/// supports it.
+fn gpu_clients(drm: &Rc<RefCell<Drm>>, node: DrmNode, state: &mut Comp) {
+    let render_node = node
+        .node_with_type(NodeType::Render)
+        .and_then(Result::ok)
+        .unwrap_or(node);
+    let (formats, fd) = {
+        let d = drm.borrow();
+        (
+            d.renderer.dmabuf_formats(),
+            d.manager.device().device_fd().clone(),
+        )
+    };
+    match DmabufFeedbackBuilder::new(render_node.dev_id(), formats).build() {
+        Ok(feedback) => {
+            let dh = state.display_handle.clone();
+            state.dmabuf_global = Some(
+                state
+                    .dmabuf_state
+                    .create_global_with_default_feedback::<Comp>(&dh, &feedback),
+            );
+            let weak = Rc::downgrade(drm);
+            state.dmabuf_import = Some(Box::new(move |dmabuf| {
+                weak.upgrade().is_some_and(|drm| {
+                    drm.try_borrow_mut()
+                        .is_ok_and(|mut drm| drm.renderer.import_dmabuf(dmabuf, None).is_ok())
+                })
+            }));
+        }
+        Err(e) => tracing::warn!("no GPU buffers for clients: {e}"),
+    }
+    if supports_syncobj_eventfd(&fd) {
+        state.syncobj_state = Some(DrmSyncobjState::new::<Comp>(&state.display_handle, fd));
+    } else {
+        tracing::info!("no explicit sync (the kernel driver does not support it)");
+    }
+}
+
+/// Connects the backend to the event loop: input, session changes,
+/// vblanks and display hotplug.
+fn register_sources(
+    handle: &LoopHandle<'static, LoopData>,
+    drm: &Rc<RefCell<Drm>>,
+    libinput: Libinput,
+    notifier: LibSeatSessionNotifier,
+    drm_events: DrmDeviceNotifier,
+    seat: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let d = Rc::clone(drm);
     handle
         .insert_source(
             LibinputInputBackend::new(libinput),
@@ -169,7 +248,7 @@ pub fn init(
         )
         .map_err(|e| format!("event loop: {}", e.error))?;
 
-    let d = Rc::clone(&drm);
+    let d = Rc::clone(drm);
     handle
         .insert_source(notifier, move |event, (), data| {
             if let Ok(mut drm) = d.try_borrow_mut() {
@@ -181,12 +260,19 @@ pub fn init(
         })
         .map_err(|e| format!("event loop: {}", e.error))?;
 
-    let d = Rc::clone(&drm);
+    let d = Rc::clone(drm);
     handle
-        .insert_source(drm_events, move |event, _, data| match event {
+        .insert_source(drm_events, move |event, metadata, data| match event {
             DrmEvent::VBlank(crtc) => {
                 if let Ok(mut drm) = d.try_borrow_mut() {
-                    drm.vblank(crtc, &mut data.state);
+                    let at = match metadata.as_ref().map(|m| m.time) {
+                        Some(DrmEventTime::Monotonic(t)) => Some(t),
+                        Some(DrmEventTime::Realtime(t)) => {
+                            t.duration_since(std::time::UNIX_EPOCH).ok()
+                        }
+                        None => None,
+                    };
+                    drm.vblank(crtc, at, &mut data.state);
                 }
             }
             DrmEvent::Error(e) => tracing::warn!("drm: {e}"),
@@ -194,9 +280,9 @@ pub fn init(
         .map_err(|e| format!("event loop: {}", e.error))?;
 
     // Displays plugged in or out.
-    let d = Rc::clone(&drm);
+    let d = Rc::clone(drm);
     handle
-        .insert_source(UdevBackend::new(&seat)?, move |event, (), data| {
+        .insert_source(UdevBackend::new(seat)?, move |event, (), data| {
             if let UdevEvent::Changed { device_id } = event
                 && let Ok(mut drm) = d.try_borrow_mut()
                 && drm.node.dev_id() == device_id
@@ -205,12 +291,6 @@ pub fn init(
             }
         })
         .map_err(|e| format!("event loop: {}", e.error))?;
-
-    drm.borrow_mut().scan(&mut data.state);
-    if drm.borrow().screens.is_empty() {
-        return Err("no connected display".into());
-    }
-    // The loop's sources own the backend from here on.
     Ok(())
 }
 
@@ -419,6 +499,8 @@ impl Drm {
                 drm,
                 refresh: Duration::from_micros(1_000_000_000 / millihertz),
                 running: false,
+                stats: std::env::var_os("SOL_COMP_STATS")
+                    .map(|_| FrameStats::new(Duration::from_micros(1_000_000_000 / millihertz))),
             },
         );
         self.start(crtc);
@@ -522,10 +604,15 @@ impl Drm {
     }
 
     /// The display showed the queued frame.
-    fn vblank(&mut self, crtc: crtc::Handle, state: &mut Comp) {
+    fn vblank(&mut self, crtc: crtc::Handle, at: Option<Duration>, state: &mut Comp) {
         let Some(screen) = self.screens.get_mut(&crtc) else {
             return;
         };
+        if let (Some(stats), Some(at)) = (screen.stats.as_mut(), at)
+            && let Some(report) = stats.presented(at)
+        {
+            tracing::info!(output = screen.output.name(), "{report}");
+        }
         if let Err(e) = screen.drm.frame_submitted() {
             tracing::warn!("frame submitted: {e:?}");
         }

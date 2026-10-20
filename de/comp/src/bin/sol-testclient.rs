@@ -3,18 +3,23 @@
 //! and can ask for background blur.
 //!
 //! ```text
-//! sol-testclient [--size WxH] [--color RRGGBBAA] [--stripes]
-//!                [--blur | --blur-region X,Y,W,H] [--title T]
+//! sol-testclient [--size WxH] [--color RRGGBBAA] [--stripes] [--animate]
+//!                [--blur | --blur-region X,Y,W,H] [--title T] [--globals]
 //! ```
+//!
+//! `--animate` moves the stripes every frame the compositor asks for, so
+//! it draws at the display's refresh rate (for frame timing). `--globals`
+//! lists the compositor's globals and exits.
 
-use std::io::Write;
 use std::os::fd::AsFd;
+use std::os::unix::fs::FileExt;
 
 use wayland_client::{
     Connection, Dispatch, QueueHandle, delegate_noop,
     globals::{GlobalListContents, registry_queue_init},
     protocol::{
-        wl_buffer::WlBuffer,
+        wl_buffer::{self, WlBuffer},
+        wl_callback::{self, WlCallback},
         wl_compositor::WlCompositor,
         wl_region::WlRegion,
         wl_registry::WlRegistry,
@@ -34,11 +39,17 @@ use wayland_protocols_plasma::blur::client::{
 
 /// What to draw.
 #[derive(Debug, Clone, PartialEq)]
+// Command-line flags: each bool is one switch.
+#[allow(clippy::struct_excessive_bools)]
 struct Options {
     size: (i32, i32),
     /// Straight (not premultiplied) RGBA.
     color: [u8; 4],
     stripes: bool,
+    /// New frame on every frame callback (implies `stripes`).
+    animate: bool,
+    /// Print the globals (interface and version) and exit.
+    globals: bool,
     blur: bool,
     /// Blur only this part of the surface (implies `blur`).
     blur_region: Option<(i32, i32, i32, i32)>,
@@ -51,6 +62,8 @@ impl Default for Options {
             size: (480, 320),
             color: [0xf4, 0xf1, 0xfa, 0xff],
             stripes: false,
+            animate: false,
+            globals: false,
             blur: false,
             blur_region: None,
             title: "Test".into(),
@@ -94,6 +107,11 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
             "--color" => o.color = parse_color(value()?).ok_or("--color wants RRGGBBAA")?,
             "--title" => o.title.clone_from(value()?),
             "--stripes" => o.stripes = true,
+            "--globals" => o.globals = true,
+            "--animate" => {
+                o.animate = true;
+                o.stripes = true;
+            }
             "--blur" => o.blur = true,
             "--blur-region" => {
                 o.blur_region = Some(parse_rect(value()?).ok_or("--blur-region wants X,Y,W,H")?);
@@ -106,8 +124,8 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
 }
 
 /// The window's pixels: little-endian ARGB8888 (B, G, R, A bytes),
-/// premultiplied.
-fn pixels(o: &Options, (w, h): (i32, i32)) -> Vec<u8> {
+/// premultiplied. `phase` shifts the stripes (animation).
+fn pixels(o: &Options, (w, h): (i32, i32), phase: i32) -> Vec<u8> {
     let premultiply = |[r, g, b, a]: [u8; 4]| {
         let m = |c: u8| u8::try_from(u16::from(c) * u16::from(a) / 255).unwrap_or(255);
         [m(b), m(g), m(r), a]
@@ -123,7 +141,7 @@ fn pixels(o: &Options, (w, h): (i32, i32)) -> Vec<u8> {
     for y in 0..h {
         for x in 0..w {
             let c = if o.stripes {
-                bands[usize::try_from((x + y) / 24).unwrap_or(0) % bands.len()]
+                bands[usize::try_from((x + y + phase).rem_euclid(96) / 24).unwrap_or(0)]
             } else {
                 o.color
             };
@@ -133,37 +151,94 @@ fn pixels(o: &Options, (w, h): (i32, i32)) -> Vec<u8> {
     out
 }
 
+/// Two shm buffers in one file, used in turn: one can be on screen while
+/// the other is drawn.
+struct Buffers {
+    file: std::fs::File,
+    size: (i32, i32),
+    generation: u32,
+    slots: [WlBuffer; 2],
+    busy: [bool; 2],
+}
+
 struct App {
     options: Options,
     shm: WlShm,
     surface: WlSurface,
     size: (i32, i32),
-    /// Set by a configure: draw at this size before the next commit.
+    buffers: Option<Buffers>,
+    generation: u32,
+    /// Stripe offset, advanced per frame when animating.
+    phase: i32,
+    /// Set by a configure or a frame callback: draw before the next commit.
     redraw: bool,
     closed: bool,
 }
 
 impl App {
+    fn buffers(&mut self, qh: &QueueHandle<App>) -> Result<&mut Buffers, String> {
+        if self.buffers.as_ref().is_none_or(|b| b.size != self.size) {
+            let (w, h) = self.size;
+            let frame = w * h * 4;
+            let dir = std::env::var_os("XDG_RUNTIME_DIR").ok_or("XDG_RUNTIME_DIR is not set")?;
+            let path =
+                std::path::Path::new(&dir).join(format!("sol-testclient-{}", std::process::id()));
+            let file = std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create_new(true)
+                .open(&path)
+                .map_err(|e| format!("{}: {e}", path.display()))?;
+            let _ = std::fs::remove_file(&path);
+            file.set_len(u64::try_from(frame * 2).map_err(|_| "window too large")?)
+                .map_err(|e| format!("shm: {e}"))?;
+            let pool = self.shm.create_pool(file.as_fd(), frame * 2, qh, ());
+            self.generation += 1;
+            let g = self.generation;
+            let slot = |i: usize, offset: i32| {
+                pool.create_buffer(offset, w, h, w * 4, wl_shm::Format::Argb8888, qh, (g, i))
+            };
+            let slots = [slot(0, 0), slot(1, frame)];
+            pool.destroy();
+            if let Some(old) = self.buffers.take() {
+                for b in old.slots {
+                    b.destroy();
+                }
+            }
+            self.buffers = Some(Buffers {
+                file,
+                size: self.size,
+                generation: g,
+                slots,
+                busy: [false; 2],
+            });
+        }
+        self.buffers
+            .as_mut()
+            .ok_or_else(|| "no buffers".to_string())
+    }
+
     fn draw(&mut self, qh: &QueueHandle<App>) -> Result<(), String> {
+        let data = pixels(&self.options, self.size, self.phase);
         let (w, h) = self.size;
-        let data = pixels(&self.options, self.size);
-        let dir = std::env::var_os("XDG_RUNTIME_DIR").ok_or("XDG_RUNTIME_DIR is not set")?;
-        let path =
-            std::path::Path::new(&dir).join(format!("sol-testclient-{}", std::process::id()));
-        let mut file = std::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create_new(true)
-            .open(&path)
-            .map_err(|e| format!("{}: {e}", path.display()))?;
-        let _ = std::fs::remove_file(&path);
-        file.write_all(&data).map_err(|e| format!("shm: {e}"))?;
-        let len = i32::try_from(data.len()).map_err(|_| "window too large")?;
-        let pool = self.shm.create_pool(file.as_fd(), len, qh, ());
-        let buffer = pool.create_buffer(0, w, h, w * 4, wl_shm::Format::Argb8888, qh, ());
-        pool.destroy();
+        let animate = self.options.animate;
+        let bufs = self.buffers(qh)?;
+        // Both buffers still in use: draw when one is released.
+        let Some(i) = bufs.busy.iter().position(|b| !b) else {
+            return Ok(());
+        };
+        let offset = u64::try_from(i * data.len()).map_err(|_| "window too large")?;
+        bufs.file
+            .write_all_at(&data, offset)
+            .map_err(|e| format!("shm: {e}"))?;
+        bufs.busy[i] = true;
+        let buffer = bufs.slots[i].clone();
         self.surface.attach(Some(&buffer), 0, 0);
         self.surface.damage_buffer(0, 0, w, h);
+        if animate {
+            self.surface.frame(qh, ());
+            self.phase = (self.phase + 2) % 96;
+        }
         self.surface.commit();
         Ok(())
     }
@@ -189,6 +264,12 @@ fn run(options: Options) -> Result<(), String> {
     let (globals, mut queue) =
         registry_queue_init::<App>(&conn).map_err(|e| format!("registry: {e}"))?;
     let qh = queue.handle();
+    if options.globals {
+        for g in globals.contents().clone_list() {
+            println!("{} {}", g.interface, g.version);
+        }
+        return Ok(());
+    }
     let compositor: WlCompositor = globals
         .bind(&qh, 1..=6, ())
         .map_err(|e| format!("wl_compositor: {e}"))?;
@@ -224,6 +305,9 @@ fn run(options: Options) -> Result<(), String> {
         options,
         shm,
         surface,
+        buffers: None,
+        generation: 0,
+        phase: 0,
         redraw: false,
         closed: false,
     };
@@ -308,7 +392,38 @@ delegate_noop!(App: OrgKdeKwinBlurManager);
 delegate_noop!(App: OrgKdeKwinBlur);
 delegate_noop!(App: ignore WlShm);
 delegate_noop!(App: ignore WlSurface);
-delegate_noop!(App: ignore WlBuffer);
+impl Dispatch<WlBuffer, (u32, usize)> for App {
+    fn event(
+        app: &mut Self,
+        _: &WlBuffer,
+        event: wl_buffer::Event,
+        (generation, i): &(u32, usize),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let wl_buffer::Event::Release = event
+            && let Some(b) = app.buffers.as_mut()
+            && b.generation == *generation
+        {
+            b.busy[*i] = false;
+        }
+    }
+}
+
+impl Dispatch<WlCallback, ()> for App {
+    fn event(
+        app: &mut Self,
+        _: &WlCallback,
+        event: wl_callback::Event,
+        (): &(),
+        _: &Connection,
+        _: &QueueHandle<Self>,
+    ) {
+        if let wl_callback::Event::Done { .. } = event {
+            app.redraw = true;
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -329,6 +444,14 @@ mod tests {
         assert!(o.blur && !o.stripes);
         assert_eq!(o.title, "Glass");
         assert_eq!(parse_args(&[]).unwrap(), Options::default());
+    }
+
+    #[test]
+    fn animate_implies_stripes_and_moves_them() {
+        let o = parse_args(&args("--animate")).unwrap();
+        assert!(o.animate && o.stripes);
+        assert_ne!(pixels(&o, (8, 1), 0), pixels(&o, (8, 1), 24));
+        assert_eq!(pixels(&o, (8, 1), 0), pixels(&o, (8, 1), 96));
     }
 
     #[test]
@@ -358,7 +481,7 @@ mod tests {
             color: [200, 100, 50, 128],
             ..Options::default()
         };
-        let px = pixels(&o, (2, 1));
+        let px = pixels(&o, (2, 1), 0);
         assert_eq!(px.len(), 8);
         assert_eq!(&px[..4], &[25, 50, 100, 128]);
     }

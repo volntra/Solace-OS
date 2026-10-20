@@ -4,10 +4,13 @@
 use std::{ffi::OsString, sync::Arc};
 
 use smithay::{
+    backend::allocator::dmabuf::Dmabuf,
     desktop::{PopupManager, Space, Window, WindowSurfaceType},
     input::{Seat, SeatState, keyboard::XkbConfig},
     reexports::{
-        calloop::{EventLoop, Interest, LoopSignal, Mode, PostAction, generic::Generic},
+        calloop::{
+            EventLoop, Interest, LoopHandle, LoopSignal, Mode, PostAction, generic::Generic,
+        },
         wayland_server::{
             Display, DisplayHandle,
             backend::{ClientData, ClientId, DisconnectReason},
@@ -17,6 +20,7 @@ use smithay::{
     utils::{Logical, Point, SERIAL_COUNTER},
     wayland::{
         compositor::{CompositorClientState, CompositorState},
+        dmabuf::{DmabufGlobal, DmabufState},
         output::OutputManagerState,
         selection::data_device::DataDeviceState,
         shell::xdg::XdgShellState,
@@ -44,11 +48,25 @@ pub struct Comp {
     pub data_device_state: DataDeviceState,
     pub popups: PopupManager,
     pub blur_state: crate::blur::BlurManagerState,
+    pub dmabuf_state: DmabufState,
+    /// The linux-dmabuf global, once a backend with a GPU created it.
+    pub dmabuf_global: Option<DmabufGlobal>,
+    /// Can the renderer use this client buffer? Set by the backend, which
+    /// owns the renderer.
+    pub dmabuf_import: Option<DmabufImport>,
+    /// Explicit sync, when the GPU supports it (DRM backend).
+    #[cfg(feature = "drm")]
+    pub syncobj_state: Option<smithay::wayland::drm_syncobj::DrmSyncobjState>,
+    /// For work that waits on file descriptors (GPU fences).
+    pub loop_handle: LoopHandle<'static, LoopData>,
 
     pub seat: Seat<Self>,
     /// A request for the session owner (the DRM backend), set by input.
     pub session_request: Option<SessionRequest>,
 }
+
+/// Checks that the renderer can use a client's GPU buffer.
+pub type DmabufImport = Box<dyn FnMut(&Dmabuf) -> bool>;
 
 /// Things only the backend holding the session can do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -66,7 +84,7 @@ impl Comp {
     /// No Wayland socket can be created (e.g. no `XDG_RUNTIME_DIR`), the
     /// default keymap does not compile, or the event loop refuses a source.
     pub fn new(
-        event_loop: &mut EventLoop<LoopData>,
+        event_loop: &mut EventLoop<'static, LoopData>,
         display: Display<Self>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let start_time = std::time::Instant::now();
@@ -122,6 +140,12 @@ impl Comp {
             data_device_state,
             popups,
             blur_state,
+            dmabuf_state: DmabufState::new(),
+            dmabuf_global: None,
+            dmabuf_import: None,
+            #[cfg(feature = "drm")]
+            syncobj_state: None,
+            loop_handle: event_loop.handle(),
             seat,
             session_request: None,
         })

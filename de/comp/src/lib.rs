@@ -13,6 +13,7 @@ pub mod placement;
 pub mod render;
 pub mod spring;
 pub mod state;
+pub mod stats;
 
 use smithay::reexports::wayland_server::DisplayHandle;
 
