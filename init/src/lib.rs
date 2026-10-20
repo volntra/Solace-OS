@@ -7,6 +7,7 @@
 //! [`pid1`] holds what only PID 1 does (mounts, root assembly, reboot).
 
 pub mod graph;
+pub mod kmod;
 pub mod log;
 pub mod manager;
 pub mod pid1;

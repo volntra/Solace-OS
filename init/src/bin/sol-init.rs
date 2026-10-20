@@ -67,6 +67,7 @@ fn pid1_main() -> ! {
     pid1::set_hostname(&mut log);
     pid1::load_random_seed();
     pid1::apply_sysctl(&mut log);
+    solinit::kmod::load_configured(&mut log);
     if let Err(e) = log.persist_to(Path::new("/").join(LOG_FILE).as_path()) {
         eprintln!("solace: log store: {e}");
     }

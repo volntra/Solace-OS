@@ -1,9 +1,10 @@
-# Built-in drivers only for now (no modules are built or installed). The
-# configure step fails if any line of boot/kernel/solace.config did not
-# take effect.
+# The boot path is built in; modules (zstd) go to /usr/lib/modules/<release>
+# and are loaded by sol-init (docs/formats/modules.md). linux-build is the
+# tree out-of-tree modules (NVIDIA) compile against. The configure step
+# fails if any line of boot/kernel/solace.config did not take effect.
 name = "linux"
 version = "7.2"
-release = 1
+release = 3
 summary = "The Linux kernel, with Solace's configuration"
 license = "GPL-2.0-only"
 
@@ -18,7 +19,8 @@ local = "boot/kernel"
 [deps]
 # openssl + pkgconf: certs/extract-cert (the system keyring is forced on
 # by wireless regulatory signatures).
-build = ["bc", "flex", "elfutils", "openssl", "pkgconf"]
+# zstd: modules are installed compressed.
+build = ["bc", "flex", "elfutils", "openssl", "pkgconf", "zstd"]
 
 [build]
 system = "custom"
@@ -42,9 +44,36 @@ done < ../kernel/solace.config
 '''
 compile = '''
 export KBUILD_BUILD_TIMESTAMP="@$SOURCE_DATE_EPOCH" KBUILD_BUILD_USER=solace KBUILD_BUILD_HOST=solace
-make bzImage
+make bzImage modules
 '''
 install = '''
 install -Dm644 arch/x86/boot/bzImage "$DESTDIR/usr/lib/sol/boot/vmlinuz"
 install -Dm644 .config "$DESTDIR/usr/lib/sol/boot/config"
+release=$(make -s kernelrelease)
+# No depmod: sol-init finds modules by name (lists name dependencies first).
+make INSTALL_MOD_PATH="$DESTDIR/usr" INSTALL_MOD_STRIP=1 DEPMOD=true modules_install
+mods="$DESTDIR/usr/lib/modules/$release"
+rm -f "$mods/build" "$mods/source"
+# The build tree for out-of-tree modules (as distributions' kernel
+# headers packages): configuration, symbols, Makefiles, Kconfig, headers
+# and the built scripts.
+b="$mods/build"
+install -Dt "$b" -m644 .config Makefile Module.symvers System.map
+install -Dt "$b/kernel" -m644 kernel/Makefile
+install -Dt "$b/arch/x86" -m644 arch/x86/Makefile
+cp -a scripts include "$b/"
+mkdir -p "$b/arch/x86"
+cp -a arch/x86/include "$b/arch/x86/"
+install -Dt "$b/arch/x86/kernel" -m644 arch/x86/kernel/asm-offsets.s
+[ ! -x tools/objtool/objtool ] || install -Dt "$b/tools/objtool" tools/objtool/objtool
+find . -name 'Kconfig*' -path './*' ! -path './Documentation/*' -exec install -Dm644 {} "$b/{}" \;
+# Objects from building the scripts are not needed to build modules.
+find "$b/scripts" -name '*.o' -delete
 '''
+
+[[split]]
+name = "linux-build"
+summary = "Kernel build tree for out-of-tree modules"
+files = ["usr/lib/modules/*/build"]
+# objtool (run on every module) links libelf.
+depends = ["elfutils"]

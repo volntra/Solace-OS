@@ -5,7 +5,8 @@ Boots image/qemu.sh --headless, follows the serial console, and checks:
   1. GRUB boots our kernel and sol-init reports boot complete, with the
      time since the kernel started (the console is quiet until then)
   2. a text login prompt appears; root logs in with the dev password
-  3. solctl works: status, boot-time, logs; spk systems lists system 1
+  3. solctl works: status, boot-time, logs; spk systems lists system 1;
+     sol-init loaded the kernel modules listed in /usr/lib/sol/modules.d
   4. /etc/os-release, the Solace root layout, the read-only /usr, and the
      ESP and system volume mounted for updates
   5. solctl poweroff shuts the machine down cleanly
@@ -34,6 +35,9 @@ def main():
         if "getty-serial" not in c.run("solctl status"):
             fail("solctl status did not list getty-serial")
         ok("solctl status")
+        if c.run("test -d /sys/module/zram && echo loaded") != "loaded":
+            fail("sol-init did not load the zram module: " + c.run("solctl logs -n 40 sol-init | grep -i module"))
+        ok("sol-init loaded the zram kernel module (compressed .ko.zst)")
         if "ms after the kernel started" not in c.run("solctl boot-time"):
             fail("solctl boot-time gave no time")
         ok("solctl boot-time")
