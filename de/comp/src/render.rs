@@ -589,11 +589,19 @@ pub fn output_elements(
         let moved = v.dx != 0.0 || v.dy != 0.0;
         // Blur behind a window that is moving or scaled waits until it
         // settles (the cache is keyed on where the window is).
-        let blurred = if moved || (v.scale - 1.0).abs() > 1e-6 {
-            Vec::new()
-        } else {
-            blur_rects(window, geo.loc - window.geometry().loc, geo, s)
-        };
+        let wanted = blur_rects(window, geo.loc - window.geometry().loc, geo, s);
+        let still = !moved && (v.scale - 1.0).abs() <= 1e-6;
+        if !wanted.is_empty() {
+            tracing::debug!(
+                still,
+                v.dx,
+                v.dy,
+                v.scale,
+                rects = wanted.len(),
+                "blur wanted"
+            );
+        }
+        let blurred = if still { wanted } else { Vec::new() };
         // The backdrop is made before the window's own shadow is added:
         // a window does not see its shadow through itself.
         let mut backdrops = Vec::new();

@@ -87,7 +87,7 @@ def wait_for(c, name, test, what, timeout=300):
         if test(shot):
             return shot
         if time.monotonic() > deadline:
-            logs = c.run("fernctl logs -n 30 fern-comp", "fern-comp's log")
+            logs = c.run("fernctl logs -n 2000 fern-comp | grep -E 'blur|backdrop|WARN' | tail -25", "fern-comp's log")
             fail(f"timed out waiting for {what} (last screenshot: {OUT}/comp-{name}.png)\n{logs}")
         c._read()
         time.sleep(2)
@@ -164,10 +164,15 @@ def main():
         start_client(c, "--color ffffff00 --size 400x200 --blur")
         # The new window takes focus: the striped window's titlebar (its
         # middle is clear of the new one) turns the inactive colour.
+        # From here every frame repaints a screen-sized window (its shadow,
+        # the blur): with softpipe under emulation (no KVM) that is about
+        # 80 s a frame, hence the long waits. With KVM it is seconds.
+        slow = 1200
         wait_for(
             c, "glass-open",
             lambda s: near(s.pixel(sw * 3 // 4, GAP + TITLEBAR // 2 - 6), TITLEBAR_COLOURS[1], 3),
             "the glass window taking focus",
+            slow,
         )
         # The glass has focus: Super+Left puts it on the left half, over
         # the stripes, the right half of which stays in view.
@@ -177,7 +182,7 @@ def main():
         def glass_over_stripes(s):
             return is_blurred(s, row, 60, sw // 2 - 60) and has_stripes(s, row, sw // 2 + 60, sw - 60)
 
-        shot = wait_for(c, "glass", glass_over_stripes, "the blurred glass window on the left half")
+        shot = wait_for(c, "glass", glass_over_stripes, "the blurred glass window on the left half", slow)
         ok("blur: the stripes behind the glass are smoothed, the rest stay sharp")
         # The striped window's bottom-left corner is cut: its corner pixel
         # shows the wallpaper, a pixel one radius in along the edge shows a
@@ -189,10 +194,10 @@ def main():
         ok("rounded window corners")
 
         c.key("ctrl-alt-f2")
-        wait_for(c, "tty2", lambda s: s.dark_fraction() > 0.9, "the console on tty2", 120)
+        wait_for(c, "tty2", lambda s: s.dark_fraction() > 0.9, "the console on tty2", slow)
         ok("Ctrl+Alt+F2: the console on tty2 (desktop paused)")
         c.key("ctrl-alt-f1")
-        wait_for(c, "back", glass_over_stripes, "the desktop after switching back", 180)
+        wait_for(c, "back", glass_over_stripes, "the desktop after switching back", slow)
         ok("Ctrl+Alt+F1: the desktop is back")
 
         c.send("fernctl poweroff\n")
