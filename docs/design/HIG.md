@@ -87,15 +87,21 @@ stroke of the fill colour softens every corner.
 | Paper | `#F6F7F3` | light-mode background, a warm off-white | |
 
 The default wallpaper, **Grove** (`assets/wallpapers/gen-wallpapers.py`),
-is ridges of pine forest fading into morning mist in these greens.
+aims for a photograph, not a flat drawing: ridge behind ridge of spruce
+forest at dawn fading into textured fog, every tree a ragged silhouette of
+drooping branch tiers, each ridge softened by distance, light shafts from a
+hazy sun, grain and a vignette.
 
 ## Boot menu
 
 ![The Fern boot menu, rendered by GRUB in QEMU](img/grub-menu.png)
 
 Our GRUB gfxmenu theme (`boot/grub-theme/`, `just grub-preview` boots it
-in QEMU and screenshots it): the blurred Grove wallpaper, the glass logo
-and name, a centred list in Inter 20 with a translucent rounded
-highlight, and a countdown and hint line in Inter 16. GRUB's own title
-and help text never appear. With the default menu style ("hidden") none
-of this shows unless Shift is held.
+in QEMU and screenshots it), on the blurred Grove wallpaper: the glass logo
+and name; a "Choose a system to start" heading; the systems on a frosted
+panel, Inter 20, the selected one on a green bar (a thin scrollbar appears
+when the list is longer than the panel); under it a countdown bar that
+empties, reading "Starting the selected system in N seconds"; and a line
+of the keys GRUB understands (arrows, Enter, E to edit an entry, C for its
+command line). GRUB's own title and help text never appear. With the
+default menu style ("hidden") none of this shows unless Shift is held.

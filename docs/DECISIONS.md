@@ -715,8 +715,13 @@ frame missed the next vblank (about 5 a second).
   label is "Fern 1: Koi". New identity: the logo is a simple pine tree (a
   soft cone with two branch cuts, chosen from four sketches), the palette
   is forest green and near-black/off-white (docs/design/HIG.md, Brand),
-  and the default wallpaper is **Grove** (misty pine ridges), replacing
-  Dusk.
+  and the default wallpaper is **Grove**, replacing Dusk. At the human's
+  request Grove aims for a photograph rather than a flat drawing (spruce
+  ridges in textured fog, light shafts, grain), and the boot menu keeps its
+  centred layout with GRUB-style detail: a heading, the list on a frosted
+  panel, a green selection bar, a scrollbar, a countdown bar, and a line
+  of keys including E (edit) and C (command line), which work because the
+  menu has no password.
 - **Why:** "Solace" is an existing software company whose appliance OS is
   called SolOS, a direct clash with the name and the "SolOS 1: Koi" label.
   Fern clashes with no operating system; the nearest is Feren OS (a Linux

@@ -62,8 +62,8 @@ def is_wallpaper(s):
     top = s.pixel(s.w // 10, s.h // 20)
     mist = s.pixel(s.w // 10, s.h // 4)
     forest = s.pixel(s.w // 10, s.h * 9 // 10)
-    return (top[1] > top[0] + 20 and top[1] >= top[2]
-            and forest[1] > forest[0] + 20 and max(forest) < 100
+    return (top[1] > top[0] + 15 and top[1] >= top[2]
+            and forest[1] > forest[0] + 12 and max(forest) < 100
             and sum(mist) > sum(forest) + 150)
 
 
