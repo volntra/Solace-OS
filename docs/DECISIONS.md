@@ -875,3 +875,26 @@ frame missed the next vblank (about 5 a second).
 - **Minimize animation:** a uniform shrink and fade into the icon on the
   `gentle` spring. A genie bend needs a deforming mesh in the renderer;
   left for Phase 14 polish.
+
+### 2026-10-20: Overview and the app switcher (Phase 5, stage 7)
+
+- **Overview moves the real windows:** each window springs to its tile
+  (`place` with a scale); the strip, titles, dimming and highlight are
+  overlay, drawn just beneath the lowest tile so the windows stay on top.
+  Pictures of windows on other Spaces are `overlay_mirror`s: the core
+  draws the window's surfaces again, scaled, under ids of their own so the
+  damage tracker never sees one element twice. Alternative: snapshot
+  textures (stale while apps update; more memory).
+- **Grid:** the column count that shows the windows largest (sum of shown
+  area), rows in reading order of where the windows were, never enlarged.
+- **Switcher:** apps by most recent use, the previous one picked (one tap
+  of Super+Tab flips between two apps, as on macOS). Until the icon set
+  exists each app shows a live picture of its last window. Commit on
+  Super's release; because the release can come before the window manager
+  takes the keyboard, the core reports the held modifiers at that moment
+  (a `key` with keysym 0).
+- **Keys:** Ctrl+Super+Up Overview (macOS uses Ctrl+Up; plain Ctrl+arrows
+  stay with apps, see stage 5), Super+Tab / Super+Shift+Tab switcher,
+  Super+` windows of the app.
+- **Stacking fix:** Smithay's `map_element` raises; the core now restores
+  the windows above after moving one, so only `stack` changes stacking.

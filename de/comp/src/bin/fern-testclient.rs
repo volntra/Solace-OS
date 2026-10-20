@@ -5,7 +5,7 @@
 //! ```text
 //! fern-testclient [--size WxH] [--color RRGGBBAA] [--stripes] [--animate]
 //!                [--blur | --blur-region X,Y,W,H] [--title T] [--csd] [--globals]
-//!                [--dock TITLE]
+//!                [--dock TITLE] [--app-id ID]
 //! ```
 //!
 //! Like most apps it asks for server-side decoration (our titlebar) when
@@ -76,6 +76,7 @@ struct Options {
     csd: bool,
     /// Play a dock for the window with this title.
     dock: Option<String>,
+    app_id: String,
 }
 
 impl Default for Options {
@@ -91,6 +92,7 @@ impl Default for Options {
             title: "Test".into(),
             csd: false,
             dock: None,
+            app_id: "org.fern.TestClient".into(),
         }
     }
 }
@@ -133,6 +135,7 @@ fn parse_args(args: &[String]) -> Result<Options, String> {
             "--stripes" => o.stripes = true,
             "--csd" => o.csd = true,
             "--dock" => o.dock = Some(value()?.clone()),
+            "--app-id" => o.app_id.clone_from(value()?),
             "--globals" => o.globals = true,
             "--animate" => {
                 o.animate = true;
@@ -323,7 +326,7 @@ fn run(options: Options) -> Result<(), String> {
     let xdg = wm.get_xdg_surface(&surface, &qh, ());
     let toplevel = xdg.get_toplevel(&qh, ());
     toplevel.set_title(options.title.clone());
-    toplevel.set_app_id("org.fern.TestClient".into());
+    toplevel.set_app_id(options.app_id.clone());
     if !options.csd
         && let Ok(manager) = globals.bind::<ZxdgDecorationManagerV1, _, _>(&qh, 1..=1, ())
     {

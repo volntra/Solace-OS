@@ -242,6 +242,9 @@ pub struct Shaders {
     overlay_shapes: ShapeCache,
     /// Overlay text by what it was made from; kept while drawn.
     overlay_texts: RefCell<std::collections::HashMap<TextKey, Option<Rendered>>>,
+    /// Ids for second pictures (mirrors, wallpaper thumbnails), by
+    /// (window, place in the overlay, surface), stable while shown.
+    overlay_ids: RefCell<std::collections::HashMap<(u32, usize, usize), Id>>,
 }
 
 /// What a line of overlay text was rendered from: text, size, colour,
@@ -289,16 +292,23 @@ impl Shaders {
             glyphs: RefCell::new(None),
             overlay_shapes: ShapeCache::default(),
             overlay_texts: RefCell::default(),
+            overlay_ids: RefCell::default(),
         })
     }
 }
 
-/// A window surface element clipped to the window's rounded rectangle.
+/// A window surface, scaled about the window's drawn origin (1.0 unless
+/// the window manager shrinks it: Overview, minimize).
+pub type Surface = RescaleRenderElement<WaylandSurfaceRenderElement<GlesRenderer>>;
+
+/// A texture element clipped to a rounded rectangle: a window's surfaces,
+/// a window's mirror, a wallpaper thumbnail.
 #[derive(Debug)]
-pub struct Rounded {
-    /// The surface, scaled about the window's drawn origin (1.0 unless the
-    /// window manager shrinks it: Overview, minimize).
-    inner: RescaleRenderElement<WaylandSurfaceRenderElement<GlesRenderer>>,
+pub struct Rounded<E = Surface> {
+    inner: E,
+    /// Its own id, for a second picture of something already drawn (a
+    /// window's mirror in Overview): two elements must not share one.
+    id: Option<Id>,
     program: GlesTexProgram,
     /// The window's rounded rectangle, relative to this element's
     /// geometry (so it follows the element when drawn offscreen).
@@ -307,9 +317,9 @@ pub struct Rounded {
     fb_height: f32,
 }
 
-impl Element for Rounded {
+impl<E: Element> Element for Rounded<E> {
     fn id(&self) -> &Id {
-        self.inner.id()
+        self.id.as_ref().unwrap_or_else(|| self.inner.id())
     }
     fn current_commit(&self) -> CommitCounter {
         self.inner.current_commit()
@@ -345,7 +355,7 @@ impl Element for Rounded {
     }
 }
 
-impl RenderElement<GlesRenderer> for Rounded {
+impl<E: RenderElement<GlesRenderer>> RenderElement<GlesRenderer> for Rounded<E> {
     fn draw(
         &self,
         frame: &mut GlesFrame<'_, '_>,
@@ -413,6 +423,8 @@ smithay::backend::renderer::element::render_elements! {
     /// Everything fern-comp draws on an output, front to back.
     pub OutputElement<=GlesRenderer>;
     Window=Rounded,
+    /// The wallpaper in a rounded rectangle (Overview's Spaces).
+    Thumb=Rounded<MemoryRenderBufferRenderElement<GlesRenderer>>,
     Backdrop=Backdrop,
     Shadow=PixelShaderElement,
     /// The wallpaper, the pointer.
@@ -515,9 +527,9 @@ pub fn output_elements(
     area: Rectangle<i32, Logical>,
     scale: f64,
     visual: &dyn Fn(&Window) -> Visual,
-    overlay: (&[Overlay], Option<Window>),
+    overlay: &OverlayDraw<'_>,
 ) -> Vec<OutputElement> {
-    let (overlay, beneath) = overlay;
+    let beneath = overlay.beneath.clone();
     let mut overlay_drawn = false;
     let output_size = area.size;
     // Built from the bottom up, so that everything behind a blurred
@@ -534,7 +546,7 @@ pub fn output_elements(
     }
     for window in space.elements() {
         if beneath.as_ref() == Some(window) {
-            overlay_elements(renderer, shaders, overlay, area, &mut out);
+            overlay_elements(renderer, shaders, overlay, wallpaper, area, scale, &mut out);
             overlay_drawn = true;
         }
         let Some(geo) = space.element_geometry(window) else {
@@ -625,6 +637,7 @@ pub fn output_elements(
             let at = inner.geometry(s).loc.to_f64();
             out.push_front(OutputElement::Window(Rounded {
                 inner,
+                id: None,
                 program: shaders.rounded.clone(),
                 clip: Rectangle::new(geo_px.loc - at, geo_px.size),
                 radii,
@@ -633,7 +646,7 @@ pub fn output_elements(
         }
     }
     if !overlay_drawn {
-        overlay_elements(renderer, shaders, overlay, area, &mut out);
+        overlay_elements(renderer, shaders, overlay, wallpaper, area, scale, &mut out);
     }
     out.into()
 }
@@ -643,19 +656,51 @@ fn unpack_rgba(rgba: u32) -> [f32; 4] {
     rgba.to_be_bytes().map(|v| f32::from(v) / 255.0)
 }
 
-/// The window manager's overlay, above every window, in list order (the
-/// first is lowest). Coordinates are global; `area` is this output.
+/// What the window manager draws above the windows, or just under one.
+pub struct OverlayDraw<'a> {
+    pub items: &'a [Overlay],
+    /// Drawn just below this window (`None`: above all).
+    pub beneath: Option<Window>,
+    /// The window a protocol id names, for mirrors.
+    pub window: Box<dyn Fn(u32) -> Option<Window> + 'a>,
+}
+
+impl std::fmt::Debug for OverlayDraw<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OverlayDraw")
+            .field("items", &self.items)
+            .field("beneath", &self.beneath)
+            .finish_non_exhaustive()
+    }
+}
+
+/// The window manager's overlay, in list order (the first is lowest).
+/// Coordinates are global; `area` is this output.
+// One arm per overlay kind: long, but a list.
+#[allow(clippy::too_many_lines)]
 fn overlay_elements(
     renderer: &mut GlesRenderer,
     shaders: &Shaders,
-    overlay: &[Overlay],
+    draw: &OverlayDraw<'_>,
+    wallpaper: Option<&Wallpaper>,
     area: Rectangle<i32, Logical>,
+    scale: f64,
     out: &mut VecDeque<OutputElement>,
 ) {
     let origin = area.loc.to_f64();
+    let s = Scale::from(scale);
+    #[allow(clippy::cast_precision_loss)]
+    let fb_height = area.size.to_physical_precise_round::<f64, i32>(s).h as f32;
     let mut texts = shaders.overlay_texts.borrow_mut();
     let mut used = std::collections::HashMap::new();
-    for (i, item) in overlay.iter().enumerate() {
+    let mut ids = shaders.overlay_ids.borrow_mut();
+    let mut ids_used = std::collections::HashMap::new();
+    let mut id_for = |key: (u32, usize, usize)| {
+        let id = ids.remove(&key).unwrap_or_else(Id::new);
+        ids_used.insert(key, id.clone());
+        id
+    };
+    for (i, item) in draw.items.iter().enumerate() {
         match item {
             Overlay::Rect {
                 x,
@@ -741,12 +786,91 @@ fn overlay_elements(
                 }
                 used.insert(key, made);
             }
-            // Drawn from stage 7 on (Overview); nothing uses them yet.
-            Overlay::Wallpaper { .. } | Overlay::Mirror { .. } => {}
+            Overlay::Wallpaper { x, y, w, h, radius } => {
+                let Some(wallpaper) = wallpaper else {
+                    continue;
+                };
+                if *w <= 0 || *h <= 0 {
+                    continue;
+                }
+                let (bw, bh) = wallpaper.size;
+                let (cx, cy, cw, ch) = cover(
+                    (f64::from(bw), f64::from(bh)),
+                    (f64::from(*w), f64::from(*h)),
+                );
+                let at = Point::<f64, Logical>::from((
+                    f64::from(*x) - origin.x,
+                    f64::from(*y) - origin.y,
+                ));
+                let Ok(inner) = MemoryRenderBufferRenderElement::from_buffer(
+                    renderer,
+                    at.to_physical(s),
+                    &wallpaper.buffer,
+                    None,
+                    Some(Rectangle::new((cx, cy).into(), (cw, ch).into())),
+                    Some((*w, *h).into()),
+                    Kind::Unspecified,
+                ) else {
+                    continue;
+                };
+                let size =
+                    Size::<f64, Logical>::from((f64::from(*w), f64::from(*h))).to_physical(s);
+                #[allow(clippy::cast_possible_truncation)]
+                let r = (f64::from(*radius) * scale) as f32;
+                out.push_front(OutputElement::Thumb(Rounded {
+                    inner,
+                    id: Some(id_for((0, i, 0))),
+                    program: shaders.rounded.clone(),
+                    clip: Rectangle::new((0.0, 0.0).into(), size),
+                    radii: [r; 4],
+                    fb_height,
+                }));
+            }
+            Overlay::Mirror { id, x, y, w, h } => {
+                let Some(window) = (draw.window)(*id) else {
+                    continue;
+                };
+                let geo = window.geometry();
+                if geo.size.w <= 0 || geo.size.h <= 0 || *w <= 0 || *h <= 0 {
+                    continue;
+                }
+                // The content, fitted into the rectangle and centred.
+                let fit = (f64::from(*w) / f64::from(geo.size.w))
+                    .min(f64::from(*h) / f64::from(geo.size.h));
+                let (mw, mh) = (f64::from(geo.size.w) * fit, f64::from(geo.size.h) * fit);
+                let content = Rectangle::<f64, Logical>::new(
+                    (
+                        f64::from(*x) - origin.x + (f64::from(*w) - mw) / 2.0,
+                        f64::from(*y) - origin.y + (f64::from(*h) - mh) / 2.0,
+                    )
+                        .into(),
+                    (mw, mh).into(),
+                );
+                let origin_px =
+                    (content.loc - geo.loc.to_f64().upscale(fit)).to_physical_precise_round(s);
+                let clip_px = content.to_physical(s);
+                #[allow(clippy::cast_possible_truncation)]
+                let r = (WINDOW_RADIUS * scale * fit) as f32;
+                let surfaces: Vec<WaylandSurfaceRenderElement<GlesRenderer>> =
+                    window.render_elements(renderer, origin_px, s, 1.0);
+                for (k, surface) in surfaces.into_iter().enumerate().rev() {
+                    let inner = RescaleRenderElement::from_element(surface, origin_px, fit);
+                    let at = inner.geometry(s).loc.to_f64();
+                    out.push_front(OutputElement::Window(Rounded {
+                        inner,
+                        id: Some(id_for((*id, i, k))),
+                        program: shaders.rounded.clone(),
+                        clip: Rectangle::new(clip_px.loc - at, clip_px.size),
+                        radii: [r; 4],
+                        fb_height,
+                    }));
+                }
+            }
         }
     }
-    // Text no longer shown is dropped; the rest is kept for next frame.
+    // What is no longer shown is dropped; the rest is kept for next frame.
     *texts = used;
+    *ids = ids_used;
 }
 
 /// Text rendered into a buffer, with its size in pixels.
@@ -850,8 +974,8 @@ fn decorations(
         [0.0; 4],
     ));
     // The title, centred, clear of the buttons.
-    if let Some((buffer, (tw, th))) = title_buffer(shaders, window, active, frame.size.w / zoom) {
-        let (tw, th) = (f64::from(tw) * zoom, f64::from(th) * zoom);
+    if let Some((buffer, (bw, bh))) = title_buffer(shaders, window, active, frame.size.w / zoom) {
+        let (tw, th) = (f64::from(bw) * zoom, f64::from(bh) * zoom);
         let x = (bar.loc.x + (bar.size.w - tw) / 2.0).max(bar.loc.x + TITLE_INSET * zoom);
         let y = bar.loc.y + (bar.size.h - th) / 2.0;
         #[allow(clippy::cast_possible_truncation)]
@@ -861,7 +985,9 @@ fn decorations(
             Point::<f64, Logical>::from((x, y)).to_physical(1.0),
             &buffer,
             Some(vis.alpha),
-            None,
+            // The whole text, scaled to `size` (without it, a smaller
+            // size crops instead).
+            Some(Rectangle::from_size((f64::from(bw), f64::from(bh)).into())),
             Some(size),
             Kind::Unspecified,
         ) {
@@ -904,7 +1030,9 @@ fn decorations(
                 Point::<f64, Logical>::from((cx - gw / 2.0, cy - gh / 2.0)).to_physical(1.0),
                 &g.0,
                 Some(vis.alpha),
-                None,
+                Some(Rectangle::from_size(
+                    (f64::from(g.1.0), f64::from(g.1.1)).into(),
+                )),
                 Some(size),
                 Kind::Unspecified,
             ) {

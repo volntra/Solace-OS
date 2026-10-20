@@ -472,13 +472,17 @@ impl Comp {
     /// for it and the client agreed to server-side decoration.
     /// The window manager's overlay, and the window it goes just below
     /// (`None`: above every window).
-    pub fn overlay(&self) -> (&[Overlay], Option<Window>) {
+    pub fn overlay(&self) -> crate::render::OverlayDraw<'_> {
         let beneath = self
             .wm
             .windows
             .get(&self.wm.overlay_beneath)
             .map(|r| r.window.clone());
-        (&self.wm.overlay, beneath)
+        crate::render::OverlayDraw {
+            items: &self.wm.overlay,
+            beneath,
+            window: Box::new(|id| self.wm.windows.get(&id).map(|r| r.window.clone())),
+        }
     }
 
     pub fn titlebar_height(&self, rec: &WinRecord) -> i32 {
@@ -969,6 +973,8 @@ impl Comp {
         self.request_redraw();
     }
 
+    // One arm per request: a table, long by nature.
+    #[allow(clippy::too_many_lines)]
     fn wm_apply(&mut self, p: Pending) {
         match p {
             Pending::Configure(id, w, h, states) => self.wm_configure(id, w, h, states),
@@ -1052,7 +1058,22 @@ impl Comp {
                     pointer.frame(self);
                 }
             }
-            Pending::GrabKeyboard(on) => self.wm.grab_keyboard = on,
+            Pending::GrabKeyboard(on) => {
+                // Taking the keyboard, the window manager hears which
+                // modifiers are already held (a key event with keysym 0):
+                // the app switcher must know if Super is still down.
+                if on
+                    && !self.wm.grab_keyboard
+                    && let (Some(r), Some(k)) = (&self.wm.resource, self.seat.get_keyboard())
+                {
+                    r.key(
+                        0,
+                        0,
+                        fern_wm_v1::Modifiers::from_bits_truncate(mod_bits(&k.modifier_state())),
+                    );
+                }
+                self.wm.grab_keyboard = on;
+            }
             Pending::OverlayClear => {
                 self.wm.pending_overlay = Some(Vec::new());
                 self.wm.pending_beneath = Some(0);
@@ -1120,7 +1141,23 @@ impl Comp {
             if let Some(rec) = self.wm.windows.get_mut(&id) {
                 rec.leaving = false;
             }
+            // Mapping raises; moving a window must not restack it (the
+            // window manager decides stacking): the ones above go back on
+            // top.
+            let above: Vec<Window> = if mapped {
+                self.space
+                    .elements()
+                    .skip_while(|w| **w != window)
+                    .skip(1)
+                    .cloned()
+                    .collect()
+            } else {
+                Vec::new()
+            };
             self.space.map_element(window, loc, false);
+            for w in &above {
+                self.space.raise_element(w, false);
+            }
         } else if mapped && fades_out {
             if let Some(rec) = self.wm.windows.get_mut(&id) {
                 rec.leaving = true;

@@ -831,6 +831,134 @@ fn wm_minimize_to_dock(h: &mut Harness) -> Result {
     check(!shown(h, 0), || "Super+M did not minimize".into())
 }
 
+fn wm_overview(h: &mut Harness) -> Result {
+    const CTRL_SUPER: u32 = 2 | 8;
+    const UP: u32 = 0xff52;
+    h.open("--color ff5a5fff --size 360x240 --title Red")?;
+    h.open("--color 3a86ffff --size 360x240 --title Blue")?;
+    h.open("--color 2ec4b6ff --size 360x240 --title Teal")?;
+    let homes: Vec<(i32, i32)> = (0..3).map(|i| h.location(i)).collect();
+    key(h, CTRL_SUPER, UP)?;
+    let img = h.shot("overview")?;
+    let o = wm_overview_state(h)?;
+    check(o.tiles.len() == 3, || format!("{} tiles", o.tiles.len()))?;
+    // Each tile shows its window (the window itself, scaled down), the
+    // desktop around is dimmed, the strip shows the Space.
+    let colours = [[0xff, 0x5a, 0x5f], [0x3a, 0x86, 0xff], [0x2e, 0xc4, 0xb6]];
+    for (id, r, scale) in &o.tiles {
+        check(*scale < 1.0, || format!("window {id} not scaled: {scale}"))?;
+        let i = (0..3)
+            .find(|&i| ferncomp::wm::win_id(&h.windows[i]) == Some(*id))
+            .ok_or("unknown tile")?;
+        let p = img.pixel(r.x + r.w / 2, r.y + r.h * 3 / 4);
+        check(near(p, colours[i], 6), || {
+            format!("tile {i} at {r:?} shows {p:?}")
+        })?;
+    }
+    let dim = img.pixel(4, SIZE.1 - 4);
+    check(luma(dim) < 110.0, || {
+        format!("the desktop is not dimmed: {dim:?}")
+    })?;
+    let t = o.thumbs[0];
+    let ring = img.pixel(t.x - 2, t.y + t.h / 2);
+    check(near(ring, [0x7c, 0xc4, 0x8a], 12), || {
+        format!("the current Space has no ring: {ring:?}")
+    })?;
+    // A click on the Blue tile: Overview goes, everything springs home,
+    // Blue is in front.
+    let (_, r, _) = o
+        .tiles
+        .iter()
+        .find(|t| Some(t.0) == ferncomp::wm::win_id(&h.windows[1]))
+        .copied()
+        .ok_or("no Blue tile")?;
+    h.data.state.pointer_to(
+        (f64::from(r.x + r.w / 2), f64::from(r.y + r.h / 2)).into(),
+        0,
+    );
+    h.data.state.pointer_button(0x110, true, 1);
+    h.data.state.pointer_button(0x110, false, 2);
+    h.settle()?;
+    check(h.data.state.wm.overlay.is_empty(), || {
+        "the overlay stayed".into()
+    })?;
+    let now: Vec<(i32, i32)> = (0..3).map(|i| h.location(i)).collect();
+    check(now == homes, || format!("not home: {now:?} vs {homes:?}"))?;
+    check(h.focused(1), || "the clicked window is not in front".into())
+}
+
+/// Overview as the core sees it (the window manager runs on its own
+/// thread): each window's placement is its tile, the overlay's wallpaper
+/// rectangles are the Spaces.
+fn wm_overview_state(h: &Harness) -> Result<fernwm::policy::Overview> {
+    let mut tiles = Vec::new();
+    for w in &h.windows {
+        let id = ferncomp::wm::win_id(w).ok_or("no id")?;
+        let rec = h.data.state.wm.record(w).ok_or("no record")?;
+        let size = w.geometry().size;
+        let tb = ferncomp::render::TITLEBAR_HEIGHT;
+        #[allow(clippy::cast_possible_truncation)]
+        let scaled = |v: i32| (f64::from(v) * rec.place.scale).round() as i32;
+        tiles.push((
+            id,
+            fernwm::policy::Rect::new(
+                rec.place.x,
+                rec.place.y,
+                scaled(size.w),
+                scaled(size.h + tb),
+            ),
+            rec.place.scale,
+        ));
+    }
+    let thumbs = h
+        .data
+        .state
+        .wm
+        .overlay
+        .iter()
+        .filter_map(|o| match o {
+            ferncomp::wm::Overlay::Wallpaper { x, y, w, h, .. } => {
+                Some(fernwm::policy::Rect::new(*x, *y, *w, *h))
+            }
+            _ => None,
+        })
+        .collect();
+    Ok(fernwm::policy::Overview {
+        tiles,
+        thumbs,
+        ..fernwm::policy::Overview::default()
+    })
+}
+
+fn wm_switcher(h: &mut Harness) -> Result {
+    use smithay::input::keyboard::Keycode;
+    // evdev codes + 8: Super (left Meta) and Tab.
+    let meta = Keycode::new(125 + 8);
+    let tab = Keycode::new(15 + 8);
+    h.open("--color ff5a5fff --size 300x200 --title Red")?;
+    h.open("--color 3a86ffff --size 300x200 --title Blue --app-id org.fern.Other")?;
+    check(h.focused(1), || "Blue should be in front".into())?;
+    // Hold Super, tap Tab: the switcher shows both apps, the other one
+    // picked; Super still held, nothing has switched yet.
+    h.data.state.key_input(meta, true, 0);
+    h.data.state.key_input(tab, true, 1);
+    h.data.state.key_input(tab, false, 2);
+    h.settle()?;
+    let img = h.shot("switcher")?;
+    let panel = img.pixel(SIZE.0 / 2, SIZE.1 / 2 - 60);
+    check(luma(panel) < 60.0, || {
+        format!("no switcher panel: {panel:?}")
+    })?;
+    check(h.focused(1), || "switched before Super was let go".into())?;
+    // Let go of Super: the picked app comes forward.
+    h.data.state.key_input(meta, false, 3);
+    h.settle()?;
+    check(h.data.state.wm.overlay.is_empty(), || {
+        "the switcher stayed".into()
+    })?;
+    check(h.focused(0), || "the picked app is not in front".into())
+}
+
 const SCENARIOS: &[Scenario] = &[
     ("orientation", orientation),
     ("corners_and_shadow", corners_and_shadow),
@@ -845,6 +973,8 @@ const SCENARIOS: &[Scenario] = &[
     ("wm_tiling", wm_tiling),
     ("wm_spaces", wm_spaces),
     ("wm_minimize_to_dock", wm_minimize_to_dock),
+    ("wm_overview", wm_overview),
+    ("wm_switcher", wm_switcher),
 ];
 
 fn main() -> ExitCode {

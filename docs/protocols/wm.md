@@ -103,7 +103,10 @@ window manager can move, restack and refocus without intermediate frames.
   keysym); a press arrives as `binding` and neither it nor its release
   reaches a client.
 - `grab_keyboard`: while set, every key goes to the window manager as
-  `key` (press and release, with modifiers), none to clients.
+  `key` (press and release, with modifiers), none to clients. Taking the
+  keyboard, the window manager first gets a `key` with keysym 0 that
+  reports the modifiers held right then (the app switcher must know if
+  Super was already let go).
 - The core keeps for itself: Ctrl+Alt+F1..F12 (virtual terminals) and
   Ctrl+Alt+Backspace (quit).
 

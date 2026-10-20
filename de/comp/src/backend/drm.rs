@@ -624,7 +624,7 @@ impl Drm {
             Rectangle::new(area.loc, area.size),
             1.0,
             &|w| state.visual(w),
-            state.overlay(),
+            &state.overlay(),
         ));
         let queued = match screen.drm.render_frame(
             &mut self.renderer,

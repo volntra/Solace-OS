@@ -58,16 +58,36 @@ impl Comp {
     }
 
     fn on_key<I: InputBackend>(&mut self, event: &I::KeyboardKeyEvent) {
+        self.key_input(
+            event.key_code(),
+            event.state() == smithay::backend::input::KeyState::Pressed,
+            Event::time_msec(event),
+        );
+    }
+
+    /// A key (xkb keycode) went down or up: the session's keys, the window
+    /// manager's bindings and grabs, then the focused client. Input
+    /// backends and tests come through here.
+    pub fn key_input(
+        &mut self,
+        keycode: smithay::input::keyboard::Keycode,
+        pressed: bool,
+        time: u32,
+    ) {
         let Some(keyboard) = self.seat.get_keyboard() else {
             return;
         };
-        let pressed = event.state() == smithay::backend::input::KeyState::Pressed;
+        let key_state = if pressed {
+            smithay::backend::input::KeyState::Pressed
+        } else {
+            smithay::backend::input::KeyState::Released
+        };
         let request = keyboard.input::<KeyUse, _>(
             self,
-            event.key_code(),
-            event.state(),
+            keycode,
+            key_state,
             SERIAL_COUNTER.next_serial(),
-            Event::time_msec(event),
+            time,
             |comp, modifiers, keysym| {
                 if pressed && let Some(r) = session_key(*modifiers, keysym.modified_sym()) {
                     return FilterResult::Intercept(KeyUse::Session(r));

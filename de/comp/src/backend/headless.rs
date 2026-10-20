@@ -163,7 +163,7 @@ impl Headless {
             Rectangle::from_size(logical),
             1.0,
             &|w| state.visual(w),
-            state.overlay(),
+            &state.overlay(),
         );
         // The texture keeps the previous frame, so after the first frame
         // only the damage needs redrawing.

@@ -67,6 +67,17 @@ get their own Space, square corners, no shadow; Ctrl+Super+F toggles.
 on the `gentle` spring, or towards the bottom middle of the screen when no
 dock shows it, and comes back the same way. Super+M minimizes.
 
+**Overview.** Ink at 45 % dims the desktop; windows tile on the `smooth`
+spring with 16 px around each and their title (Inter SemiBold 13, Paper)
+below. The Spaces strip: thumbnails one eighth of the screen high, 24 px
+apart, 8 px radius, the current one ringed in Leaf (3 px), labels in
+Inter 12; the + button is Paper at 20 %. The highlighted window has a
+5 px Leaf ring. Ctrl+Super+Up.
+
+**App switcher.** A HUD panel (Ink at 85 %, radius 18, 18 px padding) of
+136 x 128 cells, the picked one Paper at 18 % with radius 12; app names
+in Inter 12. Super+Tab, Super+Shift+Tab; Super+` cycles an app's windows.
+
 ## Brand
 
 <img src="../../assets/brand/fern-icon-512.png" width="128" alt="Fern icon">

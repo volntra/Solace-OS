@@ -44,7 +44,7 @@ impl Wm {
             .find(|i| self.windows.get(i).is_some_and(|w| w.visible))
     }
 
-    fn new_space(&mut self, fullscreen: Option<u32>) -> SpaceInfo {
+    pub(super) fn new_space(&mut self, fullscreen: Option<u32>) -> SpaceInfo {
         let s = SpaceInfo {
             id: self.next_space,
             fullscreen,

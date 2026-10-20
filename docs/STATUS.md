@@ -8,8 +8,29 @@ Repository: https://github.com/volntra/Solace-OS (`main`).
 
 Phase 5 stages: 1 protocol + fern-wm process + crash recovery ✓, 2 spring
 animations ✓, 3 titlebars with traffic lights ✓, 4 tiling ✓, 5 Spaces ✓,
-6 minimize into the dock ✓; next 7 Overview and the app switcher, 8 QEMU
-test and demo.
+6 minimize into the dock ✓, 7 Overview and the app switcher ✓; next 8
+QEMU test and demo.
+
+Stage 7 (2026-10-20): Overview (Ctrl+Super+Up). The windows of the Space
+on screen spring into a grid (the live windows, scaled, titles under
+them) over a dimmed desktop; a strip along the top shows every Space as
+the wallpaper with its windows in miniature (current one ringed in Leaf)
+and a + to add a Space. Click a window to bring it forward, a Space to go
+there; Escape, a click elsewhere or Ctrl+Super+Up again go back; arrow
+keys and Return pick a window. Windows opening or closing meanwhile are
+laid out again. The app switcher (Super+Tab, Shift for back) shows apps
+in the order they were used, the previous one picked, each as a live
+picture of its last window and its name; letting go of Super brings the
+app forward from wherever it is (other Space, minimized); Escape cancels.
+Super+` cycles the front app's windows. The core now draws the overlay's
+wallpaper thumbnails and window mirrors, and tells the window manager the
+held modifiers when it takes the keyboard (a quick Super+Tab tap works).
+Fixed on the way: placing a window raised it (Smithay's `map_element`),
+silently restacking; scaled titlebars cropped their titles. Not yet:
+app icons in the switcher (Phase 7), dragging windows between Spaces in
+Overview, removing a Space from Overview (empty ones go by themselves).
+Tests: `cargo test -p fern-wm` (17); render scenarios `wm_overview` and
+`wm_switcher` (real key presses).
 
 Stage 6 (2026-10-20): the core speaks wlr-foreign-toplevel-management (the
 window list a dock and switcher need: titles, app ids, states; activate,

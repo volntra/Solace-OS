@@ -359,7 +359,11 @@
     </request>
 
     <request name="grab_keyboard">
-      <description summary="key events go to the window manager, not clients"/>
+      <description summary="key events go to the window manager, not clients">
+        Taking the keyboard, the window manager first gets a key event with
+        keysym 0: its modifiers are the ones held at that moment (so the app
+        switcher knows whether Super is still down).
+      </description>
       <arg name="grab" type="uint"/>
     </request>
 

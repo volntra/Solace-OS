@@ -167,7 +167,7 @@ impl Nested<'_> {
                 Rectangle::from_size(logical),
                 1.0,
                 &|w| state.visual(w),
-                state.overlay(),
+                &state.overlay(),
             );
             match self.damage_tracker.render_output(
                 renderer,

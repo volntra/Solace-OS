@@ -4,9 +4,13 @@
 
 use std::collections::BTreeMap;
 
+mod overview;
 mod spaces;
+mod switcher;
 mod tile;
+pub use overview::{Overview, grid};
 pub use spaces::{SpaceInfo, Windowed};
+pub use switcher::{Switcher, app_name};
 pub use tile::{Tile, TileKey};
 
 /// `xdg_toplevel` states (the protocol's `state` bits).
@@ -251,6 +255,12 @@ pub mod keys {
     pub const CARRY_RIGHT: u32 = 8;
     pub const FULLSCREEN: u32 = 9;
     pub const MINIMIZE: u32 = 10;
+    pub const OVERVIEW: u32 = 11;
+    pub const SWITCH_APPS: u32 = 12;
+    pub const SWITCH_APPS_BACK: u32 = 13;
+    pub const CYCLE_WINDOWS: u32 = 14;
+    const TAB: u32 = 0xff09;
+    const GRAVE: u32 = 0x60;
     const LEFT: u32 = 0xff51;
     const UP: u32 = 0xff52;
     const RIGHT: u32 = 0xff53;
@@ -266,6 +276,10 @@ pub mod keys {
         (CARRY_RIGHT, CTRL | SUPER | SHIFT, RIGHT),
         (FULLSCREEN, CTRL | SUPER, 0x66),
         (MINIMIZE, SUPER, 0x6d),
+        (OVERVIEW, CTRL | SUPER, UP),
+        (SWITCH_APPS, SUPER, TAB),
+        (SWITCH_APPS_BACK, SUPER | SHIFT, TAB),
+        (CYCLE_WINDOWS, SUPER, GRAVE),
     ];
 }
 
@@ -431,6 +445,12 @@ pub struct Wm {
     next_space: u32,
     /// What the core holds for us (`save_wm`).
     saved_desktop: String,
+    /// Overview, while it is up.
+    pub overview: Option<Overview>,
+    /// The app switcher, while it is up.
+    pub switcher: Option<Switcher>,
+    /// Windows by when they last had focus (most recent last).
+    pub mru: Vec<u32>,
 }
 
 impl Wm {
@@ -521,6 +541,9 @@ impl Wm {
                     }
                     win.visible = visible;
                     win.states = states;
+                    if !self.mru.contains(&id) {
+                        self.mru.push(id);
+                    }
                     if !win.minimized && !self.stack.contains(&id) {
                         self.stack.push(id);
                     }
@@ -564,6 +587,9 @@ impl Wm {
                         out.push(Cmd::Decoration { id, titlebar: true });
                     }
                 }
+            }
+            Event::Button { x, y, pressed, .. } if self.overview.is_some() => {
+                self.overview_click(x, y, pressed, &mut out);
             }
             Event::Button {
                 window,
@@ -631,6 +657,18 @@ impl Wm {
                         self.carry_by(1, &mut out);
                         return self.finish(out);
                     }
+                    keys::OVERVIEW => {
+                        self.toggle_overview(&mut out);
+                        return self.finish(out);
+                    }
+                    keys::SWITCH_APPS | keys::SWITCH_APPS_BACK => {
+                        self.switcher_step(id == keys::SWITCH_APPS_BACK, &mut out);
+                        return self.finish(out);
+                    }
+                    keys::CYCLE_WINDOWS => {
+                        self.cycle_app_windows(&mut out);
+                        return self.finish(out);
+                    }
                     keys::MINIMIZE => {
                         if let Some(id) = self.focused {
                             self.minimize(id, &mut out);
@@ -647,13 +685,39 @@ impl Wm {
                 };
                 self.tile_key(key, &mut out);
             }
-            Event::Motion { .. } | Event::Key { .. } => {}
+            Event::Motion { x, y } => self.overview_hover(x, y, &mut out),
+            Event::Key {
+                keysym,
+                pressed,
+                mods: held,
+            } => {
+                if self.switcher.is_some() {
+                    self.switcher_key(keysym, pressed, held, &mut out);
+                } else if self.overview.is_some() {
+                    self.overview_key(keysym, pressed, held, &mut out);
+                }
+            }
         }
         self.finish(out)
     }
 
     /// Ends handling an event: saves what changed.
     fn finish(&mut self, mut out: Vec<Cmd>) -> Vec<Cmd> {
+        // Overview follows windows coming and going.
+        if let Some(o) = &self.overview {
+            let mut shown: Vec<u32> = self
+                .windows
+                .iter()
+                .filter(|(_, w)| w.visible && w.mapped())
+                .map(|(i, _)| *i)
+                .collect();
+            let mut tiled: Vec<u32> = o.tiles.iter().map(|t| t.0).collect();
+            shown.sort_unstable();
+            tiled.sort_unstable();
+            if shown != tiled {
+                self.layout_overview(&mut out);
+            }
+        }
         if !self.restoring {
             self.save_changes(&mut out);
         }
@@ -926,7 +990,18 @@ impl Wm {
     }
 
     fn on_closed(&mut self, id: u32, out: &mut Vec<Cmd>) {
+        if self
+            .switcher
+            .as_ref()
+            .is_some_and(|s| s.apps.iter().any(|a| a.1 == id))
+        {
+            // What it shows is out of date: close it, nothing chosen.
+            self.switcher = None;
+            out.push(Cmd::OverlayClear);
+            out.push(Cmd::GrabKeyboard(false));
+        }
         self.closing(id, out);
+        self.mru.retain(|&i| i != id);
         self.windows.remove(&id);
         self.stack.retain(|&i| i != id);
         if self.focused == Some(id) {
@@ -946,6 +1021,8 @@ impl Wm {
         }
         self.focused = id;
         if let Some(id) = id {
+            self.mru.retain(|&i| i != id);
+            self.mru.push(id);
             self.set_states(id, |s| s | state::ACTIVATED, out);
             self.stack.retain(|&i| i != id);
             self.stack.push(id);
@@ -1407,5 +1484,121 @@ mod tests {
         }));
         assert_eq!(wm.focused, Some(2));
         assert_eq!(wm.windows[&2].states, state::ACTIVATED);
+    }
+
+    #[test]
+    fn overview_tiles_the_windows_and_a_click_brings_one_forward() {
+        let mut wm = wm_with_output();
+        open(&mut wm, 1, 800, 600);
+        open(&mut wm, 2, 800, 600);
+        let homes = (wm.windows[&1].rect(), wm.windows[&2].rect());
+        let cmds = wm.handle(Event::Binding(keys::OVERVIEW));
+        assert!(cmds.contains(&Cmd::GrabPointer(true)));
+        assert!(cmds.contains(&Cmd::GrabKeyboard(true)));
+        let o = wm.overview.clone().expect("no overview");
+        assert_eq!(o.tiles.len(), 2);
+        assert_eq!(o.thumbs.len(), 1);
+        // The windows themselves go to the tiles; the strip is overlay.
+        for (id, r, scale) in &o.tiles {
+            assert!(cmds.contains(&Cmd::Place {
+                id: *id,
+                x: r.x,
+                y: r.y,
+                scale: *scale,
+                alpha: 1.0,
+                motion: motion::SMOOTH
+            }));
+        }
+        assert!(
+            cmds.iter()
+                .any(|c| matches!(c, Cmd::OverlayWallpaper { .. }))
+        );
+        assert!(cmds.contains(&Cmd::OverlayMirror {
+            id: 1,
+            x: o.thumbs[0].x + (homes.0.x * o.thumbs[0].h + 720) / 1440,
+            y: o.thumbs[0].y + (homes.0.y * o.thumbs[0].h + 720) / 1440,
+            w: (800 * o.thumbs[0].h + 720) / 1440,
+            h: (600 * o.thumbs[0].h + 720) / 1440,
+        }));
+        // Clicking window 1's tile: Overview closes, everything goes
+        // home, window 1 is in front.
+        let (_, r1, _) = o.tiles.iter().find(|t| t.0 == 1).copied().unwrap();
+        let click = |pressed| Event::Button {
+            window: 0,
+            part: part::OVERLAY,
+            x: f64::from(r1.x + 5),
+            y: f64::from(r1.y + 5),
+            button: 0x110,
+            pressed,
+            mods: 0,
+            clicks: 1,
+            edges: 0,
+        };
+        wm.handle(click(true));
+        let cmds = wm.handle(click(false));
+        assert!(wm.overview.is_none());
+        assert!(cmds.contains(&Cmd::GrabPointer(false)));
+        assert!(cmds.contains(&Cmd::Place {
+            id: 2,
+            x: homes.1.x,
+            y: homes.1.y,
+            scale: 1.0,
+            alpha: 1.0,
+            motion: motion::SMOOTH
+        }));
+        assert_eq!(wm.focused, Some(1));
+    }
+
+    #[test]
+    fn super_tab_picks_the_previous_app_and_letting_go_switches() {
+        let mut wm = wm_with_output();
+        let app = |wm: &mut Wm, id: u32, app: &str| {
+            wm.handle(Event::Window {
+                id,
+                app_id: app.into(),
+                title: app.into(),
+                parent: 0,
+            });
+            wm.handle(Event::Size { id, w: 300, h: 200 });
+        };
+        app(&mut wm, 1, "org.fern.Files");
+        app(&mut wm, 2, "org.fern.Terminal");
+        app(&mut wm, 3, "org.fern.Terminal");
+        assert_eq!(wm.focused, Some(3));
+        let cmds = wm.handle(Event::Binding(keys::SWITCH_APPS));
+        assert!(cmds.contains(&Cmd::GrabKeyboard(true)));
+        let s = wm.switcher.clone().expect("no switcher");
+        // One entry per app, most recent first; the previous app picked.
+        assert_eq!(
+            s.apps,
+            [
+                ("org.fern.Terminal".to_string(), 3),
+                ("org.fern.Files".to_string(), 1)
+            ]
+        );
+        assert_eq!(s.picked, 1);
+        assert!(cmds.iter().any(|c| matches!(c,
+            Cmd::OverlayText { text, .. } if text == "Files")));
+        // Letting go of Super: Files comes forward.
+        let cmds = wm.handle(Event::Key {
+            keysym: 0xffeb,
+            pressed: false,
+            mods: 0,
+        });
+        assert!(wm.switcher.is_none());
+        assert!(cmds.contains(&Cmd::GrabKeyboard(false)));
+        assert_eq!(wm.focused, Some(1));
+        // A quick tap (Super already up when the keyboard is taken) also
+        // switches, back to the Terminal.
+        wm.handle(Event::Binding(keys::SWITCH_APPS));
+        wm.handle(Event::Key {
+            keysym: 0,
+            pressed: false,
+            mods: 0,
+        });
+        assert_eq!(wm.focused, Some(3));
+        // Super+` goes through the Terminal's windows.
+        wm.handle(Event::Binding(keys::CYCLE_WINDOWS));
+        assert_eq!(wm.focused, Some(2));
     }
 }
