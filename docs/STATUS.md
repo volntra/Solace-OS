@@ -14,7 +14,12 @@ only the human can run (below). First run on the RTX 5070 Ti (2026-10-20):
 wallpaper, corners, shadow and cursor correct, 160 fps of 165. The loop
 then waited a whole refresh on a timer after any frame with nothing new,
 missing about 5 refreshes a second; it now draws as soon as a client
-commits or input arrives. To be re-measured.
+commits or input arrives. Second run (one animated 1600x1000 window, on
+DP-1, whose preferred mode is 180 Hz): **180.1 fps, 5.55 ms average frame
+interval, 0 missed refreshes**, above the 165 Hz target. Left: the same
+check under the full CLAUDE.md 6.5 load, which `just comp-drm` now runs
+(three animated windows plus a dock-sized glass panel re-blurring them
+every frame). The dock itself arrives in Phase 6.
 
 **On the human's NVIDIA machine (the Phase 4 hardware check):**
 
@@ -28,7 +33,8 @@ just comp-drm            # sol-comp on the real display + an animated window
 ```
 
 It uses the host's driver (NixOS `/run/opengl-driver`: NVIDIA's EGL and
-GBM) through libseat/logind. The log reports, every 5 s per display,
+GBM) through libseat/logind. The log (build/comp-drm.log; `grep fps build/comp-drm.log`) reports,
+every 5 s per display,
 frames shown per second, the frame interval and missed refreshes: the
 target is 165 fps with no missed refreshes at 2560x1440 @ 165 Hz. Also
 worth trying: `just comp` (nested in the NixOS desktop).

@@ -7,6 +7,7 @@
 //! desktop to nest in (`WAYLAND_DISPLAY` or `DISPLAY`) and takes the
 //! display otherwise. A command after `--` is started as a client.
 
+use std::io::IsTerminal;
 use std::process::{Command, ExitCode};
 
 use smithay::reexports::{calloop::EventLoop, wayland_server::Display};
@@ -23,7 +24,13 @@ enum Backend {
 fn main() -> ExitCode {
     let filter = tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"));
-    tracing_subscriber::fmt().with_env_filter(filter).init();
+    // Logs go to stderr (stdout is for output a caller asked for), in
+    // colour only on a terminal: `just comp-drm` keeps them in a file.
+    tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_writer(std::io::stderr)
+        .with_ansi(std::io::stderr().is_terminal())
+        .init();
 
     let mut args = std::env::args().skip(1);
     let mut client: Vec<String> = Vec::new();

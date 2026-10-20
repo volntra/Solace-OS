@@ -90,8 +90,9 @@ comp *CLIENT:
     cargo run -p sol-comp -- --nested {{ if CLIENT != "" { "-- " + CLIENT } else { "" } }}
 
 # sol-comp on your real display, from a text console (switch with
-# Ctrl+Alt+F3, log in, cd here, `nix develop`, then this), with an animated
-# test window and frame timing every 5 s in build/comp-drm.log.
+# Ctrl+Alt+F3, log in, cd here, `nix develop`, then this): three animated
+# test windows and a dock-sized glass panel that re-blurs them every frame
+# (the CLAUDE.md 6.5 load), frame timing every 5 s in build/comp-drm.log.
 # Ctrl+Alt+Backspace quits. Uses the host's GPU driver (NixOS:
 # /run/opengl-driver, NVIDIA's EGL and GBM among them).
 comp-drm SIZE="1600x1000":
@@ -101,9 +102,15 @@ comp-drm SIZE="1600x1000":
       LD_LIBRARY_PATH="/run/opengl-driver/lib:${LD_LIBRARY_PATH:-}" \
       GBM_BACKENDS_PATH=/run/opengl-driver/lib/gbm \
       __EGL_VENDOR_LIBRARY_DIRS=/run/opengl-driver/share/glvnd/egl_vendor.d \
-      target/release/sol-comp --drm -- target/release/sol-testclient --animate --size {{SIZE}} \
+      target/release/sol-comp --drm -- sh -c ' \
+        c=target/release/sol-testclient; \
+        $c --animate --size {{SIZE}} --title one & sleep 0.5; \
+        $c --animate --size 1100x700 --title two & sleep 0.5; \
+        $c --animate --size 900x600 --title three & sleep 0.5; \
+        $c --color ffffff30 --blur --size 1200x110 --title dock & \
+        wait' \
       2> build/comp-drm.log || true
-    @grep -E "display ready|fps|WARN|ERROR" build/comp-drm.log | tail -20
+    @grep -E "display ready|fps|WARN|ERROR" build/comp-drm.log | tail -20 || true
 
 # Compositor pixel tests: headless sol-comp, real clients, screenshots
 # (kept in target/tmp/sol-comp-render/). Also part of `just check`.

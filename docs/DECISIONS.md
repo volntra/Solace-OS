@@ -695,3 +695,7 @@ frame missed the next vblank (about 5 a second).
 - **Alternatives:** a shorter timer (still adds latency and wakes an idle
   machine); always rendering every vblank (wastes power and defeats damage
   tracking).
+- **Result:** on the RTX 5070 Ti (DP-1, 180 Hz preferred mode) one
+  animated window went from 160 to 180.1 fps with 0 missed refreshes.
+  sol-comp's logs now go to stderr, uncoloured unless it is a terminal (they
+  went to stdout, so `just comp-drm` kept an empty log file).
