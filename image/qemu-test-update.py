@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Phase 3 test: system updates and rollback (`just qemu-test-update`).
 
-Works on a copy of build/image/solace.img with the update disk from
-image/update-demo.sh (solace-base 0.1.1). Five boots:
+Works on a copy of build/image/fern.img with the update disk from
+image/update-demo.sh (fern-base 0.1.1). Five boots:
 
   A  system 1: a tampered update is refused (no snapshot left, boot menu
      unchanged); a good update is started and the power is cut after the
@@ -42,7 +42,7 @@ def mount_update(c):
 
 
 def booted(c):
-    return c.run("cat /run/sol/booted")
+    return c.run("cat /run/fern/booted")
 
 
 def version(c):
@@ -51,16 +51,16 @@ def version(c):
 
 
 def snapshots(c):
-    return c.run("ls /run/sol/btrfs/@snapshots").split()
+    return c.run("ls /run/fern/btrfs/@snapshots").split()
 
 
 def is_boot_menu(w, h, px):
-    """Our boot menu is the dusk wallpaper: mostly blue-violet, not the
+    """Our boot menu is the grove wallpaper: mostly forest green, not the
     firmware's black."""
     step = 3 * 997
     sample = [px[i : i + 3] for i in range(0, len(px) - 3, step)]
-    violet = sum(1 for p in sample if len(p) == 3 and p[2] > 70 and p[2] >= p[1])
-    return violet > len(sample) * 0.6
+    green = sum(1 for p in sample if len(p) == 3 and p[1] > 50 and p[1] > p[0] and p[1] >= p[2])
+    return green > len(sample) * 0.6
 
 
 def pick_previous_in_boot_menu(c):
@@ -79,7 +79,7 @@ def pick_previous_in_boot_menu(c):
 
 
 def reboot(c):
-    c.send("solctl reboot\n")
+    c.send("fernctl reboot\n")
 
 
 def main():
@@ -89,7 +89,7 @@ def main():
     for f in (LOG, DISK):
         if os.path.exists(f):
             os.remove(f)
-    subprocess.run(["cp", "--sparse=always", "build/image/solace.img", DISK], check=True)
+    subprocess.run(["cp", "--sparse=always", "build/image/fern.img", DISK], check=True)
 
     # A: refuse a tampered update, then lose power mid-update.
     c = start()
@@ -138,7 +138,7 @@ def main():
         c.boot_and_login()
         if booted(c) != "@snapshots/2" or version(c) != "0.1.1":
             fail(f"system 2 did not boot by default ({booted(c)}, {version(c)})")
-        ok("C: rebooted into system 2 (Solace 0.1.1)")
+        ok("C: rebooted into system 2 (Fern 0.1.1)")
 
         # D: pick the previous system in the boot menu.
         reboot(c)
@@ -146,7 +146,7 @@ def main():
         c.boot_and_login()
         if booted(c) != "@snapshots/1" or version(c) != "0.1":
             fail(f"picking the previous system did not boot system 1 ({booted(c)}, {version(c)})")
-        ok("D: picked the previous system in the boot menu: system 1 (Solace 0.1)")
+        ok("D: picked the previous system in the boot menu: system 1 (Fern 0.1)")
         out = c.run("spk rollback")
         if "system 1 starts on the next boot" not in out:
             fail(f"spk rollback: {out!r}")
@@ -159,7 +159,7 @@ def main():
             fail("after spk rollback, system 1 did not boot by default")
         ok("E: system 1 boots by default after the rollback")
         print(c.run("spk systems"))
-        c.send("solctl poweroff\n")
+        c.send("fernctl poweroff\n")
         deadline = time.monotonic() + 120
         while c.p.poll() is None and time.monotonic() < deadline:
             c._read()

@@ -1,6 +1,6 @@
 //! Kernel modules at boot (CLAUDE.md 6.1, early setup). Packages list the
-//! modules they need in `/usr/lib/sol/modules.d/*.conf`; the administrator
-//! adds or overrides files of the same name in `/etc/sol/modules.d/`. Each
+//! modules they need in `/usr/lib/fern/modules.d/*.conf`; the administrator
+//! adds or overrides files of the same name in `/etc/fern/modules.d/`. Each
 //! line is a module name and its parameters, loaded in order:
 //!
 //! ```text
@@ -25,7 +25,7 @@ use crate::log::LogStore;
 
 /// Where module lists are read from, later directories overriding files
 /// of the same name in earlier ones.
-pub const CONF_DIRS: [&str; 2] = ["usr/lib/sol/modules.d", "etc/sol/modules.d"];
+pub const CONF_DIRS: [&str; 2] = ["usr/lib/fern/modules.d", "etc/fern/modules.d"];
 
 /// `finit_module` flag: the file is compressed, the kernel decompresses it.
 const MODULE_INIT_COMPRESSED_FILE: i32 = 4;
@@ -147,7 +147,7 @@ pub fn load_configured(log: &mut LogStore) {
             },
             None => format!("module {}: not found in {}", r.name, dir.display()),
         };
-        log.push("sol-init", "init", &msg);
+        log.push("fern-init", "init", &msg);
     }
 }
 

@@ -2,10 +2,10 @@
 
 The plan lists build stages in order; `spk bootstrap [plan]` runs them.
 Each recipe is built by the normal `spk build` machinery (sandbox,
-verification, signing), so every file still comes from a `.solpkg`.
+verification, signing), so every file still comes from a `.fernpkg`.
 
 ```toml
-target = "x86_64-solace-linux-gnu"   # $SOL_TGT; default shown
+target = "x86_64-solace-linux-gnu"   # $FERN_TGT; default shown
 
 [[stage]]
 name = "cross"                        # unique; also the work subdir

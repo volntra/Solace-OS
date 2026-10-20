@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Boots a Solace disk image in QEMU with UEFI firmware (OVMF).
+# Boots a Fern disk image in QEMU with UEFI firmware (OVMF).
 #
 #   image/qemu.sh [--headless | --screen] [--update IMG] [disk]
-#                                        (default disk build/image/solace.img)
+#                                        (default disk build/image/fern.img)
 #
 # The console is mirrored to this terminal over the serial port; with
 # --headless there is no window (only QEMU's default VGA, enough for the
-# firmware and GRUB), with --screen sol-comp's GPU but no window (tests look
+# firmware and GRUB), with --screen fern-comp's GPU but no window (tests look
 # at both through QEMU_MONITOR screenshots). --update
 # attaches an update disk (image/update-demo.sh) read-only as /dev/vdb.
 # QEMU_MONITOR=<path> opens the QEMU monitor on that Unix socket (tests use
@@ -14,7 +14,7 @@
 set -euo pipefail
 
 headless=0
-disk=build/image/solace.img
+disk=build/image/fern.img
 update=()
 while [ $# -gt 0 ]; do
   case $1 in
@@ -51,7 +51,7 @@ monitor=(-monitor none)
 # GRUB and the screenshots would use that one): virtio-gpu with VGA
 # compatibility for the firmware. Plus a keyboard and an absolute pointer
 # (the window's mouse maps 1:1). With 3D on the host, -device virtio-vga-gl
-# and -display gtk,gl=on give sol-comp accelerated rendering (virgl).
+# and -display gtk,gl=on give fern-comp accelerated rendering (virgl).
 screen=(-vga none -device virtio-vga -device virtio-keyboard-pci -device virtio-tablet-pci)
 if [ $headless = 1 ]; then
   display=(-display none -serial stdio "${monitor[@]}")

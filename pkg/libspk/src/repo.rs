@@ -186,7 +186,7 @@ impl Repo {
         keyring: &Keyring,
         work: &Path,
     ) -> Result<VerifiedPackage> {
-        let local = work.join(entry.file.rsplit('/').next().unwrap_or("package.solpkg"));
+        let local = work.join(entry.file.rsplit('/').next().unwrap_or("package.fernpkg"));
         self.location.fetch(&entry.file, &local, entry.size)?;
         self.location
             .fetch(
@@ -301,7 +301,7 @@ mod tests {
         let repo = Repo::open(Location::Local(dir.clone()), &fx.ring, &fx.work()).unwrap();
         assert_eq!(repo.index.packages.len(), 1);
         let e = &repo.index.packages[0];
-        assert_eq!(e.file, "packages/hello-1.0-1.x86_64.solpkg");
+        assert_eq!(e.file, "packages/hello-1.0-1.x86_64.fernpkg");
         let vp = repo.fetch_package(e, &fx.ring, &fx.work()).unwrap();
         assert_eq!(vp.manifest.name, "hello");
     }
@@ -315,7 +315,7 @@ mod tests {
         let idx = repo_add(&dir, "test", &[b], &fx.key, &fx.ring).unwrap();
         assert_eq!(idx.packages.len(), 1);
         assert_eq!(idx.packages[0].version.as_str(), "1.1");
-        assert!(!dir.join("packages/hello-1.0-1.x86_64.solpkg").exists());
+        assert!(!dir.join("packages/hello-1.0-1.x86_64.fernpkg").exists());
     }
 
     #[test]
@@ -350,7 +350,7 @@ mod tests {
         fs::remove_file(&old).unwrap();
         let new = build_pkg(&fx, &meta("hello", "1.0", &[]), "NEW");
         let dir = repo_with(&fx, &[new]);
-        let target = dir.join("packages/hello-1.0-1.x86_64.solpkg");
+        let target = dir.join("packages/hello-1.0-1.x86_64.fernpkg");
         fs::write(&target, old_bytes).unwrap();
         fs::write(sig_path(&target), old_sig).unwrap();
         let repo = Repo::open(Location::Local(dir), &fx.ring, &fx.work()).unwrap();

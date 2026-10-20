@@ -1,6 +1,6 @@
 //! Where a new window goes: centred horizontally, a little above the
 //! middle (the eye's resting point), cascading down-right when that spot
-//! is taken. A stand-in until sol-wm (Phase 5) owns placement.
+//! is taken. A stand-in until fern-wm (Phase 5) owns placement.
 
 /// Cascade step, in logical pixels.
 const CASCADE: i32 = 28;

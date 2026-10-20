@@ -1,5 +1,5 @@
 // Adapted from Smithay's smallvil example (v0.7.0, MIT licence,
-// https://github.com/Smithay/smithay), for sol-comp: one handler per
+// https://github.com/Smithay/smithay), for fern-comp: one handler per
 // event, and no panics (a compositor that panics takes every app with it).
 
 use smithay::{

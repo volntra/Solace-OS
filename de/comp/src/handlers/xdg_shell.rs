@@ -1,5 +1,5 @@
 // Adapted from Smithay's smallvil example (v0.7.0, MIT licence,
-// https://github.com/Smithay/smithay), for sol-comp.
+// https://github.com/Smithay/smithay), for fern-comp.
 
 use smithay::{
     delegate_xdg_shell,

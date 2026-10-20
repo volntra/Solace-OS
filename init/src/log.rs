@@ -1,7 +1,7 @@
-//! sol-log: the structured log store.
+//! fern-log: the structured log store.
 //!
 //! Records live in an in-memory ring for the current boot and are appended
-//! as JSON lines to `/var/log/sol/log.jsonl` (rotated to `.1` at 16 MiB).
+//! as JSON lines to `/var/log/fern/log.jsonl` (rotated to `.1` at 16 MiB).
 
 use std::collections::VecDeque;
 use std::fs::{self, File, OpenOptions};
@@ -11,7 +11,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
 
-pub const LOG_FILE: &str = "var/log/sol/log.jsonl";
+pub const LOG_FILE: &str = "var/log/fern/log.jsonl";
 pub const RING: usize = 20_000;
 pub const ROTATE_AT: u64 = 16 << 20;
 /// Longer lines are split.
@@ -22,7 +22,7 @@ pub struct Record {
     /// Unix time, milliseconds.
     pub t: u64,
     pub unit: String,
-    /// `out`, `err`, or `init` (messages from sol-init itself).
+    /// `out`, `err`, or `init` (messages from fern-init itself).
     pub stream: String,
     pub msg: String,
 }
@@ -197,7 +197,7 @@ mod tests {
     #[test]
     fn persists_early_records_and_rotates() {
         let d = tempfile::tempdir().unwrap();
-        let p = d.path().join("log/sol.jsonl");
+        let p = d.path().join("log/fern.jsonl");
         let mut s = LogStore::memory_only();
         s.push("init", "init", "before /var");
         s.persist_to(&p).unwrap();

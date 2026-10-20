@@ -44,16 +44,16 @@ install = '''
 v=595.104.02
 kbuild=$(echo /usr/lib/modules/*/build)
 release=$(basename "$(dirname "$kbuild")")
-# Kernel modules (compressed; sol-init loads them, see 20-nvidia.conf).
+# Kernel modules (compressed; fern-init loads them, see 20-nvidia.conf).
 m="$DESTDIR/usr/lib/modules/$release/extra/nvidia"
 install -d "$m"
 for k in nvidia nvidia-modeset nvidia-drm nvidia-uvm nvidia-peermem; do
   install -m644 "nv/kernel-open/$k.ko" "$m/"
   zstd -q --rm -19 "$m/$k.ko"
 done
-install -Dm644 20-nvidia.conf "$DESTDIR/usr/lib/sol/modules.d/20-nvidia.conf"
-install -Dm755 nvidia-devices "$DESTDIR/usr/lib/sol/nvidia-devices"
-install -Dm644 units/nvidia-devices.toml "$DESTDIR/usr/lib/sol/units/nvidia-devices.toml"
+install -Dm644 20-nvidia.conf "$DESTDIR/usr/lib/fern/modules.d/20-nvidia.conf"
+install -Dm755 nvidia-devices "$DESTDIR/usr/lib/fern/nvidia-devices"
+install -Dm644 units/nvidia-devices.toml "$DESTDIR/usr/lib/fern/units/nvidia-devices.toml"
 # GSP firmware (the open modules run the GPU's firmware processor).
 install -Dt "$DESTDIR/usr/lib/firmware/nvidia/$v" -m644 nv/firmware/gsp_*.bin
 
@@ -89,8 +89,8 @@ summary = "NVIDIA open kernel modules and GPU firmware (for linux 7.2-3)"
 files = [
     "usr/lib/modules",
     "usr/lib/firmware",
-    "usr/lib/sol/modules.d/20-nvidia.conf",
-    "usr/lib/sol/nvidia-devices",
-    "usr/lib/sol/units/nvidia-devices.toml",
+    "usr/lib/fern/modules.d/20-nvidia.conf",
+    "usr/lib/fern/nvidia-devices",
+    "usr/lib/fern/units/nvidia-devices.toml",
 ]
 depends = ["linux=7.2-3"]

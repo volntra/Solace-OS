@@ -1,16 +1,16 @@
-# Service unit format (sol-init)
+# Service unit format (fern-init)
 
 A unit is a TOML file named `<name>.toml`. `<name>` is the unit's name
 (`[a-z0-9][a-z0-9@._-]*`, at most 64 bytes).
 
 Units are read from, in order (a later file with the same name wins):
 
-1. `/usr/lib/sol/units/` (shipped by packages)
-2. `/etc/sol/units/` (administrator overrides)
+1. `/usr/lib/fern/units/` (shipped by packages)
+2. `/etc/fern/units/` (administrator overrides)
 
 A unit starts at boot when it is **enabled**: a file named `<name>`
-exists in `/etc/sol/enabled/` (written by `solctl enable`), or the unit
-sets `enabled = true` and has not been disabled (`/etc/sol/disabled/<name>`).
+exists in `/etc/fern/enabled/` (written by `fernctl enable`), or the unit
+sets `enabled = true` and has not been disabled (`/etc/fern/disabled/<name>`).
 Starting a unit starts everything it `requires` first.
 
 ```toml
@@ -36,7 +36,7 @@ stop_timeout_ms = 5000    # SIGTERM, then SIGKILL after this long
 no_new_privs = true       # default true
 read_only_paths = ["/usr"]
 
-[limits]                  # cgroups v2, /sys/fs/cgroup/sol/<name>/
+[limits]                  # cgroups v2, /sys/fs/cgroup/fern/<name>/
 memory_max = "512M"       # bytes, or K/M/G suffix
 tasks_max = 256
 cpu_weight = 100          # 1..10000
@@ -59,20 +59,20 @@ Independent units start in parallel.
 after a clean exit (not for oneshot). Delays double per consecutive crash
 (capped at 30 s) and reset after the unit stays up for 30 s. After 10
 crashes within 5 minutes the unit is marked `failed` and left alone until
-`solctl restart`.
+`fernctl restart`.
 
 ## Shutdown
 
 Units stop in reverse start order: SIGTERM to the whole cgroup, SIGKILL
-after `stop_timeout_ms`. Then sol-init saves the random seed, syncs,
+after `stop_timeout_ms`. Then fern-init saves the random seed, syncs,
 remounts filesystems read-only, unmounts what it can, and reboots or
 powers off.
 
 ## Logs
 
-Each service's stdout and stderr are captured line by line into sol-log
-(`/var/log/sol/log.jsonl`, rotated at 16 MiB, plus an in-memory ring for
-the current boot). `solctl logs [unit] [-n N]` reads them. Every record is
+Each service's stdout and stderr are captured line by line into fern-log
+(`/var/log/fern/log.jsonl`, rotated at 16 MiB, plus an in-memory ring for
+the current boot). `fernctl logs [unit] [-n N]` reads them. Every record is
 one JSON object: `{"t": unix_ms, "unit": "...", "stream": "out|err|init",
 "msg": "..."}`.
 

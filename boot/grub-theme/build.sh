@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Builds the Solace GRUB theme and fonts.
+# Builds the Fern GRUB theme and fonts.
 #
 #   build.sh <theme-out> <fonts-out> <Inter-4.1.zip> <assets-dir>
 #
 # Needs python3, resvg, and grub-mkfont. Output is data only (PNG, PF2,
-# theme.txt). Used by recipes/solace-grub-theme and `just grub-theme`.
+# theme.txt). Used by recipes/fern-grub-theme and `just grub-theme`.
 set -euo pipefail
 
 theme=$1 fonts=$2 inter_zip=$3 assets=$4
@@ -18,8 +18,8 @@ cp "$work/svg/theme.txt" "$theme/"
 for f in "$work"/svg/*.svg; do
   resvg "$f" "$theme/$(basename "${f%.svg}").png"
 done
-resvg -w 1920 -h 1080 "$assets/wallpapers/dusk-blurred.svg" "$theme/background.png"
-resvg -w 144 -h 144 "$assets/brand/solace-icon-glass.svg" "$theme/logo.png"
+resvg -w 1920 -h 1080 "$assets/wallpapers/grove-blurred.svg" "$theme/background.png"
+resvg -w 144 -h 144 "$assets/brand/fern-icon-glass.svg" "$theme/logo.png"
 
 python3 - "$inter_zip" "$work" <<'PY'
 import sys, zipfile

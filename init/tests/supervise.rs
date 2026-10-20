@@ -1,13 +1,13 @@
-//! Runs the real sol-init binary against a scratch root and drives it with
-//! the real solctl binary.
+//! Runs the real fern-init binary against a scratch root and drives it with
+//! the real fernctl binary.
 
 use std::fs;
 use std::path::Path;
 use std::process::{Child, Command, Output};
 use std::time::{Duration, Instant};
 
-const INIT: &str = env!("CARGO_BIN_EXE_sol-init");
-const CTL: &str = env!("CARGO_BIN_EXE_solctl");
+const INIT: &str = env!("CARGO_BIN_EXE_fern-init");
+const CTL: &str = env!("CARGO_BIN_EXE_fernctl");
 
 struct Init(Child);
 
@@ -19,7 +19,7 @@ impl Drop for Init {
 }
 
 fn unit(root: &Path, name: &str, body: &str) {
-    let d = root.join("usr/lib/sol/units");
+    let d = root.join("usr/lib/fern/units");
     fs::create_dir_all(&d).unwrap();
     // Units get a clean environment; give the test's PATH to the shell.
     let path = std::env::var("PATH").unwrap_or_default();
@@ -54,7 +54,7 @@ fn wait_for(what: &str, mut f: impl FnMut() -> bool) {
     }
 }
 
-/// The STATE column of `solctl status <unit>` (the second line's second
+/// The STATE column of `fernctl status <unit>` (the second line's second
 /// field), so a description such as "long running" cannot match.
 fn state(root: &Path, unit: &str) -> String {
     stdout(&ctl(root, &["status", unit]))
@@ -117,7 +117,7 @@ fn supervises_a_scratch_root() {
             .spawn()
             .unwrap(),
     );
-    wait_for("control socket", || root.join("run/sol/control").exists());
+    wait_for("control socket", || root.join("run/fern/control").exists());
 
     // Ordering: app starts after base finished.
     wait_for("app running", || state(root, "app") == "running");
@@ -146,9 +146,9 @@ fn supervises_a_scratch_root() {
 
     // Boot completed and was measured.
     wait_for("boot time", || {
-        stdout(&ctl(root, &["boot-time"])).contains("ms in sol-init")
+        stdout(&ctl(root, &["boot-time"])).contains("ms in fern-init")
     });
-    assert!(root.join("run/sol/boot-time").exists());
+    assert!(root.join("run/fern/boot-time").exists());
 
     // Manual start and stop.
     assert!(ctl(root, &["start", "manual"]).status.success());
@@ -168,10 +168,10 @@ fn supervises_a_scratch_root() {
 
     // Enable / disable persist as files.
     assert!(ctl(root, &["enable", "manual"]).status.success());
-    assert!(root.join("etc/sol/enabled/manual").exists());
+    assert!(root.join("etc/fern/enabled/manual").exists());
     assert!(ctl(root, &["disable", "manual"]).status.success());
-    assert!(root.join("etc/sol/disabled/manual").exists());
-    assert!(!root.join("etc/sol/enabled/manual").exists());
+    assert!(root.join("etc/fern/disabled/manual").exists());
+    assert!(!root.join("etc/fern/enabled/manual").exists());
 
     // Errors are reported, not ignored.
     let bad = ctl(root, &["start", "nope"]);
@@ -194,7 +194,7 @@ fn supervises_a_scratch_root() {
         }
         assert!(
             t.elapsed() < Duration::from_secs(15),
-            "sol-init did not exit"
+            "fern-init did not exit"
         );
         std::thread::sleep(Duration::from_millis(50));
     };
@@ -202,7 +202,7 @@ fn supervises_a_scratch_root() {
     assert!(!pid_alive(app_pid), "app's process survived shutdown");
 
     // The persistent log has the whole story.
-    let log = fs::read_to_string(root.join("var/log/sol/log.jsonl")).unwrap();
+    let log = fs::read_to_string(root.join("var/log/fern/log.jsonl")).unwrap();
     assert!(log.contains("\"base-ran\"") && log.contains("shutting down"));
 }
 

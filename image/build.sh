@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# Builds a bootable Solace disk image for QEMU from signed packages.
+# Builds a bootable Fern disk image for QEMU from signed packages.
 #
 #   image/build.sh [--repo DIR]... [--out DIR]
 #
-# Output: <out>/solace.img, a GPT disk image with
-#   p1  ESP (FAT32): GRUB, our theme, grub.cfg and /sol/1/{vmlinuz,initramfs.img}
+# Output: <out>/fern.img, a GPT disk image with
+#   p1  ESP (FAT32): GRUB, our theme, grub.cfg and /fern/1/{vmlinuz,initramfs.img}
 #   p2  btrfs: @snapshots/1 (the sealed system, read-only), @etc, @var, @users
 #
 # Only regular files are written; no block device is ever opened
@@ -14,11 +14,11 @@
 #
 # Environment:
 #   SPK              spk binary (default target/release/spk)
-#   SOL_KEY          trusted public key (default build/keys/dev.pub)
-#   SOL_ROOT_PASSWORD  dev root password (default "solace"); dev images only
+#   FERN_KEY          trusted public key (default build/keys/dev.pub)
+#   FERN_ROOT_PASSWORD  dev root password (default "fern"); dev images only
 #   ESP_MIB ROOT_MIB partition sizes (default 2048 and 4096)
-#   BOOT_TOML        boot settings for sol-bootgen (default image/boot-qemu.toml)
-#   SOL_IMAGE_DATE   snapshot date, unix seconds (default: the HEAD commit)
+#   BOOT_TOML        boot settings for fern-bootgen (default image/boot-qemu.toml)
+#   FERN_IMAGE_DATE   snapshot date, unix seconds (default: the HEAD commit)
 set -euo pipefail
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -40,11 +40,11 @@ done
 [ ${#repos[@]} -gt 0 ] || repos=(build/system/repo)
 
 SPK=${SPK:-target/release/spk}
-SOL_KEY=${SOL_KEY:-build/keys/dev.pub}
+FERN_KEY=${FERN_KEY:-build/keys/dev.pub}
 ESP_MIB=${ESP_MIB:-2048}
 ROOT_MIB=${ROOT_MIB:-4096}
 BOOT_TOML=${BOOT_TOML:-image/boot-qemu.toml}
-password=${SOL_ROOT_PASSWORD:-solace}
+password=${FERN_ROOT_PASSWORD:-fern}
 
 step() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 die() { echo "image/build.sh: $*" >&2; exit 1; }
@@ -60,7 +60,7 @@ mkdir -p "$work"
 
 step "Installing the system into a staging root"
 root=$work/root
-"$SPK" --root "$root" key trust "$SOL_KEY"
+"$SPK" --root "$root" key trust "$FERN_KEY"
 repo_args=()
 for r in "${repos[@]}"; do repo_args+=(--repo "$r"); done
 mapfile -t pkgs < <(sed -e 's/#.*//' -e '/^[[:space:]]*$/d' image/packages.txt)
@@ -96,7 +96,7 @@ missing=$(find "$sys" -type f \( -perm -u+x -o -name '*.so*' \) -print0 |
 [ -z "$missing" ] || die "libraries needed but not installed: $missing"
 
 # Our own tools from the packages just installed (static binaries).
-for b in sbin/sol-bootgen sbin/sol-mkinitramfs lib/sol/sol-init lib/sol/boot/vmlinuz bin/spk; do
+for b in sbin/fern-bootgen sbin/fern-mkinitramfs lib/fern/fern-init lib/fern/boot/vmlinuz bin/spk; do
   [ -f "$sys/$b" ] || die "missing /usr/$b in the installed system"
 done
 # Read (never source) the system's os-release: package content is data.
@@ -106,14 +106,14 @@ NAME=$(osr NAME) VERSION_ID=$(osr VERSION_ID)
 
 # The snapshot's date in the boot menu: the commit the image was built
 # from (reproducible), not SOURCE_DATE_EPOCH (the dev shell sets it to 1980).
-created=${SOL_IMAGE_DATE:-$(git -C "$repo_root" log -1 --format=%ct 2>/dev/null || date +%s)}
+created=${FERN_IMAGE_DATE:-$(git -C "$repo_root" log -1 --format=%ct 2>/dev/null || date +%s)}
 
 # System 1 is laid out as a system transaction would leave it
 # (docs/formats/system.md): its initramfs and metadata inside it.
-step "initramfs (sol-init as /init) and system metadata"
-"$sys/sbin/sol-mkinitramfs" "$sys/lib/sol/sol-init" "$sys/lib/sol/boot/initramfs.img"
+step "initramfs (fern-init as /init) and system metadata"
+"$sys/sbin/fern-mkinitramfs" "$sys/lib/fern/fern-init" "$sys/lib/fern/boot/initramfs.img"
 printf 'id = "1"\nversion = "%s"\ncreated = %s\nparent = ""\nsummary = ""\n' \
-  "$VERSION_ID" "$created" >"$sys/lib/sol/system.toml"
+  "$VERSION_ID" "$created" >"$sys/lib/fern/system.toml"
 
 step "btrfs subvolumes"
 fs=$work/fs
@@ -122,14 +122,14 @@ mv "$sys" "$fs/@snapshots/1"
 sys=$fs/@snapshots/1
 cp -a "$sys/share/factory/etc" "$fs/@etc"
 cp -a "$root/etc/." "$fs/@etc/"
-install -Dm644 "$BOOT_TOML" "$fs/@etc/sol/boot.toml"
+install -Dm644 "$BOOT_TOML" "$fs/@etc/fern/boot.toml"
 hash=$(openssl passwd -6 -stdin <<<"$password")
 sed -i "s|^root:[^:]*:|root:$hash:|" "$fs/@etc/shadow"
 mkdir -p "$fs/@var"/{log,lib,cache,spool,tmp}
 chmod 1777 "$fs/@var/tmp"
 root_uuid=$(cat /proc/sys/kernel/random/uuid)
 truncate -s "${ROOT_MIB}M" "$work/root.img"
-mkfs.btrfs -q -U "$root_uuid" -L Solace --rootdir "$fs" --compress zstd:3 \
+mkfs.btrfs -q -U "$root_uuid" -L Fern --rootdir "$fs" --compress zstd:3 \
   --subvol rw:@snapshots --subvol ro:@snapshots/1 \
   --subvol rw:@etc --subvol rw:@var --subvol rw:@users \
   "$work/root.img"
@@ -137,9 +137,9 @@ mkfs.btrfs -q -U "$root_uuid" -L Solace --rootdir "$fs" --compress zstd:3 \
 step "ESP: GRUB, theme, grub.cfg, kernel"
 esp=$work/esp
 mkdir -p "$esp/EFI/BOOT" "$esp/grub"
-cp -r "$sys/share/sol/grub/themes" "$sys/share/sol/grub/fonts" "$esp/grub/"
-[ -f "$sys/lib/sol/boot/grubx64.efi" ] || die "no grubx64.efi: is the grub package installed?"
-cp "$sys/lib/sol/boot/grubx64.efi" "$esp/EFI/BOOT/BOOTX64.EFI"
+cp -r "$sys/share/fern/grub/themes" "$sys/share/fern/grub/fonts" "$esp/grub/"
+[ -f "$sys/lib/fern/boot/grubx64.efi" ] || die "no grubx64.efi: is the grub package installed?"
+cp "$sys/lib/fern/boot/grubx64.efi" "$esp/EFI/BOOT/BOOTX64.EFI"
 serial=$(od -An -N4 -tx4 /dev/urandom | tr -d ' \n' | tr a-f A-F)
 esp_uuid=${serial:0:4}-${serial:4:4}
 cat >"$work/systems.toml" <<EOF
@@ -152,29 +152,29 @@ id = "1"
 version = "$VERSION_ID"
 created = $created
 subvol = "@snapshots/1"
-kernel = "$sys/lib/sol/boot/vmlinuz"
-initramfs = "$sys/lib/sol/boot/initramfs.img"
+kernel = "$sys/lib/fern/boot/vmlinuz"
+initramfs = "$sys/lib/fern/boot/initramfs.img"
 EOF
-"$sys/sbin/sol-bootgen" --esp "$esp" --inventory "$work/systems.toml" --settings "$BOOT_TOML"
+"$sys/sbin/fern-bootgen" --esp "$esp" --inventory "$work/systems.toml" --settings "$BOOT_TOML"
 truncate -s "${ESP_MIB}M" "$work/esp.img"
-mkfs.fat -F 32 -i "$serial" -n SOLACE "$work/esp.img" >/dev/null
+mkfs.fat -F 32 -i "$serial" -n FERN "$work/esp.img" >/dev/null
 mcopy -s -Q -i "$work/esp.img" "$esp"/* ::/
 
 step "GPT disk image"
-disk=$out/solace.img
+disk=$out/fern.img
 rm -f "$disk"
 truncate -s "$((1 + ESP_MIB + ROOT_MIB + 1))M" "$disk"
 sfdisk -q "$disk" <<EOF
 label: gpt
 start=2048, size=$((ESP_MIB * 2048)), type=C12A7328-F81F-11D2-BA4B-00A0C93EC93B, name="EFI system"
-start=$((2048 + ESP_MIB * 2048)), size=$((ROOT_MIB * 2048)), type=4F68BCE3-E8CD-4DB1-96E7-FBCAF984B709, name="Solace"
+start=$((2048 + ESP_MIB * 2048)), size=$((ROOT_MIB * 2048)), type=4F68BCE3-E8CD-4DB1-96E7-FBCAF984B709, name="Fern"
 EOF
 dd if="$work/esp.img" of="$disk" bs=1M seek=1 conv=notrunc,sparse status=none
 dd if="$work/root.img" of="$disk" bs=1M seek=$((1 + ESP_MIB)) conv=notrunc,sparse status=none
 
 cat >"$out/image.toml" <<EOF
 # Written by image/build.sh
-disk = "solace.img"
+disk = "fern.img"
 version = "$VERSION_ID"
 esp_uuid = "$esp_uuid"
 root_uuid = "$root_uuid"

@@ -1,4 +1,4 @@
-"""Drives a Solace VM for the QEMU tests: its serial console (expect,
+"""Drives a Fern VM for the QEMU tests: its serial console (expect,
 send, run a shell command and capture its output) and, when started with a
 monitor socket, the QEMU monitor (screenshots, key presses, power off)."""
 
@@ -10,7 +10,7 @@ import sys
 import time
 
 TIMEOUT = float(os.environ.get("QEMU_TEST_TIMEOUT", "600"))
-PASSWORD = os.environ.get("SOL_ROOT_PASSWORD", "solace")
+PASSWORD = os.environ.get("FERN_ROOT_PASSWORD", "fern")
 PROMPT = re.compile(rb"\n[^\n]*[#$] $")
 # Escape sequences and carriage returns, removed from captured output.
 NOISE = re.compile(rb"\x1b\[[0-9;?]*[A-Za-z]|\x1b[=>]|\r")
@@ -96,8 +96,8 @@ class Console:
 
     def boot_and_login(self):
         """Waits for a boot to finish and logs in as root. Returns the boot
-        time reported by sol-init (ms after the kernel started)."""
-        m = self.expect(rb"boot complete: (\d+) ms after the kernel started", "sol-init boot complete")
+        time reported by fern-init (ms after the kernel started)."""
+        m = self.expect(rb"boot complete: (\d+) ms after the kernel started", "fern-init boot complete")
         # The serial login may have printed its prompt before the last
         # units finished; an empty line makes it ask again.
         self.send("\n")

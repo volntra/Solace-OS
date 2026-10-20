@@ -1,4 +1,4 @@
-//! System snapshots and transactions on a running Solace
+//! System snapshots and transactions on a running Fern
 //! (docs/formats/system.md): every change to the system is made in a new
 //! btrfs snapshot of the booted one, which is sealed and added to the boot
 //! menu as the default; the running system is never touched.
@@ -18,23 +18,23 @@ use crate::solve::{Plan, Request};
 use crate::tx::{self, Event, Root, Sources};
 
 /// Paths relative to the live root (normally `/`).
-pub const BTRFS_TOP: &str = "run/sol/btrfs";
-pub const BOOTED: &str = "run/sol/booted";
-const LOCK: &str = "run/sol/spk.lock";
-const STAGE: &str = "run/sol/tx";
-const BOOT_SETTINGS: &str = "etc/sol/boot.toml";
+pub const BTRFS_TOP: &str = "run/fern/btrfs";
+pub const BOOTED: &str = "run/fern/booted";
+const LOCK: &str = "run/fern/spk.lock";
+const STAGE: &str = "run/fern/tx";
+const BOOT_SETTINGS: &str = "etc/fern/boot.toml";
 const ESP: &str = "boot";
 /// Under the btrfs top level.
 const SNAPSHOTS: &str = "@snapshots";
 /// Paths inside a system (its `/usr`).
-pub const META: &str = "lib/sol/system.toml";
-const KERNEL: &str = "lib/sol/boot/vmlinuz";
-const INITRAMFS: &str = "lib/sol/boot/initramfs.img";
-const SOL_INIT: &str = "lib/sol/sol-init";
+pub const META: &str = "lib/fern/system.toml";
+const KERNEL: &str = "lib/fern/boot/vmlinuz";
+const INITRAMFS: &str = "lib/fern/boot/initramfs.img";
+const FERN_INIT: &str = "lib/fern/fern-init";
 const OS_RELEASE: &str = "lib/os-release";
 const TX_LOCK: &str = "lib/spk/lock";
 
-/// `lib/sol/system.toml` of a system.
+/// `lib/fern/system.toml` of a system.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Meta {
@@ -67,7 +67,7 @@ pub struct Outcome {
     pub warnings: Vec<String>,
 }
 
-/// A running Solace system, as seen by spk.
+/// A running Fern system, as seen by spk.
 #[derive(Clone, Debug)]
 pub struct Live {
     root: PathBuf,
@@ -79,11 +79,11 @@ pub struct Live {
 }
 
 impl Live {
-    /// The running Solace rooted at `root` (normally `/`), or `None` when
+    /// The running Fern rooted at `root` (normally `/`), or `None` when
     /// `root` is not one (a scratch root, a build host).
     ///
     /// # Errors
-    /// A Solace whose system volume or kernel command line is incomplete.
+    /// A Fern whose system volume or kernel command line is incomplete.
     pub fn detect(root: &Path) -> Result<Option<Live>> {
         let booted_file = root.join(BOOTED);
         if !booted_file.exists() {
@@ -205,7 +205,7 @@ impl Live {
         let os_name = fs::read_to_string(self.root.join("usr").join(OS_RELEASE))
             .ok()
             .and_then(|t| os_release_value(&t, "NAME"))
-            .unwrap_or_else(|| "Solace".into());
+            .unwrap_or_else(|| "Fern".into());
         Ok(bootgen::Params {
             esp_uuid: self.esp_uuid.clone(),
             root_uuid: self.root_uuid.clone(),
@@ -361,8 +361,8 @@ impl Live {
             return Ok(None);
         }
 
-        // The initramfs trigger: sol-init of the new system as /init.
-        let init_path = new.join(SOL_INIT);
+        // The initramfs trigger: fern-init of the new system as /init.
+        let init_path = new.join(FERN_INIT);
         let init = fs::read(&init_path).at(&init_path)?;
         let img = new.join(INITRAMFS);
         let tmp = img.with_extension("img.new");
@@ -487,10 +487,10 @@ fn boot_ids(cmdline: &str) -> Result<(String, String)> {
             .and_then(|v| v.strip_prefix("UUID="))
             .map(str::to_string)
     };
-    match (get("sol.root="), get("sol.esp=")) {
+    match (get("fern.root="), get("fern.esp=")) {
         (Some(r), Some(e)) => Ok((r, e)),
         _ => Err(Error::Conflict(
-            "the kernel command line lacks sol.root=UUID= or sol.esp=UUID=; \
+            "the kernel command line lacks fern.root=UUID= or fern.esp=UUID=; \
              system updates are unavailable"
                 .into(),
         )),
@@ -604,16 +604,16 @@ mod tests {
 
     #[test]
     fn boot_ids_come_from_the_command_line() {
-        let c = "BOOT_IMAGE=/sol/2/vmlinuz sol.root=UUID=0e7b-1 sol.system=@snapshots/2 sol.esp=UUID=AB12-CD34 rw quiet";
+        let c = "BOOT_IMAGE=/fern/2/vmlinuz fern.root=UUID=0e7b-1 fern.system=@snapshots/2 fern.esp=UUID=AB12-CD34 rw quiet";
         assert_eq!(boot_ids(c).unwrap(), ("0e7b-1".into(), "AB12-CD34".into()));
-        assert!(boot_ids("sol.root=UUID=x quiet").is_err());
-        assert!(boot_ids("sol.root=/dev/vda2 sol.esp=UUID=y").is_err());
+        assert!(boot_ids("fern.root=UUID=x quiet").is_err());
+        assert!(boot_ids("fern.root=/dev/vda2 fern.esp=UUID=y").is_err());
     }
 
     #[test]
     fn os_release_values() {
-        let t = "NAME=\"Solace\"\nVERSION_ID=0.1\nPRETTY_NAME=\"Solace 0.1 (Koi)\"\n";
-        assert_eq!(os_release_value(t, "NAME").as_deref(), Some("Solace"));
+        let t = "NAME=\"Fern\"\nVERSION_ID=0.1\nPRETTY_NAME=\"Fern 0.1 (Koi)\"\n";
+        assert_eq!(os_release_value(t, "NAME").as_deref(), Some("Fern"));
         assert_eq!(os_release_value(t, "VERSION_ID").as_deref(), Some("0.1"));
         assert_eq!(os_release_value(t, "VERSION"), None);
     }
@@ -656,7 +656,7 @@ mod tests {
     #[test]
     fn metadata_round_trips() {
         let m = Meta {
-            summary: "install solace-base 0.1-2".into(),
+            summary: "install fern-base 0.1-2".into(),
             parent: "1".into(),
             ..meta("2", 1_792_454_400)
         };

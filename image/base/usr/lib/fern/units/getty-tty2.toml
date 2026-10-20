@@ -1,0 +1,13 @@
+# tty1 belongs to the desktop (fern-comp); the console login is one
+# Ctrl+Alt+F2 away.
+description = "Console login on tty2"
+enabled = true
+
+[service]
+exec = ["/usr/sbin/agetty", "--noclear", "tty2", "linux"]
+restart = "always"
+restart_delay_ms = 200
+
+[sandbox]
+# login switches users and must be able to run setuid tools like passwd.
+no_new_privs = false

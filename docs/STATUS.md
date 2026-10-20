@@ -4,7 +4,7 @@ _Last updated: 2026-10-20_
 
 Repository: https://github.com/volntra/Solace-OS (`main`).
 
-## Current phase: 4 (compositor core): done (2026-10-20); next: 5 (sol-wm)
+## Current phase: 4 (compositor core): done (2026-10-20); next: 5 (fern-wm)
 
 Stages: 1 foundation ✓, 2 renderer ✓ (corners, shadows, wallpaper,
 background blur), 3 headless backend + pixel tests ✓, 4 graphics base
@@ -34,7 +34,7 @@ Phase 6.)
 cd ~/solace-os && git pull
 nix --extra-experimental-features 'nix-command flakes' develop
 just wallpapers          # once: renders the wallpaper
-just comp-drm            # sol-comp on the real display + an animated window
+just comp-drm            # fern-comp on the real display + an animated window
                          # Ctrl+Alt+Backspace quits; timing in build/comp-drm.log
 ```
 
@@ -45,22 +45,22 @@ frames shown per second, the frame interval and missed refreshes: the
 target is 165 fps with no missed refreshes at 2560x1440 @ 165 Hz. Also
 worth trying: `just comp` (nested in the NixOS desktop).
 
-**On the QEMU image (sol-comp drives the display):**
+**On the QEMU image (fern-comp drives the display):**
 
 ```sh
 nix develop
-just bootstrap && just image   # builds sol-comp and the graphics base too
+just bootstrap && just image   # builds fern-comp and the graphics base too
 just qemu                      # boots to the desktop; Ctrl+Alt+F2: console login
 just qemu-test-comp            # automated: wallpaper, windows, blur, VT switching
 ```
 
-![sol-comp on the QEMU image's virtio GPU (KMS), software-rendered](design/img/comp-drm-qemu.png)
+![fern-comp on the QEMU image's virtio GPU (KMS), software-rendered](design/img/comp-drm-qemu.png)
 
 Verified in the cloud container (2026-10-19), `just qemu-test-comp`:
 
 ```
 ✓ booted and logged in on the serial console
-✓ sol-comp took the display
+✓ fern-comp took the display
 ✓ the wallpaper is on screen (1280x800)
 ✓ a client window is drawn
 ✓ blur: the stripes behind the glass are smoothed, the rest stay sharp
@@ -71,7 +71,7 @@ Verified in the cloud container (2026-10-19), `just qemu-test-comp`:
 ```
 
 The boot now starts udev (hwdb compiled on first boot, coldplug trigger,
-settle), seatd and sol-comp (as root until the login screen exists).
+settle), seatd and fern-comp (as root until the login screen exists).
 tty1 is the desktop; the console login moved to tty2. Without host 3D,
 Mesa renders in software (`kms_swrast`, softpipe); on the NVIDIA host,
 `-device virtio-vga-gl -display gtk,gl=on` gives virgl acceleration (not
@@ -81,20 +81,20 @@ tried yet).
 
 ```sh
 nix develop
-just wallpapers            # build/wallpapers/dusk.png, the default wallpaper
+just wallpapers            # build/wallpapers/grove.png, the default wallpaper
 just comp weston-terminal  # any Wayland client; more with WAYLAND_DISPLAY=wayland-N
 just comp-demo             # a striped window behind a frosted-glass one
 just comp-test             # pixel tests, headless (also run by `just check`)
 ```
 
-![sol-comp nested in Xvfb: wallpaper, rounded corners, shadows](design/img/comp-nested.png)
+![fern-comp nested in Xvfb: wallpaper, rounded corners, shadows](design/img/comp-nested.png)
 ![just comp-demo: background blur under a translucent window](design/img/comp-blur.png)
 
-Stage 6 (NVIDIA, 2026-10-19): sol-comp offers linux-dmabuf (GPU
+Stage 6 (NVIDIA, 2026-10-19): fern-comp offers linux-dmabuf (GPU
 buffers from clients, each checked by importing it) and linux-drm-syncobj
 (explicit sync, which NVIDIA relies on) and waits for a client's GPU work
-before showing a commit; frame timing (`SOL_COMP_STATS=1`); sol-init
-loads kernel modules from `/usr/lib/sol/modules.d` (docs/formats/
+before showing a commit; frame timing (`FERN_COMP_STATS=1`); fern-init
+loads kernel modules from `/usr/lib/fern/modules.d` (docs/formats/
 modules.md; zram is loaded on every QEMU boot as the test); the kernel
 ships its modules and a `linux-build` tree; the `nvidia` and
 `nvidia-kmod` packages (595.104.02: open kernel modules built against our
@@ -109,18 +109,18 @@ in the shader), focus-dependent soft shadows (analytic Gaussian), the
 wallpaper (cover-cropped), background blur for windows that ask for it
 (`org_kde_kwin_blur`; dual-Kawase, cached until what is behind changes),
 damage tracking (only changed regions are redrawn and presented; an idle
-nested session uses almost no CPU). `sol-testclient` (de/comp/src/bin)
+nested session uses almost no CPU). `fern-testclient` (de/comp/src/bin)
 opens a coloured, striped or blurred window for tests. Verified in the
 cloud container in Xvfb on llvmpipe; not yet on a real GPU.
 
-Tests (`just comp-test`, de/comp/tests/render.rs): a headless sol-comp
+Tests (`just comp-test`, de/comp/tests/render.rs): a headless fern-comp
 (Mesa surfaceless EGL, software rendering, no display needed) runs real
-`sol-testclient` windows and checks pixels: the image is upright, corners
+`fern-testclient` windows and checks pixels: the image is upright, corners
 are cut and edges are not, shadows fall below windows and follow focus,
 blur smooths what is behind a window that asks for it (whole surface or
 a region) and nothing else, blurred backdrops are reused while idle and
 redone when what is behind moves, and idle frames have no damage.
-Screenshots land in `target/tmp/sol-comp-render/`. Checked to fail when
+Screenshots land in `target/tmp/fern-comp-render/`. Checked to fail when
 the Stage 2 shadow-damage bug is put back, or when blur is switched off.
 
 Graphics base (stage 4, `just bootstrap`; system stage): Python 3.14
@@ -132,7 +132,7 @@ Mesa 26.2 (EGL, GBM, GLES2; virgl + softpipe; no LLVM). All built in the
 cloud container; a scratch root with them installed has every library
 dependency resolved; in the image since stage 5.
 
-Not yet: server-side titlebars (Phase 5, sol-wm), every protocol beyond
+Not yet: server-side titlebars (Phase 5, fern-wm), every protocol beyond
 xdg-shell and blur, layer-shell (the dock and menu bar need it),
 multi-GPU, Vulkan on NVIDIA (needs the Vulkan loader), hotplug module
 loading. GPU clients and NVIDIA have not run yet. Several displays are laid
@@ -150,19 +150,19 @@ logind backend until elogind; Mesa has no hardware drivers (and no LLVM).
 ```sh
 nix develop
 just bootstrap && just image   # as in Phase 2 (cached after the first run)
-just update-demo               # build/demo/update.img: Solace 0.1.1 as an update
+just update-demo               # build/demo/update.img: Fern 0.1.1 as an update
 just qemu-test-update          # the whole demo, automated (5 boots, ~10 min without KVM)
 ```
 
 By hand: `just qemu --update build/demo/update.img`, log in (root /
-solace), then
+fern), then
 
 ```sh
 mkdir -p /Volumes/Update && mount -t vfat -o ro /dev/vdb /Volumes/Update
 spk --repo /Volumes/Update/good upgrade   # new system 2; the running one is untouched
 spk systems
-solctl reboot                             # boots system 2 (Solace 0.1.1)
-solctl reboot                             # pick "Solace 0.1" in the boot menu: system 1
+fernctl reboot                             # boots system 2 (Fern 0.1.1)
+fernctl reboot                             # pick "Fern 0.1" in the boot menu: system 1
 spk rollback                              # or make the previous system the default
 ```
 
@@ -173,8 +173,8 @@ Verified in the cloud container (2026-10-19), `just qemu-test-update`:
 ✓ A: power cut after the new system was written, before it was sealed
 ✓ B: system 1 still boots after the power cut (snapshots on disk: 1 2)
 ✓ B: update applied as system 2 (half-made snapshot cleaned up); next boot: 2
-✓ C: rebooted into system 2 (Solace 0.1.1)
-✓ D: picked the previous system in the boot menu: system 1 (Solace 0.1)
+✓ C: rebooted into system 2 (Fern 0.1.1)
+✓ D: picked the previous system in the boot menu: system 1 (Fern 0.1)
 ✓ D: spk rollback made system 1 the default
 ✓ E: system 1 boots by default after the rollback
 qemu-test-update: PASS
@@ -182,16 +182,16 @@ qemu-test-update: PASS
 
 The boot menu with both systems: `docs/design/img/boot-menu-two-systems.png`.
 `just qemu-test` (Phase 2) still passes and now also checks `/boot`,
-`/run/sol/btrfs` and `spk systems`.
+`/run/fern/btrfs` and `spk systems`.
 
 Phase 3 stages:
 
 | Stage | What | State |
 |---|---|---|
 | 1 | Design: docs/formats/system.md | done |
-| 2 | sol-init mounts the btrfs top level and the ESP; bootgen passes `sol.esp=` | done, tests |
+| 2 | fern-init mounts the btrfs top level and the ESP; bootgen passes `fern.esp=` | done, tests |
 | 3 | libspk `btrfs` (ioctls) + `system` (transact, rollback, prune) | done, tests + QEMU |
-| 4 | spk on Solace: live installs as transactions, `spk systems`, `spk rollback`; spk package | done |
+| 4 | spk on Fern: live installs as transactions, `spk systems`, `spk rollback`; spk package | done |
 | 5 | Update disk, `just qemu-test-update` with failure injection | done, passes |
 
 ## Phase 2 (previous): demo works; boot time to be measured on KVM
@@ -202,9 +202,9 @@ Phase 3 stages:
 ```sh
 nix develop
 just bootstrap     # cross toolchain -> temporary tools -> final system (hours once, then cached)
-just image         # build/image/solace.img (files only; no real disks touched)
-just qemu          # our themed GRUB menu -> text login on screen and serial (root / solace)
-just qemu-test     # headless: boot, log in, solctl, os-release, root layout, sealed /usr, poweroff
+just image         # build/image/fern.img (files only; no real disks touched)
+just qemu          # our themed GRUB menu -> text login on screen and serial (root / fern)
+just qemu-test     # headless: boot, log in, fernctl, os-release, root layout, sealed /usr, poweroff
 ```
 
 Verified in the cloud container (2026-10-19): the full bootstrap builds
@@ -213,12 +213,12 @@ changes rebuilds nothing (72 cached, 3 min, mostly signature checks), and
 an unrelated docs change rebuilds nothing either. `just qemu-test` passes:
 
 ```
-✓ sol-init: boot complete 5860 ms after the kernel started
-✓ text login prompt        ("Solace 0.1 (Koi)")
+✓ fern-init: boot complete 5860 ms after the kernel started
+✓ text login prompt        ("Fern 0.1 (Koi)")
 ✓ logged in as root
-✓ solctl status / boot-time / logs
+✓ fernctl status / boot-time / logs
 ✓ /etc/os-release (from the factory /etc)
-✓ Solace root layout (Applications, Users, System, Volumes)
+✓ Fern root layout (Applications, Users, System, Volumes)
 ✓ /usr is the sealed read-only snapshot
 ✓ clean poweroff
 ```
@@ -229,7 +229,7 @@ GRUB build drawing our theme, no upstream branding) and
 
 **Not yet verified: "under 5 s after GRUB".** The container has no KVM:
 the 5.9 s above is pure software emulation (TCG) on otherwise idle CPUs;
-earlier runs while gcc compiled took 7.5-8.4 s. sol-init itself takes
+earlier runs while gcc compiled took 7.5-8.4 s. fern-init itself takes
 under 1 s of it. Run `just qemu-test` on the
 NixOS host (KVM is used automatically) to measure it; the result line
 says whether it is under the target.
@@ -239,9 +239,9 @@ says whether it is under the target.
 | 1 | Bootstrap plan + spk toolchain modes (host/cross/native/rust) | done |
 | 2 | Cross, temporary and chroot-stage recipes (`bootstrap/recipes`) | done |
 | 3 | Final system recipes (glibc ... gcc, kernel, GRUB, OpenSSL, pkgconf) | done |
-| 4 | sol-init (PID 1, units, supervision, sol-log, solctl) | done, 39 tests |
-| 5 | sol-bootgen (grub.cfg, ESP kernels) + GRUB theme | done, 15 tests |
-| 6 | Packages for our own tools (sol-init, sol-bootgen, solace-base, theme) | done |
+| 4 | fern-init (PID 1, units, supervision, fern-log, fernctl) | done, 39 tests |
+| 5 | fern-bootgen (grub.cfg, ESP kernels) + GRUB theme | done, 15 tests |
+| 6 | Packages for our own tools (fern-init, fern-bootgen, fern-base, theme) | done |
 | 7 | Image builder, `just qemu`, `just qemu-test` | done |
 | 8 | Boot in QEMU, measure GRUB-to-login | boots and passes; KVM timing pending |
 
@@ -261,8 +261,8 @@ Phase 1's demo still works: `just demo`.
 ## Done
 
 ### Phase 0
-- Names (Solace / sol / spk / ace / Koi), CLAUDE.md, repo layout, flake
-  devShell, justfile, solcheck, docs.
+- Names (Fern / fern / spk / ace / Koi), CLAUDE.md, repo layout, flake
+  devShell, justfile, ferncheck, docs.
 
 ### Phase 1
 - Specs: `docs/formats/recipe.md`, `package.md`, `repo.md`.
@@ -272,7 +272,7 @@ Phase 1's demo still works: `just demo`.
     symlinks may not escape the root.
   - `sign`: ed25519 with domain-separated messages; trusted keyring per
     root; secret keys 0600 and refused if readable by others.
-  - `package`: reproducible `.solpkg` (tar.zst, manifest first); verify on
+  - `package`: reproducible `.fernpkg` (tar.zst, manifest first); verify on
     a private copy, signature before decompression, index match, then
     extraction that accepts only exact manifest matches.
   - `repo` + `fetch`: signed index verified before parsing; https-only
@@ -290,15 +290,15 @@ Phase 1's demo still works: `just demo`.
     splits, signing, repo publish, build stamps.
 - CLI: install, remove, upgrade, search, info, files, owns, list, history,
   verify, build, repo-add, key gen/trust. Refuses to modify `/` on a host
-  that is not Solace.
+  that is not Fern.
 - 10 recipes with justifications: zlib, bzip2, xz, lz4, zstd, expat,
   libffi, pcre2, libxcrypt, libarchive.
 - `tools/sandbox-probe`: hostile recipe; all 10 escape attempts fail.
 
 ### Brand (parallel track, allowed by CLAUDE.md section 7)
-- Logo: `assets/brand/solace-icon.svg` (full colour, squircle plate) and
-  `solace-mark.svg` (single colour, pixel-sharp at 16 px), and
-  `solace-icon-glass.svg` (transparent clear-glass variant), generated by
+- Logo: `assets/brand/fern-icon.svg` (full colour, squircle plate) and
+  `fern-mark.svg` (single colour, pixel-sharp at 16 px), and
+  `fern-icon-glass.svg` (transparent clear-glass variant), generated by
   `just logo`. See HIG.md "Brand".
 
 ### Phase 2
@@ -312,7 +312,7 @@ Phase 1's demo still works: `just demo`.
   closure, per-phase subshells.
 - `recipes/`: final system (linux-headers, glibc, bash, coreutils,
   util-linux, shadow, pkgconf, openssl, gcc, binutils, GRUB 2.14 with
-  branding patched out, linux 7.2 with `boot/kernel/solace.config`, ...),
+  branding patched out, linux 7.2 with `boot/kernel/fern.config`, ...),
   each justified in DECISIONS.md. Every source matches nixpkgs' hash, an
   upstream signature or checksum, or another distribution's pin, except
   bc, shadow, lz4 and libarchive (trust on first use, see DECISIONS.md).
@@ -320,14 +320,14 @@ Phase 1's demo still works: `just demo`.
   build stamps follow the versions actually installed; a split build dep
   swaps in its own parent; local sources refuse symlinks and can list
   `include` paths.
-- `init/`: sol-init (PID 1: mounts, root assembly from btrfs subvolumes,
+- `init/`: fern-init (PID 1: mounts, root assembly from btrfs subvolumes,
   switch_root, /etc seeding, sysctl, random seed, clean shutdown; service
   manager with TOML units, dependency graph, restarts, cgroups v2,
-  no_new_privs; sol-log; control socket) and `solctl` (status, start,
+  no_new_privs; fern-log; control socket) and `fernctl` (status, start,
   stop, restart, enable, disable, logs, boot-time, reboot, poweroff).
-- `boot/bootgen`: sol-bootgen (atomic grub.cfg, ESP space check, pruning,
+- `boot/bootgen`: fern-bootgen (atomic grub.cfg, ESP space check, pruning,
   menu styles, other-OS entries, consoles, validated inputs) and
-  sol-mkinitramfs.
+  fern-mkinitramfs.
 - `boot/grub-theme`: our gfxmenu theme (blurred wallpaper, glass logo,
   Inter); `just grub-preview` screenshots it in QEMU.
 - `image/`: unprivileged image builder (btrfs `@snapshots/1` read-only,
@@ -336,15 +336,15 @@ Phase 1's demo still works: `just demo`.
 ### Phase 3
 - `docs/formats/system.md`: snapshots, metadata, the transaction steps,
   rollback, boot settings.
-- sol-init: `/run/sol/btrfs` (top level, root-only), `/boot` (ESP by FAT
-  volume id), `/run/sol/booted`; sol-bootgen writes `sol.esp=`.
+- fern-init: `/run/fern/btrfs` (top level, root-only), `/boot` (ESP by FAT
+  volume id), `/run/fern/booted`; fern-bootgen writes `fern.esp=`.
 - libspk: `btrfs` (snapshot, seal, delete; ABI pinned by tests),
   `system::Live` (transact, rollback, overview), read-only database
   opens, roots with an explicit keyring; `spk build` accepts deps that
   are only in dependency repos.
 - spk: live install/remove/upgrade are system transactions; `spk systems`,
   `spk rollback [ID]`; packaged (`recipes/spk`) and in the image.
-- image: system 1 carries its initramfs and metadata; `/etc/sol/boot.toml`.
+- image: system 1 carries its initramfs and metadata; `/etc/fern/boot.toml`.
 - Tests: `just qemu-test-update` (tampered update, power cut before the
   seal, update, boot menu pick, rollback).
 
@@ -359,19 +359,19 @@ Phase 1's demo still works: `just demo`.
 - The boot menu keeps the newest `keep` systems plus the default. After
   a rollback followed by several updates, the running system can drop out
   of the menu (its snapshot is never deleted while it runs).
-- Only local repositories work on Solace itself: the image has no CA
+- Only local repositories work on Fern itself: the image has no CA
   certificates for HTTPS yet.
-- `sol-pkgd` (spk over D-Bus for Settings and the installer) is not
+- `fern-pkgd` (spk over D-Bus for Settings and the installer) is not
   started; it arrives when Settings needs it.
-- Dev images log in as root with the password `solace`
-  (`SOL_ROOT_PASSWORD`); real users come with the installer (Phase 12).
+- Dev images log in as root with the password `fern`
+  (`FERN_ROOT_PASSWORD`); real users come with the installer (Phase 12).
 - shadow is built `--disable-logind` (no libsystemd) until elogind
   arrives; util-linux has no `wall`, and `mount`/`umount` are not setuid
   (drives will be mounted through udisks).
 - Packages do not declare their glibc dependency; the image lists glibc
   explicitly, and `image/build.sh` fails if any binary needs a library
   the image lacks. Automatic library dependencies are a later spk feature.
-- sol-init and sol-bootgen rebuild when anything in the Cargo workspace
+- fern-init and fern-bootgen rebuild when anything in the Cargo workspace
   changes (`include` limits them to the workspace, not to their crate).
 - The GRUB theme package uses the host toolchain (`grub-mkfont` from the
   workbench; ours is built without FreeType). Its output is data from our
@@ -386,9 +386,9 @@ Phase 1's demo still works: `just demo`.
 
 - Phase 1's `build/repo` packages (`just demo`) are built with the host
   toolchain and are not bootable; the system stage rebuilds them natively.
-- On a scratch root (not a running Solace), a transaction that is
+- On a scratch root (not a running Fern), a transaction that is
   *killed* mid-apply leaves `usr/lib/spk/staging/` and blocks the next
-  run until removed by hand. On Solace, system transactions are crash
+  run until removed by hand. On Fern, system transactions are crash
   safe (tested).
 - No cgroup resource limits or ccache in builds yet.
 - Recipe test suites (`make check`) are not run.
@@ -406,18 +406,16 @@ Phase 1's demo still works: `just demo`.
 
 ## Open questions for the human
 
-1. **Desktop name:** recorded as DE = Koi, release label "SolOS 1: Koi",
-   OS = Solace. Is "SolOS" meant to replace "Solace"?
-2. GPL-3.0-or-later was chosen as the default; say if you want
+1. GPL-3.0-or-later was chosen as the default; say if you want
    GPL-3.0-only instead.
 
 ## Next
 
 1. On the NixOS host: measure the boot time with KVM (`just qemu-test`;
-   the boot now also starts udev, seatd and sol-comp), try the Phase 3
+   the boot now also starts udev, seatd and fern-comp), try the Phase 3
    demo with a window (`just qemu --update build/demo/update.img`), and
    look at the desktop in a window (`just qemu`; with host 3D, try
    `-device virtio-vga-gl -display gtk,gl=on` for virgl).
-2. Phase 5 (sol-wm). Still to try on the human's PC: GPU clients (e.g.
+2. Phase 5 (fern-wm). Still to try on the human's PC: GPU clients (e.g.
    a browser or EGL demos) under `just comp-drm`, and `just comp` nested
    in the NixOS desktop.

@@ -1,7 +1,7 @@
-//! Pixel tests for sol-comp's renderer: a headless compositor, real
-//! Wayland clients (`sol-testclient`), screenshots, and checks on
+//! Pixel tests for fern-comp's renderer: a headless compositor, real
+//! Wayland clients (`fern-testclient`), screenshots, and checks on
 //! specific pixels. Screenshots are kept in
-//! `target/tmp/sol-comp-render/` for inspection.
+//! `target/tmp/fern-comp-render/` for inspection.
 //!
 //! Runs on Mesa's software renderer (llvmpipe) so results do not depend
 //! on the GPU; needs the dev shell (`nix develop`) for Mesa's EGL.
@@ -14,14 +14,14 @@ use std::path::PathBuf;
 use std::process::{Child, Command, ExitCode, Stdio};
 use std::time::{Duration, Instant};
 
-use smithay::{
-    desktop::Window,
-    reexports::{calloop::EventLoop, wayland_server::Display},
-};
-use solcomp::{
+use ferncomp::{
     Comp, LoopData, backdrop,
     backend::headless::{Headless, Image},
     render::{WINDOW_RADIUS, Wallpaper},
+};
+use smithay::{
+    desktop::Window,
+    reexports::{calloop::EventLoop, wayland_server::Display},
 };
 
 /// The output, and the wallpaper's flat grey (shadows must darken it).
@@ -76,15 +76,15 @@ impl Harness {
         Ok(changed)
     }
 
-    /// Starts `sol-testclient ARGS` and waits until its window is placed
+    /// Starts `fern-testclient ARGS` and waits until its window is placed
     /// and shown.
     fn open(&mut self, args: &str) -> Result<Window> {
-        let child = Command::new(env!("CARGO_BIN_EXE_sol-testclient"))
+        let child = Command::new(env!("CARGO_BIN_EXE_fern-testclient"))
             .args(args.split_whitespace())
             .env("WAYLAND_DISPLAY", &self.data.state.socket_name)
             .stdout(Stdio::null())
             .spawn()
-            .map_err(|e| format!("sol-testclient: {e}"))?;
+            .map_err(|e| format!("fern-testclient: {e}"))?;
         self.clients.push(child);
         let deadline = Instant::now() + Duration::from_secs(20);
         loop {
@@ -101,7 +101,7 @@ impl Harness {
                 return Ok(w);
             }
             if Instant::now() > deadline {
-                return Err(format!("no window from `sol-testclient {args}`"));
+                return Err(format!("no window from `fern-testclient {args}`"));
             }
         }
     }
@@ -159,7 +159,7 @@ impl Harness {
 
     fn shot(&mut self, label: &str) -> Result<Image> {
         let img = self.headless.screenshot().map_err(|e| e.to_string())?;
-        let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("sol-comp-render");
+        let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR")).join("fern-comp-render");
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
         img.save_png(&dir.join(format!("{}-{label}.png", self.name)))?;
         Ok(img)
@@ -305,7 +305,7 @@ fn blur(h: &mut Harness) -> Result {
         format!("blurred without asking: spread {plain}")
     })?;
     // A blur this strong averages the four stripe colours (see
-    // sol-testclient): no darkening, no tint.
+    // fern-testclient): no darkening, no tint.
     let p = img.pixel(500, 350);
     check(near(p, [153, 157, 158], 10), || {
         format!("blurred colour {p:?} is not the stripes' average")
@@ -369,7 +369,7 @@ const SCENARIOS: &[Scenario] = &[
 
 fn main() -> ExitCode {
     let runtime = PathBuf::from(env!("CARGO_TARGET_TMPDIR"))
-        .join(format!("sol-comp-runtime-{}", std::process::id()));
+        .join(format!("fern-comp-runtime-{}", std::process::id()));
     if let Err(e) = std::fs::create_dir_all(&runtime) {
         eprintln!("{}: {e}", runtime.display());
         return ExitCode::FAILURE;

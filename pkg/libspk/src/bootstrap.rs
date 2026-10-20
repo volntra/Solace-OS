@@ -17,7 +17,7 @@ use crate::version::{DepSpec, validate_name};
 #[derive(Clone, Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Plan {
-    /// Target triple (`$SOL_TGT`).
+    /// Target triple (`$FERN_TGT`).
     #[serde(default = "default_target")]
     pub target: String,
     #[serde(rename = "stage")]

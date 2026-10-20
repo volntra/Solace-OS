@@ -1,4 +1,4 @@
-# The Solace bootstrap: from the host's compilers to a system that builds
+# The Fern bootstrap: from the host's compilers to a system that builds
 # itself. Run with `just bootstrap` (spk bootstrap bootstrap/plan.toml).
 # Format: docs/formats/bootstrap-plan.md. Follows Linux From Scratch
 # chapters 5-8, with every step an ordinary signed spk package.
@@ -15,7 +15,7 @@ recipes = ["cross-binutils", "cross-gcc", "linux-headers", "glibc", "cross-libst
 
 [[stage]]
 name = "temp"
-description = "temporary tools, cross-compiled for Solace (LFS ch. 6)"
+description = "temporary tools, cross-compiled for Fern (LFS ch. 6)"
 recipes_dir = "bootstrap/recipes"
 repo = "build/bootstrap/repo"
 toolchain = "cross"
@@ -57,16 +57,16 @@ recipes = [
     "m4", "flex", "ncurses", "readline", "bc", "bash", "coreutils",
     "diffutils", "gawk", "findutils", "grep", "gzip", "sed", "tar", "make",
     "patch", "less", "pkgconf", "libxcrypt", "shadow", "util-linux", "elfutils", "openssl", "linux",
-    "sol-init", "sol-bootgen", "spk", "solace-base", "solace-grub-theme", "grub",
+    "fern-init", "fern-bootgen", "spk", "fern-base", "fern-grub-theme", "grub",
     # Then the self-hosting toolchain and the remaining libraries.
     "binutils", "gmp", "mpfr", "mpc", "gcc",
     "expat", "libffi", "pcre2", "libarchive",
-    # The graphics base (Phase 4): build tools, then the stack under sol-comp.
+    # The graphics base (Phase 4): build tools, then the stack under fern-comp.
     "python", "ninja", "meson", "python-markupsafe", "python-jinja2", "python-mako",
     "python-packaging", "python-pyyaml", "gperf", "libcap", "udev",
     "libdrm", "wayland", "wayland-protocols", "xkeyboard-config",
     "libxkbcommon", "libevdev", "mtdev", "libinput", "seatd", "libglvnd",
-    "mesa", "solace-wallpapers", "sol-comp",
+    "mesa", "fern-wallpapers", "fern-comp",
     # Optional hardware support (not in the base image).
     "nvidia",
 ]

@@ -17,21 +17,21 @@ use rustix::mount::{MountFlags, UnmountFlags, mount, mount_move, mount_remount, 
 use crate::log::LogStore;
 use crate::runtime::Power;
 
-/// Where the real sol-init lives inside the system image.
-pub const INIT_PATH: &str = "/usr/lib/sol/sol-init";
-const RANDOM_SEED: &str = "/var/lib/sol/random-seed";
+/// Where the real fern-init lives inside the system image.
+pub const INIT_PATH: &str = "/usr/lib/fern/fern-init";
+const RANDOM_SEED: &str = "/var/lib/fern/random-seed";
 const SEED_BYTES: usize = 512;
 
 /// Kernel command line options we use (docs/formats/cmdline.md).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Cmdline {
-    /// `sol.root=UUID=<btrfs fsid>` or `sol.root=/dev/...`.
+    /// `fern.root=UUID=<btrfs fsid>` or `fern.root=/dev/...`.
     pub root: Option<String>,
-    /// `sol.system=<subvolume>`: the @system snapshot to boot.
+    /// `fern.system=<subvolume>`: the @system snapshot to boot.
     pub system: Option<String>,
-    /// `sol.esp=UUID=<FAT volume id>`: the ESP, mounted at /boot.
+    /// `fern.esp=UUID=<FAT volume id>`: the ESP, mounted at /boot.
     pub esp: Option<String>,
-    /// `sol.verbose`: echo sol-log to the console.
+    /// `fern.verbose`: echo fern-log to the console.
     pub verbose: bool,
 }
 
@@ -39,13 +39,13 @@ impl Cmdline {
     pub fn parse(text: &str) -> Self {
         let mut c = Cmdline::default();
         for w in text.split_ascii_whitespace() {
-            if let Some(v) = w.strip_prefix("sol.root=") {
+            if let Some(v) = w.strip_prefix("fern.root=") {
                 c.root = Some(v.to_string());
-            } else if let Some(v) = w.strip_prefix("sol.system=") {
+            } else if let Some(v) = w.strip_prefix("fern.system=") {
                 c.system = Some(v.to_string());
-            } else if let Some(v) = w.strip_prefix("sol.esp=") {
+            } else if let Some(v) = w.strip_prefix("fern.esp=") {
                 c.esp = Some(v.to_string());
-            } else if w == "sol.verbose" {
+            } else if w == "fern.verbose" {
                 c.verbose = true;
             }
         }
@@ -65,7 +65,7 @@ fn mnt(src: &str, target: &str, fstype: &str, flags: MountFlags, data: &str) {
     if let Err(e) = mount(src, target, fstype, flags, Some(o.as_c_str())) {
         // EBUSY: already mounted (e.g. by the kernel or the initramfs).
         if e != rustix::io::Errno::BUSY {
-            eprintln!("solace: mount {target}: {e}");
+            eprintln!("fern: mount {target}: {e}");
         }
     }
 }
@@ -187,28 +187,28 @@ fn find_device(spec: &str, probe: fn(&Path) -> Option<String>) -> Option<PathBuf
     None
 }
 
-/// Finds the root device named by `sol.root=`.
+/// Finds the root device named by `fern.root=`.
 pub fn find_root(spec: &str) -> Option<PathBuf> {
     find_device(spec, btrfs_fsid)
 }
 
 /// Where spk finds the btrfs top level (docs/formats/system.md).
-pub const BTRFS_TOP: &str = "/run/sol/btrfs";
+pub const BTRFS_TOP: &str = "/run/fern/btrfs";
 /// The booted system's subvolume, written at boot for spk.
-pub const BOOTED_FILE: &str = "/run/sol/booted";
+pub const BOOTED_FILE: &str = "/run/fern/booted";
 
 /// In the real root: mounts what system transactions need (the btrfs top
-/// level under the root-only /run/sol, the ESP at /boot) and records the
+/// level under the root-only /run/fern, the ESP at /boot) and records the
 /// booted system. Failures are logged; the system still boots.
 pub fn mount_system_volumes(c: &Cmdline, log: &mut LogStore) {
     let mut note = |m: String| {
-        eprintln!("solace: {m}");
-        log.push("sol-init", "init", &m);
+        eprintln!("fern: {m}");
+        log.push("fern-init", "init", &m);
     };
     let _ = fs::DirBuilder::new()
         .recursive(true)
         .mode(0o700)
-        .create("/run/sol");
+        .create("/run/fern");
     if let Some(dev) = c.root.as_deref().and_then(find_root) {
         let _ = fs::create_dir_all(BTRFS_TOP);
         let o = opts("subvolid=5,compress=zstd:3");
@@ -234,11 +234,11 @@ pub fn mount_system_volumes(c: &Cmdline, log: &mut LogStore) {
             }
         }
         Some((spec, None)) => note(format!("ESP {spec} did not appear")),
-        None => note("no sol.esp= on the kernel command line".into()),
+        None => note("no fern.esp= on the kernel command line".into()),
     }
 }
 
-/// The directories and links of a Solace root (CLAUDE.md section 4).
+/// The directories and links of a Fern root (CLAUDE.md section 4).
 pub const ROOT_DIRS: &[&str] = &[
     "usr",
     "etc",
@@ -319,12 +319,12 @@ pub fn assemble_root(dev: &Path, system: &str, new_root: &Path) -> Result<(), St
 }
 
 /// Moves the API mounts into `new_root`, makes it `/`, and execs the real
-/// sol-init (which stays PID 1).
+/// fern-init (which stays PID 1).
 pub fn switch_root(new_root: &Path) -> std::io::Error {
     for m in ["/dev", "/proc", "/sys", "/run"] {
         let target = new_root.join(m.trim_start_matches('/'));
         if let Err(e) = mount_move(m, &target) {
-            eprintln!("solace: moving {m}: {e}");
+            eprintln!("fern: moving {m}: {e}");
         }
     }
     if let Err(e) = std::env::set_current_dir(new_root) {
@@ -345,7 +345,7 @@ pub fn switch_root(new_root: &Path) -> std::io::Error {
 /// Copies `/usr/share/factory/etc` into an empty `/etc` on first boot.
 pub fn seed_etc(root: &Path, log: &mut LogStore) {
     let etc = root.join("etc");
-    let marker = etc.join(".sol-seeded");
+    let marker = etc.join(".fern-seeded");
     if marker.exists() {
         return;
     }
@@ -372,7 +372,7 @@ pub fn seed_etc(root: &Path, log: &mut LogStore) {
     }
     let _ = fs::write(&marker, "");
     log.push(
-        "sol-init",
+        "fern-init",
         "init",
         &format!("first boot: seeded /etc with {n} entries"),
     );
@@ -400,9 +400,9 @@ pub fn set_hostname(log: &mut LogStore) {
         .ok()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty() && s.len() <= 64)
-        .unwrap_or_else(|| "solace".into());
+        .unwrap_or_else(|| "fern".into());
     if let Err(e) = rustix::system::sethostname(name.as_bytes()) {
-        log.push("sol-init", "init", &format!("sethostname: {e}"));
+        log.push("fern-init", "init", &format!("sethostname: {e}"));
     }
 }
 
@@ -419,7 +419,7 @@ pub fn save_random_seed() {
         .and_then(|mut f| f.read_exact(&mut buf))
         .is_ok()
     {
-        let _ = fs::create_dir_all("/var/lib/sol");
+        let _ = fs::create_dir_all("/var/lib/fern");
         let _ = fs::write(RANDOM_SEED, &buf);
         let _ = fs::set_permissions(
             RANDOM_SEED,
@@ -457,7 +457,7 @@ pub fn apply_sysctl(log: &mut LogStore) {
         {
             for (path, val) in parse_sysctl(&fs::read_to_string(f).unwrap_or_default()) {
                 if let Err(e) = fs::write(&path, &val) {
-                    log.push("sol-init", "init", &format!("sysctl {path}: {e}"));
+                    log.push("fern-init", "init", &format!("sysctl {path}: {e}"));
                 }
             }
         }
@@ -481,7 +481,7 @@ fn other_pids() -> Vec<rustix::process::Pid> {
 /// Final steps after every unit has stopped. Never returns.
 pub fn finish(power: Power, log: &mut LogStore) -> ! {
     save_random_seed();
-    log.push("sol-init", "init", "syncing and unmounting");
+    log.push("fern-init", "init", "syncing and unmounting");
     log.flush();
     rustix::fs::sync();
     // Anything left over (orphans outside units): TERM, a moment, KILL.
@@ -556,7 +556,7 @@ mod tests {
     #[test]
     fn cmdline() {
         let c = Cmdline::parse(
-            "BOOT_IMAGE=/sol/a/vmlinuz quiet sol.root=UUID=abcd-1 sol.system=@snapshots/42 sol.esp=UUID=12AB-34CD sol.verbose",
+            "BOOT_IMAGE=/fern/a/vmlinuz quiet fern.root=UUID=abcd-1 fern.system=@snapshots/42 fern.esp=UUID=12AB-34CD fern.verbose",
         );
         assert_eq!(c.root.as_deref(), Some("UUID=abcd-1"));
         assert_eq!(c.system.as_deref(), Some("@snapshots/42"));
@@ -603,9 +603,9 @@ mod tests {
     fn etc_seeding() {
         let d = tempfile::tempdir().unwrap();
         let f = d.path().join("usr/share/factory/etc");
-        fs::create_dir_all(f.join("sol/units")).unwrap();
-        fs::write(f.join("hostname"), "solace\n").unwrap();
-        fs::write(f.join("sol/units/x.toml"), "x").unwrap();
+        fs::create_dir_all(f.join("fern/units")).unwrap();
+        fs::write(f.join("hostname"), "fern\n").unwrap();
+        fs::write(f.join("fern/units/x.toml"), "x").unwrap();
         fs::create_dir_all(d.path().join("etc")).unwrap();
         fs::write(d.path().join("etc/hostname"), "mine\n").unwrap();
         let mut log = LogStore::memory_only();
@@ -614,10 +614,10 @@ mod tests {
             fs::read_to_string(d.path().join("etc/hostname")).unwrap(),
             "mine\n"
         );
-        assert!(d.path().join("etc/sol/units/x.toml").exists());
+        assert!(d.path().join("etc/fern/units/x.toml").exists());
         // Only on first boot.
-        fs::remove_file(d.path().join("etc/sol/units/x.toml")).unwrap();
+        fs::remove_file(d.path().join("etc/fern/units/x.toml")).unwrap();
         seed_etc(d.path(), &mut log);
-        assert!(!d.path().join("etc/sol/units/x.toml").exists());
+        assert!(!d.path().join("etc/fern/units/x.toml").exists());
     }
 }

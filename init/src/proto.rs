@@ -1,11 +1,11 @@
-//! The solctl <-> sol-init control protocol: one JSON object per line over
-//! a Unix stream socket (`/run/sol/control`, mode 0600, root only).
+//! The fernctl <-> fern-init control protocol: one JSON object per line over
+//! a Unix stream socket (`/run/fern/control`, mode 0600, root only).
 
 use serde::{Deserialize, Serialize};
 
 use crate::log::Record;
 
-pub const SOCKET: &str = "run/sol/control";
+pub const SOCKET: &str = "run/fern/control";
 /// Requests longer than this are rejected (and the connection dropped).
 pub const MAX_REQUEST: usize = 64 * 1024;
 

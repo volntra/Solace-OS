@@ -7,6 +7,6 @@
 *.qcow2
 *.img
 *.iso
-*.solpkg
+*.fernpkg
 .ccache/
 __pycache__/

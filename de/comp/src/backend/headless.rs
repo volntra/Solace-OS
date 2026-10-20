@@ -114,7 +114,7 @@ impl Headless {
             PhysicalProperties {
                 size: (0, 0).into(),
                 subpixel: Subpixel::Unknown,
-                make: "Solace".into(),
+                make: "Fern".into(),
                 model: "Headless".into(),
             },
         );

@@ -1,0 +1,10 @@
+description = "Fern compositor on the display"
+enabled = true
+requires = ["seatd", "udev-trigger"]
+
+[service]
+# Root until the login screen (Phase 9) starts it for the user.
+exec = ["/bin/sh", "-c", "mkdir -p -m 0700 /run/user/0 && exec /usr/bin/fern-comp --drm"]
+environment = { XDG_RUNTIME_DIR = "/run/user/0", LIBSEAT_BACKEND = "seatd", RUST_LOG = "info" }
+restart = "on-failure"
+restart_delay_ms = 1000

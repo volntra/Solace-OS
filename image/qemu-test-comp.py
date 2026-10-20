@@ -3,7 +3,7 @@
 
 Boots image/qemu.sh --screen (a virtio GPU, no window), logs in on the
 serial console and checks, from screenshots taken through the QEMU monitor:
-  1. sol-comp takes the display at boot and draws the wallpaper
+  1. fern-comp takes the display at boot and draws the wallpaper
   2. a striped test window appears with rounded corners, and a transparent
      window that asks for blur shows the stripes behind it blurred
   3. Ctrl+Alt+F2 switches to the console login on tty2 (the session is
@@ -23,7 +23,7 @@ from qemulib import Console, fail, ok, to_png
 OUT = "build/image"
 LOG = f"{OUT}/qemu-test-comp.log"
 MONITOR = f"{OUT}/qemu-test-comp.monitor"
-CLIENT = "/usr/lib/sol/test/sol-testclient"
+CLIENT = "/usr/lib/fern/test/fern-testclient"
 
 
 class Shot:
@@ -47,7 +47,7 @@ class Shot:
         return dark / (len(self.px) // (3 * 97))
 
 
-# The test client's stripe colours and their average (sol-testclient).
+# The test client's stripe colours and their average (fern-testclient).
 BANDS = [(0xFF, 0x5A, 0x5F), (0xFF, 0xD1, 0x66), (0x2E, 0xC4, 0xB6), (0x3A, 0x86, 0xFF)]
 BLURRED = (153, 157, 158)
 
@@ -57,10 +57,14 @@ def near(p, q, tol):
 
 
 def is_wallpaper(s):
-    """The dusk wallpaper: deep blue sky at the top, a warm horizon."""
+    """The grove wallpaper: a green-grey sky at the top, a lighter misty
+    band below it, dark forest green at the bottom."""
     top = s.pixel(s.w // 10, s.h // 20)
-    horizon = s.pixel(s.w // 10, s.h * 56 // 100)
-    return top[2] > top[0] + 20 and max(top) < 120 and horizon[0] > horizon[2] + 30
+    mist = s.pixel(s.w // 10, s.h // 4)
+    forest = s.pixel(s.w // 10, s.h * 9 // 10)
+    return (top[1] > top[0] + 20 and top[1] >= top[2]
+            and forest[1] > forest[0] + 20 and max(forest) < 100
+            and sum(mist) > sum(forest) + 150)
 
 
 def has_stripes(s, y, x0, x1):
@@ -89,11 +93,11 @@ def wait_for(c, name, test, what, timeout=300):
 def start_client(c, args):
     """Starts the test client in the background (in a subshell: run()
     appends "; echo", which cannot follow a bare "&")."""
-    c.run(f"({CLIENT} {args} >/dev/null 2>&1 &)", f"starting sol-testclient {args}")
+    c.run(f"({CLIENT} {args} >/dev/null 2>&1 &)", f"starting fern-testclient {args}")
 
 
 def placed(w, h, size):
-    """Where sol-comp's placement puts a new window: centred, 40% down."""
+    """Where fern-comp's placement puts a new window: centred, 40% down."""
     sw, sh = size
     return (sw - w) // 2, int((sh - h) * 0.4)
 
@@ -108,11 +112,11 @@ def main():
         ok("booted and logged in on the serial console")
 
         deadline = time.monotonic() + 300
-        while "display ready" not in c.run("solctl logs -n 200 sol-comp", "sol-comp's log"):
+        while "display ready" not in c.run("fernctl logs -n 200 fern-comp", "fern-comp's log"):
             if time.monotonic() > deadline:
-                fail("sol-comp never reported a display: " + c.run("solctl status sol-comp"))
+                fail("fern-comp never reported a display: " + c.run("fernctl status fern-comp"))
             time.sleep(3)
-        ok("sol-comp took the display")
+        ok("fern-comp took the display")
 
         shot = wait_for(c, "wallpaper", is_wallpaper, "the wallpaper")
         size = (shot.w, shot.h)
@@ -125,7 +129,7 @@ def main():
         globals = c.run(f"{CLIENT} --globals", "the compositor's globals")
         for g in ("zwp_linux_dmabuf_v1", "org_kde_kwin_blur_manager", "xdg_wm_base"):
             if g not in globals:
-                fail(f"sol-comp does not offer {g}: {globals!r}")
+                fail(f"fern-comp does not offer {g}: {globals!r}")
         sync = "with" if "wp_linux_drm_syncobj_manager_v1" in globals else "without"
         ok(f"protocols: GPU buffers (linux-dmabuf), blur, xdg-shell; {sync} explicit sync on this GPU")
         start_client(c, "--stripes --size 600x400")
@@ -160,7 +164,7 @@ def main():
         )
         ok("Ctrl+Alt+F1: the desktop is back")
 
-        c.send("solctl poweroff\n")
+        c.send("fernctl poweroff\n")
         deadline = time.monotonic() + 120
         while c.p.poll() is None and time.monotonic() < deadline:
             c._read()

@@ -6,10 +6,10 @@
 set -euo pipefail
 out=${1:-build/grub-preview/menu.ppm}
 dir=build/grub-preview
-rm -rf "$dir" && mkdir -p "$dir/esp/EFI/BOOT" "$dir/esp/grub/themes" "$dir/esp/grub/fonts" "$dir/esp/sol/1" "$dir/esp/sol/2"
+rm -rf "$dir" && mkdir -p "$dir/esp/EFI/BOOT" "$dir/esp/grub/themes" "$dir/esp/grub/fonts" "$dir/esp/fern/1" "$dir/esp/fern/2"
 
 # Theme + fonts (built by `just grub-theme`).
-cp -r build/grub-theme/theme "$dir/esp/grub/themes/solace"
+cp -r build/grub-theme/theme "$dir/esp/grub/themes/fern"
 cp build/grub-theme/fonts/*.pf2 "$dir/esp/grub/fonts/"
 
 # Two fake systems and one other OS, so the menu has something to show.
@@ -37,7 +37,7 @@ uuid = "1234-ABCD"
 efi_path = "/EFI/Microsoft/Boot/bootmgfw.efi"
 INV
 printf 'menu = "always"\ntimeout = 30\n' > "$dir/boot.toml"
-cargo run -q -p sol-bootgen --bin sol-bootgen -- --esp "$dir/esp" --inventory "$dir/inventory.toml" --settings "$dir/boot.toml"
+cargo run -q -p fern-bootgen --bin fern-bootgen -- --esp "$dir/esp" --inventory "$dir/inventory.toml" --settings "$dir/boot.toml"
 
 # GRUB_EFI=<grubx64.efi> previews a given GRUB binary (e.g. our package's).
 if [ -n "${GRUB_EFI:-}" ]; then
@@ -51,7 +51,7 @@ fi
 # A FAT image with volume id ABCD-1234, filled with mtools (no root).
 img="$dir/esp.img"
 truncate -s 64M "$img"
-mkfs.vfat -n SOLACE -i ABCD1234 "$img" >/dev/null
+mkfs.vfat -n FERN -i ABCD1234 "$img" >/dev/null
 (cd "$dir/esp" && find . -mindepth 1 -type d | sort | while read -r d; do mmd -i "../esp.img" "::${d#.}"; done)
 (cd "$dir/esp" && find . -type f | sort | while read -r f; do mcopy -i "../esp.img" "$f" "::${f#.}"; done)
 

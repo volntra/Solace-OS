@@ -1,11 +1,11 @@
 # The boot path is built in; modules (zstd) go to /usr/lib/modules/<release>
-# and are loaded by sol-init (docs/formats/modules.md). linux-build is the
+# and are loaded by fern-init (docs/formats/modules.md). linux-build is the
 # tree out-of-tree modules (NVIDIA) compile against. The configure step
-# fails if any line of boot/kernel/solace.config did not take effect.
+# fails if any line of boot/kernel/fern.config did not take effect.
 name = "linux"
 version = "7.2"
 release = 3
-summary = "The Linux kernel, with Solace's configuration"
+summary = "The Linux kernel, with Fern's configuration"
 license = "GPL-2.0-only"
 
 [[source]]
@@ -27,7 +27,7 @@ system = "custom"
 configure = '''
 make mrproper
 make x86_64_defconfig
-scripts/kconfig/merge_config.sh -m .config ../kernel/solace.config
+scripts/kconfig/merge_config.sh -m .config ../kernel/fern.config
 make olddefconfig
 # Every line of our fragment must have survived (a typo or an unmet
 # dependency silently drops it otherwise).
@@ -40,17 +40,17 @@ while IFS= read -r line; do
   else
     grep -qxF "$line" .config || { echo "config lost: $line"; exit 1; }
   fi
-done < ../kernel/solace.config
+done < ../kernel/fern.config
 '''
 compile = '''
-export KBUILD_BUILD_TIMESTAMP="@$SOURCE_DATE_EPOCH" KBUILD_BUILD_USER=solace KBUILD_BUILD_HOST=solace
+export KBUILD_BUILD_TIMESTAMP="@$SOURCE_DATE_EPOCH" KBUILD_BUILD_USER=fern KBUILD_BUILD_HOST=fern
 make bzImage modules
 '''
 install = '''
-install -Dm644 arch/x86/boot/bzImage "$DESTDIR/usr/lib/sol/boot/vmlinuz"
-install -Dm644 .config "$DESTDIR/usr/lib/sol/boot/config"
+install -Dm644 arch/x86/boot/bzImage "$DESTDIR/usr/lib/fern/boot/vmlinuz"
+install -Dm644 .config "$DESTDIR/usr/lib/fern/boot/config"
 release=$(make -s kernelrelease)
-# No depmod: sol-init finds modules by name (lists name dependencies first).
+# No depmod: fern-init finds modules by name (lists name dependencies first).
 make INSTALL_MOD_PATH="$DESTDIR/usr" INSTALL_MOD_STRIP=1 DEPMOD=true modules_install
 mods="$DESTDIR/usr/lib/modules/$release"
 rm -f "$mods/build" "$mods/source"

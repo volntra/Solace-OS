@@ -10,9 +10,9 @@ use crate::{Error, Result};
 
 /// Where units are read from, in order; a later file with the same name
 /// wins.
-pub const UNIT_DIRS: &[&str] = &["usr/lib/sol/units", "etc/sol/units"];
-pub const ENABLED_DIR: &str = "etc/sol/enabled";
-pub const DISABLED_DIR: &str = "etc/sol/disabled";
+pub const UNIT_DIRS: &[&str] = &["usr/lib/fern/units", "etc/fern/units"];
+pub const ENABLED_DIR: &str = "etc/fern/enabled";
+pub const DISABLED_DIR: &str = "etc/fern/disabled";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -276,7 +276,7 @@ pub fn load_all(root: &Path) -> (BTreeMap<String, Unit>, Vec<String>) {
 }
 
 /// Units that start at boot: `enabled = true` or listed in
-/// `/etc/sol/enabled`, minus those in `/etc/sol/disabled`.
+/// `/etc/fern/enabled`, minus those in `/etc/fern/disabled`.
 pub fn enabled_set(root: &Path, units: &BTreeMap<String, Unit>) -> BTreeSet<String> {
     let names_in = |dir: &str| -> BTreeSet<String> {
         fs::read_dir(root.join(dir))
@@ -305,7 +305,7 @@ pub(crate) mod tests {
     #[test]
     fn shipped_units_are_valid() {
         let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
-        let mut dirs = vec![repo.join("image/base/usr/lib/sol/units")];
+        let mut dirs = vec![repo.join("image/base/usr/lib/fern/units")];
         for r in fs::read_dir(repo.join("recipes")).unwrap() {
             dirs.push(r.unwrap().path().join("units"));
         }
@@ -321,7 +321,7 @@ pub(crate) mod tests {
                 units.insert(name, unit);
             }
         }
-        assert!(units.contains_key("udevd") && units.contains_key("sol-comp"));
+        assert!(units.contains_key("udevd") && units.contains_key("fern-comp"));
         for u in units.values() {
             for d in u.requires.iter().chain(&u.after) {
                 assert!(units.contains_key(d), "{} names unknown unit {d}", u.name);
@@ -441,13 +441,13 @@ cpu_weight = 50
         let u = |desc: &str, extra: &str| {
             format!("description = \"{desc}\"\n{extra}\n[service]\nexec = [\"/bin/true\"]\n")
         };
-        w("usr/lib/sol/units/a.toml", &u("shipped", "enabled = true"));
-        w("etc/sol/units/a.toml", &u("override", "enabled = true"));
-        w("usr/lib/sol/units/b.toml", &u("b", ""));
-        w("usr/lib/sol/units/c.toml", &u("c", "enabled = true"));
-        w("usr/lib/sol/units/README", "ignored");
-        w("etc/sol/enabled/b", "");
-        w("etc/sol/disabled/c", "");
+        w("usr/lib/fern/units/a.toml", &u("shipped", "enabled = true"));
+        w("etc/fern/units/a.toml", &u("override", "enabled = true"));
+        w("usr/lib/fern/units/b.toml", &u("b", ""));
+        w("usr/lib/fern/units/c.toml", &u("c", "enabled = true"));
+        w("usr/lib/fern/units/README", "ignored");
+        w("etc/fern/enabled/b", "");
+        w("etc/fern/disabled/c", "");
         let (all, problems) = load_all(d.path());
         assert!(problems.is_empty(), "{problems:?}");
         assert_eq!(all["a"].description, "override");
@@ -457,11 +457,11 @@ cpu_weight = 50
         // A unit with a missing requirement is skipped, and so is one
         // that requires it; a malformed file is skipped. The rest load.
         w(
-            "usr/lib/sol/units/x.toml",
+            "usr/lib/fern/units/x.toml",
             &u("x", "requires = [\"missing\"]"),
         );
-        w("usr/lib/sol/units/y.toml", &u("y", "requires = [\"x\"]"));
-        w("usr/lib/sol/units/Bad-Name.toml", &u("bad", ""));
+        w("usr/lib/fern/units/y.toml", &u("y", "requires = [\"x\"]"));
+        w("usr/lib/fern/units/Bad-Name.toml", &u("bad", ""));
         let (all, problems) = load_all(d.path());
         assert!(!all.contains_key("x") && !all.contains_key("y"));
         assert!(all.contains_key("a") && all.contains_key("b"));

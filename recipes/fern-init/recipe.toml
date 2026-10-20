@@ -1,0 +1,27 @@
+# Our own: init/ in this repository.
+name = "fern-init"
+version = "0.1.0"
+release = 1
+summary = "Fern init and service manager (PID 1), fernctl, and fern-log"
+license = "GPL-3.0-or-later"
+
+[[source]]
+local = "."
+# The Cargo workspace only: other changes in the repo do not rebuild it.
+# de/comp only by its manifest: cargo must load every workspace member, but
+# compositor changes should not rebuild this package.
+include = ["Cargo.toml", "Cargo.lock", "init", "boot/bootgen", "pkg", "tools/ferncheck", "de/comp/Cargo.toml"]
+
+[build]
+system = "custom"
+toolchain = "rust"
+cargo = true
+# --target keeps build scripts and proc-macros out of the static link.
+compile = '''
+cargo build --release --locked --offline --target x86_64-unknown-linux-gnu -p fern-init
+'''
+install = '''
+out=/build/target/x86_64-unknown-linux-gnu/release
+install -Dm755 "$out/fern-init" "$DESTDIR/usr/lib/fern/fern-init"
+install -Dm755 "$out/fernctl" "$DESTDIR/usr/bin/fernctl"
+'''

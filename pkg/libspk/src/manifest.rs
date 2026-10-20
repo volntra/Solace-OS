@@ -1,4 +1,4 @@
-//! The package manifest (`.MANIFEST` inside every `.solpkg`) and the path
+//! The package manifest (`.MANIFEST` inside every `.fernpkg`) and the path
 //! rules every payload path must satisfy.
 
 use std::collections::HashSet;
@@ -195,7 +195,7 @@ impl Manifest {
         PkgVersion::new(self.version.clone(), self.release)
     }
 
-    /// `<name>-<version>-<release>.<arch>.solpkg`
+    /// `<name>-<version>-<release>.<arch>.fernpkg`
     pub fn file_name(&self) -> String {
         package_file_name(&self.name, &self.pkg_version(), &self.arch)
     }
@@ -262,7 +262,7 @@ impl Manifest {
 }
 
 pub fn package_file_name(name: &str, v: &PkgVersion, arch: &str) -> String {
-    format!("{name}-{v}.{arch}.solpkg")
+    format!("{name}-{v}.{arch}.fernpkg")
 }
 
 #[cfg(test)]
@@ -328,7 +328,7 @@ pub(crate) mod tests {
         let m = sample();
         let text = m.to_toml().unwrap();
         assert_eq!(Manifest::parse(&text).unwrap(), m);
-        assert_eq!(m.file_name(), "demo-1.0-1.x86_64.solpkg");
+        assert_eq!(m.file_name(), "demo-1.0-1.x86_64.fernpkg");
     }
 
     #[test]

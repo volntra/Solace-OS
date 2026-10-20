@@ -1,5 +1,5 @@
-//! sol-init: Solace's init and service manager (PID 1), solctl, and
-//! sol-log. Unit format: docs/formats/unit.md.
+//! fern-init: Fern's init and service manager (PID 1), fernctl, and
+//! fern-log. Unit format: docs/formats/unit.md.
 //!
 //! The decision-making parts ([`unit`], [`graph`], [`policy`],
 //! [`manager`], [`proto`], [`log`]) are pure and unit-tested; [`runtime`]

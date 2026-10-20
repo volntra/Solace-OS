@@ -97,7 +97,7 @@ impl History {
         Decision::RestartAfter(base.saturating_mul(factor).min(MAX_DELAY))
     }
 
-    /// Forget past crashes (on an explicit `solctl restart`).
+    /// Forget past crashes (on an explicit `fernctl restart`).
     pub fn reset(&mut self) {
         *self = History::default();
     }

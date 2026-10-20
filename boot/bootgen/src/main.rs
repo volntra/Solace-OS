@@ -1,11 +1,11 @@
-//! sol-bootgen CLI.
+//! fern-bootgen CLI.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
 
 use bootgen::{Inventory, Params, Settings};
 
-const USAGE: &str = "usage: sol-bootgen --esp <dir> --inventory <systems.toml> \
+const USAGE: &str = "usage: fern-bootgen --esp <dir> --inventory <systems.toml> \
 [--settings <boot.toml>] [--dry-run]
 
   --esp        the mounted EFI system partition
@@ -38,7 +38,7 @@ fn main() -> ExitCode {
     match run(&esp, &inv, settings.as_deref(), dry) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("sol-bootgen: {e}");
+            eprintln!("fern-bootgen: {e}");
             ExitCode::FAILURE
         }
     }
@@ -77,7 +77,7 @@ fn run(
     }
     let r = bootgen::apply(esp, &params, &bootgen::free_bytes).map_err(|e| e.to_string())?;
     println!(
-        "sol-bootgen: {} boot entries; copied {}; removed {}",
+        "fern-bootgen: {} boot entries; copied {}; removed {}",
         r.entries,
         if r.copied.is_empty() {
             "nothing".to_string()

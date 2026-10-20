@@ -5,15 +5,15 @@ A repository is a directory, served over HTTPS or read from a local path:
 ```
 index.toml
 index.toml.sig
-packages/<name>-<version>-<release>.x86_64.solpkg
-packages/<name>-<version>-<release>.x86_64.solpkg.sig
+packages/<name>-<version>-<release>.x86_64.fernpkg
+packages/<name>-<version>-<release>.x86_64.fernpkg.sig
 ```
 
 ## Index
 
 ```toml
 format = 1
-name = "solace-dev"
+name = "fern-dev"
 generated = 1792368000
 
 [[package]]
@@ -26,7 +26,7 @@ depends = []
 provides = []
 conflicts = []
 replaces = []
-file = "packages/liblzma-5.8.1-1.x86_64.solpkg"
+file = "packages/liblzma-5.8.1-1.x86_64.fernpkg"
 size = 81234
 sha256 = "..."
 installed_size = 234567
@@ -52,7 +52,7 @@ message `b"spk-index-v1\0" || sha256(index.toml bytes)`.
 `<root>/etc/spk/repos.d/<name>.toml`:
 
 ```toml
-url = "https://repo.example/solace/x86_64"   # or a local path
+url = "https://repo.example/fern/x86_64"   # or a local path
 ```
 
 `--repo <url-or-path>` on the command line adds a repository for that

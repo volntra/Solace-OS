@@ -1,9 +1,9 @@
 //! Carries out the [`Manager`]'s decisions: spawns and supervises service
-//! processes, reaps children, captures output into sol-log, applies
-//! cgroup limits, and serves the solctl control socket.
+//! processes, reaps children, captures output into fern-log, applies
+//! cgroup limits, and serves the fernctl control socket.
 //!
 //! The same loop runs as PID 1 and, for development and tests, as an
-//! ordinary process managing a scratch root (`sol-init --root DIR`).
+//! ordinary process managing a scratch root (`fern-init --root DIR`).
 
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
@@ -28,7 +28,7 @@ use crate::proto::{self, Request, Response};
 use crate::unit::{self, DISABLED_DIR, ENABLED_DIR, ServiceType, Unit};
 
 pub const CGROUP_ROOT: &str = "sys/fs/cgroup";
-const NOTIFY_DIR: &str = "run/sol/notify";
+const NOTIFY_DIR: &str = "run/fern/notify";
 /// Sent by UPS/power daemons and some hypervisors (Linux x86-64 value;
 /// not exported by signal-hook).
 const SIGPWR: i32 = 30;
@@ -99,20 +99,20 @@ impl Runtime {
         let (units, problems) = unit::load_all(root);
         for p in &problems {
             let msg = format!("unit skipped: {p}");
-            log.push("sol-init", "init", &msg);
+            log.push("fern-init", "init", &msg);
             if mode == Mode::Pid1 {
-                eprintln!("solace: {msg}");
+                eprintln!("fern: {msg}");
             }
         }
         let enabled = unit::enabled_set(root, &units);
         let mgr = Manager::new(units, enabled)?;
 
-        let sol_run = root.join("run/sol");
+        let fern_run = root.join("run/fern");
         fs::DirBuilder::new()
             .recursive(true)
             .mode(0o700)
-            .create(&sol_run)
-            .map_err(|e| crate::Error::io(&sol_run, &e))?;
+            .create(&fern_run)
+            .map_err(|e| crate::Error::io(&fern_run, &e))?;
         let sock = root.join(proto::SOCKET);
         let _ = fs::remove_file(&sock);
         let listener = UnixListener::bind(&sock).map_err(|e| crate::Error::io(&sock, &e))?;
@@ -147,14 +147,14 @@ impl Runtime {
 
         let cg = root.join(CGROUP_ROOT);
         let cgroups = (mode == Mode::Pid1 && cg.join("cgroup.controllers").exists()).then(|| {
-            let sol = cg.join("sol");
-            let _ = fs::create_dir_all(&sol);
+            let fern = cg.join("fern");
+            let _ = fs::create_dir_all(&fern);
             // Delegate the controllers our limits use.
             let _ = fs::write(cg.join("cgroup.subtree_control"), "+memory +pids +cpu");
-            sol
+            fern
         });
-        if let Some(sol) = &cgroups {
-            let _ = fs::write(sol.join("cgroup.subtree_control"), "+memory +pids +cpu");
+        if let Some(fern) = &cgroups {
+            let _ = fs::write(fern.join("cgroup.subtree_control"), "+memory +pids +cpu");
         }
 
         Ok(Runtime {
@@ -180,7 +180,7 @@ impl Runtime {
     }
 
     fn info(&mut self, msg: &str) {
-        self.log.push("sol-init", "init", msg);
+        self.log.push("fern-init", "init", msg);
     }
 
     /// Runs until a shutdown has completed.
@@ -213,14 +213,14 @@ impl Runtime {
             self.boot_logged = true;
             let since_kernel = self.boottime_at_start + at;
             let msg = format!(
-                "boot complete: {since_kernel} ms after the kernel started ({at} ms in sol-init)"
+                "boot complete: {since_kernel} ms after the kernel started ({at} ms in fern-init)"
             );
             self.info(&msg);
             if self.mode == Mode::Pid1 {
-                eprintln!("solace: {msg}");
+                eprintln!("fern: {msg}");
             }
             let _ = fs::write(
-                self.root.join("run/sol/boot-time"),
+                self.root.join("run/fern/boot-time"),
                 format!("{since_kernel}\n"),
             );
         }
@@ -261,7 +261,7 @@ impl Runtime {
         cmd.args(&svc.exec[1..])
             .env_clear()
             .env("PATH", DEFAULT_PATH)
-            .env("SOL_UNIT", name)
+            .env("FERN_UNIT", name)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -429,7 +429,7 @@ impl Runtime {
         }
     }
 
-    /// Reads whatever output a unit has produced into sol-log.
+    /// Reads whatever output a unit has produced into fern-log.
     fn drain_proc(&mut self, unit: &str, closing: bool) {
         let Some(p) = self.procs.get_mut(unit) else {
             return;
@@ -688,7 +688,7 @@ impl Runtime {
             },
             Request::BootTime => match self.mgr.boot_done_at() {
                 Some(at) => ok(format!(
-                    "{} ms after the kernel started ({at} ms in sol-init)",
+                    "{} ms after the kernel started ({at} ms in fern-init)",
                     self.boottime_at_start + at
                 )),
                 None => ok("boot still in progress".into()),

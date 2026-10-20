@@ -19,8 +19,8 @@ build = ["python", "meson", "ninja", "pkgconf"]
 [build]
 system = "meson"
 post_install = '''
-# Our service unit (sol-init).
-install -Dm644 "$RECIPE/units/seatd.toml" "$DESTDIR/usr/lib/sol/units/seatd.toml"
+# Our service unit (fern-init).
+install -Dm644 "$RECIPE/units/seatd.toml" "$DESTDIR/usr/lib/fern/units/seatd.toml"
 '''
 configure_args = [
     "-Dlibseat-logind=disabled", "-Dlibseat-seatd=enabled",

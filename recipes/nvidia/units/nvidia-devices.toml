@@ -5,4 +5,4 @@ after = ["udev-trigger"]
 
 [service]
 type = "oneshot"
-exec = ["/usr/lib/sol/nvidia-devices"]
+exec = ["/usr/lib/fern/nvidia-devices"]

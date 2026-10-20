@@ -1,7 +1,7 @@
 //! The service manager's decisions, free of side effects.
 //!
 //! [`Manager`] holds every unit's state and turns events (a process was
-//! spawned, exited, became ready; a timer fired; solctl asked for
+//! spawned, exited, became ready; a timer fired; fernctl asked for
 //! something) into [`Action`]s for the runtime to carry out. Keeping the
 //! decisions pure makes ordering, restart, and shutdown behaviour testable
 //! without real processes.
@@ -96,7 +96,7 @@ pub enum Action {
         pid: u32,
         sig: Sig,
     },
-    /// Something worth recording in sol-log.
+    /// Something worth recording in fern-log.
     Log {
         unit: String,
         msg: String,

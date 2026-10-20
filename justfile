@@ -1,4 +1,4 @@
-# Solace task runner. Run inside `nix develop` (or with direnv).
+# Fern task runner. Run inside `nix develop` (or with direnv).
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
 
@@ -45,17 +45,17 @@ seed-sources:
 # Regenerate the logo SVGs and their PNG renders in assets/brand/
 logo:
     python3 tools/brand/gen-logo.py
-    resvg -w 512 assets/brand/solace-icon.svg assets/brand/solace-icon-512.png
-    resvg -w 128 assets/brand/solace-mark.svg assets/brand/solace-mark-128.png
-    resvg -w 512 assets/brand/solace-icon-glass.svg assets/brand/solace-icon-glass-512.png
+    resvg -w 512 assets/brand/fern-icon.svg assets/brand/fern-icon-512.png
+    resvg -w 128 assets/brand/fern-mark.svg assets/brand/fern-mark-128.png
+    resvg -w 512 assets/brand/fern-icon-glass.svg assets/brand/fern-icon-glass-512.png
     resvg -w 1350 build/brand/glass-preview.svg docs/design/img/glass-preview.png
 
 # Render the wallpapers (assets/wallpapers/*.svg) to PNG under build/
 wallpapers:
     python3 assets/wallpapers/gen-wallpapers.py
     mkdir -p build/wallpapers
-    resvg -w 2560 assets/wallpapers/dusk.svg build/wallpapers/dusk.png
-    resvg -w 2560 assets/wallpapers/dusk-blurred.svg build/wallpapers/dusk-blurred.png
+    resvg -w 2560 assets/wallpapers/grove.svg build/wallpapers/grove.png
+    resvg -w 2560 assets/wallpapers/grove-blurred.svg build/wallpapers/grove-blurred.png
 
 # Build the GRUB theme and fonts into build/grub-theme (Inter is fetched and hash-checked)
 grub-theme:
@@ -70,7 +70,7 @@ grub-preview: grub-theme
 
 # --- System image (Phase 2) -------------------------------------------------
 
-# Assemble build/image/solace.img from the system repo (no real disks touched)
+# Assemble build/image/fern.img from the system repo (no real disks touched)
 image *ARGS: spk
     image/build.sh {{ARGS}}
 
@@ -78,32 +78,32 @@ image *ARGS: spk
 qemu *ARGS:
     image/qemu.sh {{ARGS}}
 
-# Boot headless, log in over serial, check solctl and the sealed /usr
+# Boot headless, log in over serial, check fernctl and the sealed /usr
 qemu-test:
     image/qemu-test.py
 
 # --- Compositor (Phase 4) ---------------------------------------------------
 
-# Run sol-comp nested in your desktop, optionally with a client:
+# Run fern-comp nested in your desktop, optionally with a client:
 # `just comp weston-terminal`
 comp *CLIENT:
-    cargo run -p sol-comp -- --nested {{ if CLIENT != "" { "-- " + CLIENT } else { "" } }}
+    cargo run -p fern-comp -- --nested {{ if CLIENT != "" { "-- " + CLIENT } else { "" } }}
 
-# sol-comp on your real display, from a text console (switch with
+# fern-comp on your real display, from a text console (switch with
 # Ctrl+Alt+F3, log in, cd here, `nix develop`, then this): three animated
 # test windows and a dock-sized glass panel that re-blurs them every frame
 # (the CLAUDE.md 6.5 load), frame timing every 5 s in build/comp-drm.log.
 # Ctrl+Alt+Backspace quits. Uses the host's GPU driver (NixOS:
 # /run/opengl-driver, NVIDIA's EGL and GBM among them).
 comp-drm SIZE="1600x1000":
-    cargo build --release -p sol-comp
+    cargo build --release -p fern-comp
     @mkdir -p build
-    SOL_COMP_STATS=1 \
+    FERN_COMP_STATS=1 \
       LD_LIBRARY_PATH="/run/opengl-driver/lib:${LD_LIBRARY_PATH:-}" \
       GBM_BACKENDS_PATH=/run/opengl-driver/lib/gbm \
       __EGL_VENDOR_LIBRARY_DIRS=/run/opengl-driver/share/glvnd/egl_vendor.d \
-      target/release/sol-comp --drm -- sh -c ' \
-        c=target/release/sol-testclient; \
+      target/release/fern-comp --drm -- sh -c ' \
+        c=target/release/fern-testclient; \
         $c --animate --size {{SIZE}} --title one & sleep 0.5; \
         $c --animate --size 1100x700 --title two & sleep 0.5; \
         $c --animate --size 900x600 --title three & sleep 0.5; \
@@ -112,25 +112,25 @@ comp-drm SIZE="1600x1000":
       2> build/comp-drm.log || true
     @grep -E "display ready|session|fps|WARN|ERROR" build/comp-drm.log | tail -20 || true
 
-# Compositor pixel tests: headless sol-comp, real clients, screenshots
-# (kept in target/tmp/sol-comp-render/). Also part of `just check`.
+# Compositor pixel tests: headless fern-comp, real clients, screenshots
+# (kept in target/tmp/fern-comp-render/). Also part of `just check`.
 comp-test *SCENARIO:
-    cargo test -p sol-comp --test render -- {{SCENARIO}}
+    cargo test -p fern-comp --test render -- {{SCENARIO}}
 
 # Phase 4 renderer demo: a striped window behind a frosted-glass one
 # (blur, rounded corners, shadows, wallpaper)
 comp-demo:
-    cargo build -p sol-comp
-    target/debug/sol-comp --nested -- sh -c 'target/debug/sol-testclient --stripes --size 640x400 & sleep 1; exec target/debug/sol-testclient --size 900x200 --color f4f1fa40 --blur --title Glass'
+    cargo build -p fern-comp
+    target/debug/fern-comp --nested -- sh -c 'target/debug/fern-testclient --stripes --size 640x400 & sleep 1; exec target/debug/fern-testclient --size 900x200 --color f4f1fa40 --blur --title Glass'
 
-# Phase 4 demo on the image: sol-comp on the virtio GPU (KMS, libinput,
+# Phase 4 demo on the image: fern-comp on the virtio GPU (KMS, libinput,
 # libseat), test windows, blur, VT switching; screenshots in build/image/
 qemu-test-comp:
     image/qemu-test-comp.py
 
 # --- System updates (Phase 3) -----------------------------------------------
 
-# Build the demo update (solace-base 0.1.1) and the update disk carrying it
+# Build the demo update (fern-base 0.1.1) and the update disk carrying it
 update-demo: spk
     image/update-demo.sh
 
@@ -163,7 +163,7 @@ test:
 
 # Repository invariants: placeholders, Apple names/assets, recipe justifications
 lint:
-    cargo run --quiet --locked -p solcheck -- --root .
+    cargo run --quiet --locked -p ferncheck -- --root .
 
 # --- Housekeeping -----------------------------------------------------------
 

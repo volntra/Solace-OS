@@ -1,7 +1,7 @@
 //! Frame timing on a real display: from the kernel's presentation
 //! timestamps (one per vblank that showed a new frame), how many frames
 //! were shown, how evenly, and how many refreshes were missed. Reported
-//! every few seconds when `SOL_COMP_STATS` is set; the 165 Hz target of
+//! every few seconds when `FERN_COMP_STATS` is set; the 165 Hz target of
 //! CLAUDE.md 6.5 is checked with it.
 
 use std::time::Duration;

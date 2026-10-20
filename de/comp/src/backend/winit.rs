@@ -1,4 +1,4 @@
-//! Nested backend: sol-comp runs as a window inside another desktop
+//! Nested backend: fern-comp runs as a window inside another desktop
 //! (X11 or Wayland), which is how it is developed. Adapted from Smithay's
 //! smallvil example (v0.7.0, MIT licence).
 
@@ -62,7 +62,7 @@ pub fn init(
         PhysicalProperties {
             size: (0, 0).into(),
             subpixel: Subpixel::Unknown,
-            make: "Solace".into(),
+            make: "Fern".into(),
             model: "Nested".into(),
         },
     );

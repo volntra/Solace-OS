@@ -1,7 +1,7 @@
 [package]
 name = "spk"
 version = "0.1.0"
-description = "The Solace package manager"
+description = "The Fern package manager"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

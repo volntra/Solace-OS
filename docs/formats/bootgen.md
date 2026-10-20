@@ -1,6 +1,6 @@
-# sol-bootgen inputs
+# fern-bootgen inputs
 
-`sol-bootgen --esp /boot --inventory systems.toml [--settings boot.toml]`
+`fern-bootgen --esp /boot --inventory systems.toml [--settings boot.toml]`
 
 ## Inventory (`systems.toml`)
 
@@ -10,13 +10,13 @@ spk's system transactions from Phase 3.
 ```toml
 esp_uuid = "ABCD-1234"                              # FAT volume id of the ESP
 root_uuid = "0e7b1b1c-2d33-4c6e-9a7e-1f2b3c4d5e6f"  # btrfs filesystem UUID
-os_name = "Solace"                                  # default shown
+os_name = "Fern"                                  # default shown
 
 [[system]]
-id = "1"                       # [A-Za-z0-9._-]+ -> /boot/sol/1/
+id = "1"                       # [A-Za-z0-9._-]+ -> /boot/fern/1/
 version = "0.1"
 created = 1792368000           # unix seconds; newest boots first
-subvol = "@snapshots/1"        # passed as sol.system=
+subvol = "@snapshots/1"        # passed as fern.system=
 kernel = "/path/to/vmlinuz"    # copied to the ESP
 initramfs = "/path/to/initramfs.img"
 
@@ -41,9 +41,9 @@ console = []        # kernel consoles, e.g. ["tty0", "ttyS0,115200"]; last is /d
 
 ## Kernel command line
 
-Each entry boots `/sol/<id>/vmlinuz` with
-`sol.root=UUID=<root_uuid> sol.system=<subvol> sol.esp=UUID=<esp_uuid> rw` plus
-`quiet loglevel=3 ...` (graphical) or `sol.verbose loglevel=7` (verbose).
-sol-init in the initramfs reads `sol.root`/`sol.system` and assembles the
+Each entry boots `/fern/<id>/vmlinuz` with
+`fern.root=UUID=<root_uuid> fern.system=<subvol> fern.esp=UUID=<esp_uuid> rw` plus
+`quiet loglevel=3 ...` (graphical) or `fern.verbose loglevel=7` (verbose).
+fern-init in the initramfs reads `fern.root`/`fern.system` and assembles the
 root itself (it is not a single subvolume), so `rootflags=subvol=` is not
 used.

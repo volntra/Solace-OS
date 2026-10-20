@@ -497,7 +497,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let sk = SecretKey::generate().unwrap();
         let ring = Keyring::new(vec![sk.public()]);
-        let f = dir.path().join("a.solpkg");
+        let f = dir.path().join("a.fernpkg");
         fs::write(&f, b"payload").unwrap();
         sk.sign_file(Purpose::Package, &f).unwrap();
         ring.verify_file(Purpose::Package, &f).unwrap();

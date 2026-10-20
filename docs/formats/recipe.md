@@ -1,7 +1,7 @@
 # Recipe format (`recipes/<name>/recipe.toml`)
 
 A recipe describes how to build one upstream source into one or more
-`.solpkg` packages. `spk build recipes/<name>` reads it.
+`.fernpkg` packages. `spk build recipes/<name>` reads it.
 
 ```toml
 name = "xz"                 # [a-z0-9][a-z0-9+._-]*, unique across recipes/

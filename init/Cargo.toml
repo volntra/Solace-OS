@@ -1,7 +1,7 @@
 [package]
-name = "sol-init"
+name = "fern-init"
 version = "0.1.0"
-description = "Solace init and service manager (PID 1), solctl, and sol-log"
+description = "Fern init and service manager (PID 1), fernctl, and fern-log"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -9,16 +9,16 @@ repository.workspace = true
 publish.workspace = true
 
 [lib]
-name = "solinit"
+name = "ferninit"
 path = "src/lib.rs"
 
 [[bin]]
-name = "sol-init"
-path = "src/bin/sol-init.rs"
+name = "fern-init"
+path = "src/bin/fern-init.rs"
 
 [[bin]]
-name = "solctl"
-path = "src/bin/solctl.rs"
+name = "fernctl"
+path = "src/bin/fernctl.rs"
 
 [dependencies]
 rustix = { version = "1.1.5", features = ["process", "mount", "system", "fs", "event", "pipe", "net", "stdio", "termios", "time", "thread"] }

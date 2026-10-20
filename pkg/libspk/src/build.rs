@@ -119,7 +119,7 @@ pub struct BuildConfig {
     /// How the stage's own packages relate (splits, runtime deps); see
     /// [`merge_base`].
     pub stage: StageGraph,
-    /// `$SOL_TGT` in build scripts.
+    /// `$FERN_TGT` in build scripts.
     pub target: String,
     /// Keep `build/` and `sysroot/` after a successful build (they can be
     /// several GB); the log is always kept.
@@ -995,7 +995,11 @@ fn sandbox_env(sb: &Sandbox<'_>) -> Vec<(&'static str, String)> {
         ("DESTDIR", "/build/dest".into()),
         ("RECIPE", "/build/recipe".into()),
         ("MAKEFLAGS", format!("-j{}", cfg.jobs.max(1))),
-        ("SOL_JOBS", cfg.jobs.max(1).to_string()),
+        ("FERN_JOBS", cfg.jobs.max(1).to_string()),
+        ("FERN_TGT", cfg.target.clone()),
+        // The toolchain recipes predate the rename to Fern and still say
+        // $SOL_TGT; rewording them would rebuild the whole toolchain. Goes
+        // when they are next updated (docs/DECISIONS.md, 2026-10-20).
         ("SOL_TGT", cfg.target.clone()),
         ("SOURCE_DATE_EPOCH", SOURCE_DATE_EPOCH.to_string()),
         ("LC_ALL", "C".into()),
@@ -1746,7 +1750,7 @@ system = "make"
             provides: Vec::new(),
             conflicts: Vec::new(),
             replaces: Vec::new(),
-            file: format!("{name}.solpkg"),
+            file: format!("{name}.fernpkg"),
             size: 1,
             sha256: "0".repeat(64),
             installed_size: 1,

@@ -1,4 +1,4 @@
-# System-wide shell defaults (Solace).
+# System-wide shell defaults (Fern).
 export PATH=/usr/local/bin:/usr/bin:/usr/sbin
 export LANG=C.UTF-8
 umask 022

@@ -1,20 +1,21 @@
-PROJECT BRIEF: SOLACE - A MACOS-STYLE OPERATING SYSTEM ON A MINIMAL LINUX BASE
+PROJECT BRIEF: FERN - A MACOS-STYLE OPERATING SYSTEM ON A MINIMAL LINUX BASE
 For Claude Code. Read this whole file at the start of every session, then
 read docs/STATUS.md to see where we are. Work one phase at a time, in order.
 When the human says "start Phase N" or "continue", resume from STATUS.md.
 
 
-== 0. NAMES (fixed in Phase 0, 2026-10-18) ==
+== 0. NAMES (fixed in Phase 0, 2026-10-18; OS renamed 2026-10-20) ==
 
 The names are settled; do not ask about them again.
 
-  OS    Solace    Operating system name (branding, boot screen, About)
-  PFX   sol       prefix for binaries, D-Bus names (org.sol.*),
+  OS    Fern      Operating system name (branding, boot screen, About).
+                  Was "Solace" until 2026-10-20 (see docs/DECISIONS.md).
+  PFX   fern      prefix for binaries, D-Bus names (org.fern.*),
                   config paths
   PKG   spk       Package manager command
   SH    ace       Command shell command
   DE    Koi       Umbrella name for the desktop (compositor + WM + shell
-                  + apps). Release label for version 1: "SolOS 1: Koi"
+                  + apps). Release label for version 1: "Fern 1: Koi"
                   (see docs/DECISIONS.md, 2026-10-18).
 
 App names are our own, never Apple's: "Files" not "Finder", "Search" not
@@ -23,7 +24,7 @@ App names are our own, never Apple's: "Files" not "Finder", "Search" not
 
 == 1. MISSION ==
 
-Solace is its own operating system that uses the Linux kernel as its deep
+Fern is its own operating system that uses the Linux kernel as its deep
 base, the way Android and ChromeOS do. It is NOT a Linux distribution in
 spirit: users never see a "Linux desktop". Everything above the kernel
 and a minimal set of low-level libraries is ours:
@@ -97,7 +98,7 @@ Kernel           Mainline Linux, our own trimmed config, built by our
 C library        glibc (NVIDIA userspace and Steam require it).
 Toolchain        GCC + binutils; LLVM where Mesa needs it.
 Bootloader       GRUB 2 (x86_64-efi) with our own gfxmenu theme. grub.cfg
-                 is written by our generator (sol-bootgen), never by
+                 is written by our generator (fern-bootgen), never by
                  grub-mkconfig.
 Device mgmt      udev built standalone from the systemd source tree (as
                  Gentoo's systemd-utils does). NOT the rest of systemd.
@@ -114,18 +115,18 @@ X11 apps         xwayland-satellite.
 Third-party apps Flatpak supported out of the box (Steam, browsers, VR).
 
 OURS:
-Init + services  sol-init, Rust: PID 1 + service manager.
+Init + services  fern-init, Rust: PID 1 + service manager.
 Package manager  spk, Rust.
-Boot config      sol-bootgen, Rust: generates grub.cfg + manages
+Boot config      fern-bootgen, Rust: generates grub.cfg + manages
                  kernels on the ESP.
-Compositor core  sol-comp, Rust + Smithay.
-Window manager   sol-wm, Rust, separate process speaking a private
+Compositor core  fern-comp, Rust + Smithay.
+Window manager   fern-wm, Rust, separate process speaking a private
                  Wayland protocol with the core.
 Shell UI + apps  Qt 6 / QML + C++, with a shared design-system QML module.
-Settings backend sol-settingsd, Rust, D-Bus, TOML storage.
+Settings backend fern-settingsd, Rust, D-Bus, TOML storage.
 Command shell    ace, Rust.
 Login            Our own greeter on greetd.
-Icons            sol-icons, Rust engine with a C API and Qt image
+Icons            fern-icons, Rust engine with a C API and Qt image
                  provider.
 Installer        Qt app.
 Fonts/symbols    Inter (UI), JetBrains Mono (mono), Phosphor or Lucide
@@ -153,7 +154,7 @@ Underneath (hidden by Files unless "Show system files" is on):
   /var                 writable
   /boot                ESP, FAT32, 2 GiB: GRUB EFI binary, our GRUB theme,
                        grub.cfg, and one kernel + initramfs per bootable
-                       system snapshot in /boot/sol/<snapshot-id>/
+                       system snapshot in /boot/fern/<snapshot-id>/
 
 btrfs subvolumes: @system (/usr, read-only), @etc, @var, @users,
 @snapshots. Updates create a new @system snapshot and switch to it
@@ -174,12 +175,12 @@ docs/
 recipes/                    build recipes for every system package
 bootstrap/                  cross toolchain + stage builds driven by spk
 image/                      system image, live installer image, QEMU runner
-init/                       sol-init
+init/                       fern-init
 boot/
-  bootgen/                  sol-bootgen
+  bootgen/                  fern-bootgen
   grub-theme/               our GRUB gfxmenu theme
 pkg/                        spk (CLI, daemon, library)
-sh/                         ace + sol-utils
+sh/                         ace + fern-utils
 de/
   comp/                     compositor core
   wm/                       window manager
@@ -197,12 +198,12 @@ apps/
   terminal/
   installer/
 assets/                     original icons, wallpapers, sounds, boot art
-tools/                      repo tooling (solcheck); see DECISIONS.md
+tools/                      repo tooling (ferncheck); see DECISIONS.md
 
 
 == 6. COMPONENT SPECIFICATIONS ==
 
---- 6.1 Init and service manager: sol-init ---
+--- 6.1 Init and service manager: fern-init ---
 - PID 1 in Rust: mounts, early setup (hostname, clock, random seed,
   sysctl, kernel modules), then starts services.
 - Service units in TOML (docs/formats/unit.md): command, user, deps,
@@ -210,9 +211,9 @@ tools/                      repo tooling (solcheck); see DECISIONS.md
   (cgroups v2), sandboxing (namespaces, no_new_privs, read-only paths).
 - Parallel startup from the dependency graph. Supervises and restarts
   crashed services.
-- Structured log store (sol-log), viewable in a Logs pane in
-  Settings and via `solctl logs`.
-- `solctl`: start, stop, restart, status, enable, disable, logs,
+- Structured log store (fern-log), viewable in a Logs pane in
+  Settings and via `fernctl logs`.
+- `fernctl`: start, stop, restart, status, enable, disable, logs,
   reboot, poweroff.
 - Clean shutdown: stop services in reverse order, sync, unmount, then
   reboot or power off.
@@ -225,7 +226,7 @@ Two kinds of packages:
                     snapshot. Never installed one-by-one onto the live
                     system.
   APP BUNDLES       self-contained directories in /Applications
-                    (<Name>.solapp/) with a manifest, icon in our
+                    (<Name>.fernapp/) with a manifest, icon in our
                     adaptive format, and the binary + private libraries.
                     Install/remove is just adding or removing a
                     directory, plus registering the app.
@@ -234,7 +235,7 @@ Recipes (recipes/<name>/recipe.toml): name, version, sources + sha256,
 build/runtime deps, split packages, build steps, triggers.
 
 Builds run unprivileged in a sandbox (bubblewrap/user namespaces), with no
-network after source fetch. Output: .solpkg = tar.zst + manifest
+network after source fetch. Output: .fernpkg = tar.zst + manifest
 (files + hashes + deps) + detached ed25519 signature.
 
 Repos: a signed index (ed25519) + packages over HTTPS. Unsigned or
@@ -246,7 +247,7 @@ provides, conflicts, and replaces.
 System update transaction:
   resolve -> download -> verify -> snapshot current @system as a
   writable copy -> apply changes -> run triggers inside it (initramfs
-  rebuild included) -> seal it read-only -> run sol-bootgen to copy
+  rebuild included) -> seal it read-only -> run fern-bootgen to copy
   its kernel + initramfs to the ESP and add it as the new default GRUB
   entry -> takes effect on reboot (live apply only for app bundles).
   Failure at any step discards the new snapshot and leaves grub.cfg
@@ -260,7 +261,7 @@ CLI: install, remove, upgrade, search, info, files, owns, history,
 rollback, build, repo-add. Clean, colored output, one progress bar per
 stage.
 
-Daemon sol-pkgd on the system bus, polkit-guarded, so Settings and
+Daemon fern-pkgd on the system bus, polkit-guarded, so Settings and
 the installer can drive it. `--root <path>` works for everything.
 
 --- 6.3 Base bootstrap ---
@@ -269,12 +270,12 @@ spk recipes:
   1. Build a cross toolchain in an isolated container on the NixOS host.
   2. Build stage-1 temporary tools, then chroot and build every final
      system package from recipes/.
-  3. Every file in @system must come from a .solpkg. No loose
+  3. Every file in @system must come from a .fernpkg. No loose
      `make install`s.
   4. ccache + parallel builds; rebuilding only changed recipes must be
      cheap.
   5. image/ assembles the btrfs subvolume layout, GRUB on the ESP,
-     sol-bootgen's grub.cfg, and the initramfs (sol-init can run
+     fern-bootgen's grub.cfg, and the initramfs (fern-init can run
      as its own initramfs init for LUKS unlock), and boots it in QEMU
      (OVMF, virtio-gpu).
 
@@ -282,14 +283,14 @@ Keep the base minimal. Every upstream package added to recipes/ needs a
 one-line justification in docs/DECISIONS.md (enforced by `just check`;
 see the "Package justifications" section there).
 
---- 6.4 Boot: GRUB + sol-bootgen ---
+--- 6.4 Boot: GRUB + fern-bootgen ---
 - GRUB 2 (x86_64-efi) is installed to the ESP. It never needs to read
   btrfs or unlock LUKS: kernels and initramfs images live on the ESP
   (GRUB's LUKS2 support lacks Argon2, our default).
-- sol-bootgen (Rust) owns grub.cfg:
+- fern-bootgen (Rust) owns grub.cfg:
   - one entry per bootable @system snapshot (newest first, labeled with
     version + date), copying that snapshot's kernel + initramfs to
-    /boot/sol/<snapshot-id>/ and passing rootflags=subvol=<id>
+    /boot/fern/<snapshot-id>/ and passing rootflags=subvol=<id>
   - removes kernels for snapshots that have been pruned
   - adds entries for other OSes found by os-prober (if the user kept
     them)
@@ -308,7 +309,7 @@ see the "Package justifications" section there).
 - Tests: generate configs for 1, 5, and 20 snapshots plus other-OS
   entries, and boot each entry in QEMU.
 
---- 6.5 Compositor core: sol-comp ---
+--- 6.5 Compositor core: fern-comp ---
 - Backends: winit (nested, for development inside the human's current
   desktop) and DRM/KMS + libinput (real sessions, via elogind/libseat).
 - Renderer: Smithay GLES with custom shaders for rounded corners, soft
@@ -327,7 +328,7 @@ see the "Package justifications" section there).
 - If the WM process crashes, the core keeps every window on screen,
   restarts the WM, and re-sends state.
 
---- 6.6 Window manager: sol-wm ---
+--- 6.6 Window manager: fern-wm ---
 A separate process. The core reports windows, outputs, and input; the WM
 returns geometry, stacking, focus, decorations, and animation targets
 (spec in docs/protocols/wm.md).
@@ -359,8 +360,8 @@ A QML module every shell component and app imports:
 - Ships matching Qt and GTK themes so Flatpak and third-party apps don't
   look out of place. The GRUB theme uses the same palette and type.
 
---- 6.8 Desktop shell UI: sol-shell ---
-- Menu bar (top, translucent): Solace menu (About, Settings, Sleep,
+--- 6.8 Desktop shell UI: fern-shell ---
+- Menu bar (top, translucent): Fern menu (About, Settings, Sleep,
   Restart, Shut Down, Lock, Log Out), bold active app name, global menu
   (KDE appmenu + com.canonical.dbusmenu, with a fallback for apps that
   don't export one), then tray (StatusNotifierItem), control center,
@@ -381,7 +382,7 @@ A QML module every shell component and app imports:
   crossfades plus light/dark dynamic pairs.
 
 --- 6.9 Adaptive icon system (centerpiece) ---
-Icon format: a directory <app-id>.solicon/ containing
+Icon format: a directory <app-id>.fernicon/ containing
   icon.toml           metadata, default colors, which layers are tintable
   background.svg      shape fill (gradients allowed)
   foreground.svg      glyph, with fills tagged by role: primary,
@@ -410,19 +411,19 @@ they go through a luminance-to-alpha pass and get tinted like native
 icons, so the dock never looks mismatched.
 
 Engine: Rust (resvg for SVG), with a C API + Qt image provider
-(image://solicon/...). GPU rendering where possible; disk cache in
-~/.cache/sol/icons/ keyed by (icon hash, mode, accent, size, scale).
+(image://fernicon/...). GPU rendering where possible; disk cache in
+~/.cache/fern/icons/ keyed by (icon hash, mode, accent, size, scale).
 It listens to settingsd. Target: re-tinting the full dock in under 16 ms
 with a warm cache.
 
 Icon set: original icons for every built-in app, system folders, volumes,
 and file types, plus overrides for the ~40 most common Flatpak apps.
 
---- 6.10 Settings daemon: sol-settingsd ---
+--- 6.10 Settings daemon: fern-settingsd ---
 A typed schema per domain (appearance, dock, wm, input, displays, boot,
 ...) stored as TOML. D-Bus get/set/watch with validation and change
 signals. Every component reads settings through it; nothing reads the
-files directly. Changes to the boot domain trigger sol-bootgen.
+files directly. Changes to the boot domain trigger fern-bootgen.
 
 --- 6.11 Login and lock screen ---
 - Our greeter on greetd, running in a minimal kiosk instance of our
@@ -433,7 +434,7 @@ files directly. Changes to the boot domain trigger sol-bootgen.
 - Lock screen via ext-session-lock-v1, sharing the greeter's look,
   unlocking through PAM. It stays locked if the shell UI or WM crashes.
 - Boot is seamless: our GRUB theme (or no menu at all, if hidden) ->
-  sol-init splash (our logo + progress on the framebuffer, or a LUKS
+  fern-init splash (our logo + progress on the framebuffer, or a LUKS
   passphrase prompt in our style) -> greeter, with no text flashes unless
   verbose boot is on. GRUB is set to keep the framebuffer mode
   (gfxpayload=keep) so there's no mode-switch flicker.
@@ -451,7 +452,7 @@ Sidebar + searchable content, macOS System Settings style. Panes:
 - Startup & Boot: GRUB menu style and timeout, theme vs plain text,
   verbose boot, default system snapshot, other-OS entries
 - Performance: sched_ext scheduler profile (see installer)
-- Logs (from sol-log), Date & Time
+- Logs (from fern-log), Date & Time
 - About: logo, version, hardware summary
 
 --- 6.13 Files ---
@@ -492,7 +493,7 @@ and Discord screen-share must work.
 
 --- 6.17 Installer (centerpiece) ---
 Live image: boots from USB (GRUB with our theme) straight into a minimal
-Solace desktop running only the installer. It looks and moves like macOS
+Fern desktop running only the installer. It looks and moves like macOS
 Setup: full-screen blurred wallpaper, a centered card that changes with
 spring transitions, a back button, and a step indicator.
 
@@ -531,9 +532,9 @@ Storage
 Boot
   - GRUB menu: always show / hidden unless Shift is held / never, plus
     timeout
-  - Boot menu theme: Solace theme or plain text
+  - Boot menu theme: Fern theme or plain text
   - Graphical or verbose boot
-  - Make Solace the default boot entry, and keep detected entries for
+  - Make Fern the default boot entry, and keep detected entries for
     other OSes (os-prober)
   - Number of previous systems to keep bootable (shows the ESP space it
     needs)
@@ -592,7 +593,7 @@ Install
   - Uses spk --root to lay down @system, then writes /etc, the user,
     and settings, installs GRUB to the ESP (grub-install
     --target=x86_64-efi with our own bootloader ID), and runs
-    sol-bootgen
+    fern-bootgen
   - Done screen: Restart, with a countdown
 
 First boot
@@ -613,11 +614,11 @@ Phase 1   spk core: recipes, sandboxed builds, signing, install into
           --root, solver, DB.
           Demo: build and install 10 recipes into a scratch root.
 
-Phase 2   Base bootstrap + sol-init + GRUB + sol-bootgen + system
+Phase 2   Base bootstrap + fern-init + GRUB + fern-bootgen + system
           image layout (section 4).
           Demo: `just qemu` boots through our themed GRUB menu into our
           own sealed system and reaches a text login in under 5 s after
-          GRUB; solctl works.
+          GRUB; fernctl works.
 
 Phase 3   System transactions + rollback.
           Demo: update the image, reboot into the new snapshot, roll back
@@ -645,7 +646,7 @@ Phase 8   Settings app.
 
 Phase 9   Greeter + lock + seamless boot.
           Demo: GRUB -> splash -> greeter -> desktop with no text flashes;
-          the lock survives `pkill sol-shell`.
+          the lock survives `pkill fern-shell`.
 
 Phase 10  ace + Terminal.
           Demo: a new user's default shell is ace in our Terminal; OSC
@@ -678,9 +679,9 @@ graphics stack and can be worked on in parallel if the human asks.
   failure-injection tests (corrupt download, bad signature, power loss
   mid-transaction simulated by killing QEMU). After any simulated
   failure, grub.cfg must still boot the previous system.
-- sol-bootgen: config generation tests for many snapshot counts,
+- fern-bootgen: config generation tests for many snapshot counts,
   other-OS entries, a nearly full ESP, and every menu style.
-- sol-init: tests for dependency ordering, restart policies, and
+- fern-init: tests for dependency ordering, restart policies, and
   clean shutdown.
 - Compositor/WM: headless protocol tests plus screenshot tests for
   decorations and blur.
@@ -696,7 +697,7 @@ graphics stack and can be worked on in parallel if the human asks.
 
 A person can boot the live USB on a real PC, choose Express or Custom,
 customize disk, storage, boot, performance, and appearance options with a
-live preview, install, and reboot into Solace through our themed GRUB
+live preview, install, and reboot into Fern through our themed GRUB
 menu. They log in at our login screen and use a desktop where the menu
 bar, dock, adaptive icons, Settings, Files, Terminal, and ace all
 work; install an app bundle, a Flatpak, and a system update; roll back to

@@ -64,7 +64,7 @@ expect_fail "removing a library others need" \
 
 tmp=build/demo-tamper
 rm -rf "$tmp" && mkdir -p "$tmp"
-pkg=$(ls "$REPO"/packages/lz4-*.solpkg)
+pkg=$(ls "$REPO"/packages/lz4-*.fernpkg)
 cp "$pkg" "$pkg.sig" "$tmp/"
 t="$tmp/$(basename "$pkg")"
 printf '\x00' | dd of="$t" bs=1 seek=4000 conv=notrunc status=none

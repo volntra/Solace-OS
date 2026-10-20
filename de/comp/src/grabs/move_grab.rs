@@ -1,5 +1,5 @@
 // Adapted from Smithay's smallvil example (v0.7.0, MIT licence,
-// https://github.com/Smithay/smithay), for sol-comp.
+// https://github.com/Smithay/smithay), for fern-comp.
 // Kept close to the original: pixel deltas are truncated to whole logical
 // pixels on purpose, and helper items sit next to their use.
 #![allow(clippy::cast_possible_truncation, clippy::items_after_statements)]

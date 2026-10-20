@@ -1,0 +1,35 @@
+# Our own: de/comp in this repository, built with only the DRM backend
+# (the nested one is for development). Linked dynamically: it loads EGL
+# and GBM drivers, which a static binary cannot.
+name = "fern-comp"
+version = "0.1.0"
+release = 1
+summary = "Fern compositor"
+license = "GPL-3.0-or-later"
+
+[[source]]
+local = "."
+# The Cargo workspace only.
+include = ["Cargo.toml", "Cargo.lock", "init", "boot/bootgen", "pkg", "tools/ferncheck", "de/comp"]
+
+[deps]
+build = ["pkgconf", "seatd", "libinput", "libudev", "mesa", "libglvnd", "libdrm", "libxkbcommon"]
+runtime = ["seatd", "libinput", "libudev", "mesa", "libglvnd", "libxkbcommon", "xkeyboard-config", "gcc-libs", "fern-wallpapers", "udev"]
+
+[build]
+system = "custom"
+toolchain = "rust"
+cargo = true
+compile = '''
+# Not the rust toolchain's static default: see the comment at the top.
+RUSTFLAGS="-C linker=cc" cargo build --release --locked --offline \
+  --target x86_64-unknown-linux-gnu -p fern-comp --no-default-features --features drm \
+  --bin fern-comp --bin fern-testclient
+'''
+install = '''
+out=/build/target/x86_64-unknown-linux-gnu/release
+install -Dm755 "$out/fern-comp" "$DESTDIR/usr/bin/fern-comp"
+# The test client, for the image's smoke tests (image/qemu-test-comp.py).
+install -Dm755 "$out/fern-testclient" "$DESTDIR/usr/lib/fern/test/fern-testclient"
+install -Dm644 "$RECIPE/units/fern-comp.toml" "$DESTDIR/usr/lib/fern/units/fern-comp.toml"
+'''

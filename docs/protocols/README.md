@@ -7,8 +7,8 @@ source of truth for behavior.
 | Spec | Interface | Written in |
 |---|---|---|
 | `wm.md` | core <-> WM private Wayland protocol | Phase 4 |
-| `pkgd.md` | `org.sol.Pkg1` D-Bus (polkit-guarded) | Phase 3 (daemon) |
-| `settingsd.md` | `org.sol.Settings1` D-Bus get/set/watch | Phase 6 |
-| `init.md` | solctl <-> sol-init control socket, notify fd | Phase 2 |
+| `pkgd.md` | `org.fern.Pkg1` D-Bus (polkit-guarded) | Phase 3 (daemon) |
+| `settingsd.md` | `org.fern.Settings1` D-Bus get/set/watch | Phase 6 |
+| `init.md` | fernctl <-> fern-init control socket, notify fd | Phase 2 |
 
 None are written yet.

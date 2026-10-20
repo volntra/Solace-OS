@@ -57,10 +57,10 @@ for p in $keep; do cp -a --parents "$p" "$DESTDIR/"; done
 cp -a --parents usr/lib/systemd/libsystemd-shared-*.so usr/lib/libudev.so* "$DESTDIR/"
 # Hooks into systemd units we do not have.
 rm -f "$DESTDIR/usr/lib/udev/rules.d/99-systemd.rules"
-# Our service units (sol-init).
-install -Dm644 "$RECIPE/units/udev-hwdb.toml" "$DESTDIR/usr/lib/sol/units/udev-hwdb.toml"
-install -Dm644 "$RECIPE/units/udevd.toml" "$DESTDIR/usr/lib/sol/units/udevd.toml"
-install -Dm644 "$RECIPE/units/udev-trigger.toml" "$DESTDIR/usr/lib/sol/units/udev-trigger.toml"
+# Our service units (fern-init).
+install -Dm644 "$RECIPE/units/udev-hwdb.toml" "$DESTDIR/usr/lib/fern/units/udev-hwdb.toml"
+install -Dm644 "$RECIPE/units/udevd.toml" "$DESTDIR/usr/lib/fern/units/udevd.toml"
+install -Dm644 "$RECIPE/units/udev-trigger.toml" "$DESTDIR/usr/lib/fern/units/udev-trigger.toml"
 '''
 
 [[split]]

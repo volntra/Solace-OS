@@ -336,7 +336,7 @@ pub fn clip_uniforms(
 }
 
 smithay::backend::renderer::element::render_elements! {
-    /// Everything sol-comp draws on an output, front to back.
+    /// Everything fern-comp draws on an output, front to back.
     pub OutputElement<=GlesRenderer>;
     Window=Rounded,
     Backdrop=Backdrop,
@@ -597,15 +597,15 @@ impl Wallpaper {
     }
 }
 
-/// The wallpaper: `SOL_WALLPAPER`, the installed default, or the
+/// The wallpaper: `FERN_WALLPAPER`, the installed default, or the
 /// development build's render (`just wallpapers`). Missing is not fatal.
 pub fn default_wallpaper() -> Option<Wallpaper> {
-    let candidates: Vec<PathBuf> = std::env::var_os("SOL_WALLPAPER")
+    let candidates: Vec<PathBuf> = std::env::var_os("FERN_WALLPAPER")
         .map(PathBuf::from)
         .into_iter()
         .chain([
-            PathBuf::from("/usr/share/sol/wallpapers/dusk.png"),
-            PathBuf::from("build/wallpapers/dusk.png"),
+            PathBuf::from("/usr/share/fern/wallpapers/grove.png"),
+            PathBuf::from("build/wallpapers/grove.png"),
         ])
         .collect();
     for path in &candidates {

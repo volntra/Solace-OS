@@ -702,6 +702,48 @@ dependencies = [
 ]
 
 [[package]]
+name = "fern-bootgen"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "rustix 1.1.5",
+ "serde",
+ "sha2 0.11.1",
+ "tempfile",
+ "toml",
+]
+
+[[package]]
+name = "fern-comp"
+version = "0.1.0"
+dependencies = [
+ "bitflags 2.13.2",
+ "png",
+ "smithay",
+ "tracing",
+ "tracing-subscriber",
+ "wayland-client",
+ "wayland-protocols",
+ "wayland-protocols-plasma",
+]
+
+[[package]]
+name = "fern-init"
+version = "0.1.0"
+dependencies = [
+ "rustix 1.1.5",
+ "serde",
+ "serde_json",
+ "signal-hook",
+ "tempfile",
+ "toml",
+]
+
+[[package]]
+name = "ferncheck"
+version = "0.1.0"
+
+[[package]]
 name = "fiat-crypto"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1248,6 +1290,7 @@ version = "0.1.0"
 dependencies = [
  "base64",
  "ed25519-dalek",
+ "fern-bootgen",
  "getrandom 0.4.3",
  "glob",
  "hex",
@@ -1257,7 +1300,6 @@ dependencies = [
  "rustix 1.1.5",
  "serde",
  "sha2 0.11.1",
- "sol-bootgen",
  "tar",
  "tempfile",
  "thiserror 2.0.21",
@@ -2355,48 +2397,6 @@ checksum = "dd538fb6910ac1099850255cf94a94df6551fbdd602454387d0adb2d1ca6dead"
 dependencies = [
  "serde",
 ]
-
-[[package]]
-name = "sol-bootgen"
-version = "0.1.0"
-dependencies = [
- "hex",
- "rustix 1.1.5",
- "serde",
- "sha2 0.11.1",
- "tempfile",
- "toml",
-]
-
-[[package]]
-name = "sol-comp"
-version = "0.1.0"
-dependencies = [
- "bitflags 2.13.2",
- "png",
- "smithay",
- "tracing",
- "tracing-subscriber",
- "wayland-client",
- "wayland-protocols",
- "wayland-protocols-plasma",
-]
-
-[[package]]
-name = "sol-init"
-version = "0.1.0"
-dependencies = [
- "rustix 1.1.5",
- "serde",
- "serde_json",
- "signal-hook",
- "tempfile",
- "toml",
-]
-
-[[package]]
-name = "solcheck"
-version = "0.1.0"
 
 [[package]]
 name = "spk"

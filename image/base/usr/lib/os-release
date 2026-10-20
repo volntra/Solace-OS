@@ -1,8 +1,8 @@
-NAME="Solace"
-ID=solace
-PRETTY_NAME="Solace 0.1 (Koi)"
+NAME="Fern"
+ID=fern
+PRETTY_NAME="Fern 0.1 (Koi)"
 VERSION="0.1 (Koi)"
 VERSION_ID=0.1
 VERSION_CODENAME=koi
 HOME_URL="https://github.com/volntra/Solace-OS"
-ANSI_COLOR="0;35"
+ANSI_COLOR="0;32"

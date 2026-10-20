@@ -31,15 +31,15 @@ entry names a recipe that does not exist.
 - `gzip`: .gz archives (kernel image, sources).
 - `less`: pager for text output (logs, man pages).
 - `libarchive`: archive library Flatpak requires (it unpacks OCI/bundle layers); provides bsdtar.
-- `libcap`: POSIX capabilities; required by udev, later by sol-init sandboxing and elogind.
+- `libcap`: POSIX capabilities; required by udev, later by fern-init sandboxing and elogind.
 - `libdrm`: kernel DRM interface; Mesa and the compositor's DRM backend use it.
 - `libevdev`: evdev device wrapper; required by libinput.
 - `libffi`: required by wayland-client/server and GLib (needed for the Wayland stack and Flatpak).
 - `libglvnd`: GL vendor dispatch (libEGL, libGLESv2): Mesa and NVIDIA's driver coexist through it.
-- `libinput`: input devices (pointer acceleration, touchpads) for sol-comp.
+- `libinput`: input devices (pointer acceleration, touchpads) for fern-comp.
 - `libxcrypt`: crypt(3) with yescrypt for Linux-PAM and shadow password hashing.
-- `libxkbcommon`: keymaps and keyboard state for sol-comp and every Wayland client.
-- `linux`: the kernel, with our configuration (boot/kernel/solace.config); its `linux-build` split is the tree out-of-tree modules (NVIDIA) compile against.
+- `libxkbcommon`: keymaps and keyboard state for fern-comp and every Wayland client.
+- `linux`: the kernel, with our configuration (boot/kernel/fern.config); its `linux-build` split is the tree out-of-tree modules (NVIDIA) compile against.
 - `linux-headers`: kernel API headers for glibc and everything else.
 - `lz4`: fast compression for zram swap tooling, libarchive, and kernel/initramfs images.
 - `m4`: macro processor needed by autoconf-generated builds and bison.
@@ -63,25 +63,25 @@ entry names a recipe that does not exist.
 - `python-packaging`: version parsing in Mesa's build (Python 3.14 has no distutils).
 - `python-pyyaml`: YAML parsing in Mesa's build.
 - `readline`: line editing for bash and gawk.
-- `seatd`: libseat: lets sol-comp open DRM and input devices without root; seatd until elogind arrives.
+- `seatd`: libseat: lets fern-comp open DRM and input devices without root; seatd until elogind arrives.
 - `sed`: needed by builds and scripts.
 - `shadow`: user/group/password tools and the text-console login.
-- `sol-bootgen`: ours (boot/bootgen/): grub.cfg, ESP kernels, initramfs.
-- `sol-init`: ours (init/): PID 1, service manager, solctl, sol-log.
-- `solace-base`: ours (image/base/): os-release, factory /etc, console units.
-- `solace-grub-theme`: ours (boot/grub-theme/): boot menu theme + Inter fonts for GRUB.
-- `sol-comp`: our compositor (Phase 4); the image's display server.
-- `solace-wallpapers`: our wallpapers, rendered from assets/wallpapers.
-- `spk`: ours (pkg/): the package manager; system transactions on a running Solace.
+- `fern-bootgen`: ours (boot/bootgen/): grub.cfg, ESP kernels, initramfs.
+- `fern-init`: ours (init/): PID 1, service manager, fernctl, fern-log.
+- `fern-base`: ours (image/base/): os-release, factory /etc, console units.
+- `fern-grub-theme`: ours (boot/grub-theme/): boot menu theme + Inter fonts for GRUB.
+- `fern-comp`: our compositor (Phase 4); the image's display server.
+- `fern-wallpapers`: our wallpapers, rendered from assets/wallpapers.
+- `spk`: ours (pkg/): the package manager; system transactions on a running Fern.
 - `tar`: unpacking sources; archives.
 - `udev`: device manager from the systemd tree (standalone, locked stack): hotplug, device nodes, libudev for libinput.
 - `util-linux`: mount, agetty, fdisk, lsblk, and libmount/libblkid.
 - `wayland`: the Wayland libraries and wayland-scanner: the protocol of the whole desktop.
-- `wayland-protocols`: protocol extensions (xdg-shell, ...) used by sol-comp, Mesa and clients.
+- `wayland-protocols`: protocol extensions (xdg-shell, ...) used by fern-comp, Mesa and clients.
 - `xkeyboard-config`: keyboard layout data for libxkbcommon.
 - `xz`: liblzma and the xz tool; kernel module/initramfs compression, libarchive, and .tar.xz sources.
 - `zlib`: deflate; required by almost everything (libpng, Qt, kernel tools, libarchive).
-- `zstd`: our package format (.solpkg is tar.zst), btrfs compression tooling, and initramfs compression.
+- `zstd`: our package format (.fernpkg is tar.zst), btrfs compression tooling, and initramfs compression.
 
 ## Log
 
@@ -89,7 +89,8 @@ entry names a recipe that does not exist.
 
 - **Decision:** OS = **Solace**, prefix = `sol` (D-Bus `org.sol.*`, config
   paths `/etc/sol`, `~/.config/sol`), package manager = `spk`, shell = `ace`,
-  desktop umbrella = **Koi**.
+  desktop umbrella = **Koi**. (Superseded on 2026-10-20: the OS is now
+  **Fern**, prefix `fern`; see that entry.)
 - **Interpretation to confirm:** for the desktop name the human answered
   "SolOS 1: Koi". Read as: the desktop is called **Koi**, and
   "SolOS 1: Koi" is the release label for version 1 (OS name stays Solace,
@@ -101,7 +102,7 @@ entry names a recipe that does not exist.
 
 ### 2026-10-18: One Cargo workspace at the repo root
 
-- **Decision:** all Rust crates (spk, sol-init, sol-bootgen, sol-comp, ...)
+- **Decision:** all Rust crates (spk, fern-init, fern-bootgen, fern-comp, ...)
   are members of one workspace in `/Cargo.toml`, sharing `Cargo.lock`, lint
   settings, and the `target/` dir.
 - **Alternatives:** one workspace per top-level dir; independent crates.
@@ -120,13 +121,13 @@ entry names a recipe that does not exist.
   enforced, not advisory. Default-deny makes every unsafe block a visible,
   reviewed choice, which matters for PID 1 and the privileged daemons.
 
-### 2026-10-18: `tools/` directory and `solcheck`
+### 2026-10-18: `tools/` directory and `ferncheck`
 
 - **Decision:** added `tools/` (not in the brief's layout) holding
-  `solcheck`, a std-only Rust binary run by `just lint`. It checks: no
+  `ferncheck`, a std-only Rust binary run by `just lint`. It checks: no
   unfilled name placeholders anywhere; no Apple trademarked names in shipped
   paths (`apps/ assets/ boot/ bootstrap/ de/ image/ init/ pkg/ recipes/
-  sh/`) unless the line says `solcheck: allow-name`; no Apple font or icon
+  sh/`) unless the line says `ferncheck: allow-name`; no Apple font or icon
   files (`SF*`/`NewYork*` fonts, `.icns`, `.car`) anywhere; every recipe has a
   justification above; required docs exist.
 - **Alternatives:** grep in the justfile; a pre-commit hook.
@@ -155,8 +156,8 @@ entry names a recipe that does not exist.
 
 ### 2026-10-18: Flake also builds repo tooling hermetically
 
-- **Decision:** `packages.solcheck` and `checks.solcheck` build and test
-  solcheck with `rustPlatform.buildRustPackage`; `just nix-check` runs
+- **Decision:** `packages.ferncheck` and `checks.ferncheck` build and test
+  ferncheck with `rustPlatform.buildRustPackage`; `just nix-check` runs
   `nix flake check`.
 - **Why:** catches "works in my target/ dir" problems, and sets the
   pattern for later crates.
@@ -280,23 +281,23 @@ entry names a recipe that does not exist.
   version-release being built.
 - **Why:** tools and their libraries from one source must move together.
 
-### 2026-10-18: Refuse `--root /` on non-Solace hosts
+### 2026-10-18: Refuse `--root /` on non-Fern hosts
 
 - **Decision:** `spk install/remove/upgrade/key trust` refuse to modify `/`
-  unless `/usr/lib/os-release` says `ID=solace`.
+  unless `/usr/lib/os-release` says `ID=fern`.
 - **Why:** during development spk runs on NixOS and in containers, where
   the default root would be the host itself (CLAUDE.md rule 8 spirit).
 
 ### 2026-10-19: Logo
 
-- **Decision:** the Solace logo is a half-set sun over still water with its
+- **Decision:** the Fern logo is a half-set sun over still water with its
   reflection as tapered ripples, on our n=5 superellipse plate with a dusk
   gradient (night indigo to horizon coral). A single-colour mark (half sun
   + three ripples) on a 4-unit grid serves the menu bar, boot splash, and
   GRUB theme. Both are generated from `tools/brand/gen-logo.py`.
 - **Alternatives:** a koi fish (ties to the desktop name but competes with
   it, and reads poorly at 16 px); a monogram "S" (generic).
-- **Why:** "Solace" = sol + calm; the image is calm, warm, and original
+- **Why:** "Fern" = fern + calm; the image is calm, warm, and original
   (rule 9), survives reduction to a 16 px single-colour glyph, and its
   palette gives the design system a starting point. The human asked for
   the familiar desktop-icon look: squircle plate, rich gradient, soft
@@ -304,7 +305,7 @@ entry names a recipe that does not exist.
 
 ### 2026-10-19: Glass logo variant
 
-- **Decision:** added `solace-icon-glass.svg`, a translucent glass version
+- **Decision:** added `fern-icon-glass.svg`, a translucent glass version
   of the logo on a transparent background, generated by the same script.
   It is called "glass" (and the icon mode "Clear"), never by the vendor's
   marketing name for this style (rule 9).
@@ -320,7 +321,7 @@ entry names a recipe that does not exist.
      headers, glibc, libstdc++, built with the host's compilers for target
      `x86_64-solace-linux-gnu` (deliberately not the host's triple, so
      nothing builds natively against the host by accident).
-  2. `temp` (LFS 6): temporary tools cross-compiled for Solace.
+  2. `temp` (LFS 6): temporary tools cross-compiled for Fern.
   3. `native` stages (LFS 7-8): the sandbox contains **only** our own
      packages (no `/nix`), and the final system is built there.
 - **Toolchain modes** `host` / `cross` / `native` are a recipe/stage
@@ -403,18 +404,18 @@ entry names a recipe that does not exist.
 
 ### 2026-10-19: Dev images: initramfs on the ESP, dev root password
 
-- **Decision:** the initramfs is generated from the packaged sol-init by
-  the packaged `sol-mkinitramfs` and goes only to the ESP (via
-  sol-bootgen), not into `@snapshots/<id>`, so every file in the sealed
+- **Decision:** the initramfs is generated from the packaged fern-init by
+  the packaged `fern-mkinitramfs` and goes only to the ESP (via
+  fern-bootgen), not into `@snapshots/<id>`, so every file in the sealed
   system still comes from a package. Phase 3 transactions regenerate it
-  per snapshot. QEMU images set a root password (`solace`, override with
-  `SOL_ROOT_PASSWORD`) in `@etc`; installs (Phase 12) create real users.
+  per snapshot. QEMU images set a root password (`fern`, override with
+  `FERN_ROOT_PASSWORD`) in `@etc`; installs (Phase 12) create real users.
 
 ### 2026-10-19: GRUB built by our recipe
 
 - **Decision:** `recipes/grub` builds GRUB 2.14 from the signed GNU
   release (signature checked against the GNU keyring before pinning the
-  hash) and ships `usr/lib/sol/boot/grubx64.efi`; the image builder copies
+  hash) and ships `usr/lib/fern/boot/grubx64.efi`; the image builder copies
   it to `EFI/BOOT/BOOTX64.EFI` and refuses to build without it. A
   workbench fallback existed briefly while GNU mirrors were blocked in the
   cloud environment; it was removed once network access was opened.
@@ -447,13 +448,13 @@ entry names a recipe that does not exist.
 
 - **Decision:** an update snapshots the **booted** system (not the menu's
   default), bind-mounts the copy as `usr` of a staging root under
-  `/run/sol/tx`, and runs the ordinary package transaction there with
+  `/run/fern/tx`, and runs the ordinary package transaction there with
   the running system's trusted keys. The initramfs trigger, metadata
-  (`/usr/lib/sol/system.toml`), seal (read-only flag) and sol-bootgen
+  (`/usr/lib/fern/system.toml`), seal (read-only flag) and fern-bootgen
   follow; any failure before the boot menu is written deletes the
   snapshot. An unsealed snapshot can only be an interrupted transaction
   and is deleted by the next one. Rollback sets `default` in
-  `/etc/sol/boot.toml` and reruns sol-bootgen. Spec:
+  `/etc/fern/boot.toml` and reruns fern-bootgen. Spec:
   docs/formats/system.md.
 - **Alternatives:** ostree-style deployments (a second store and a
   checkout step, more than we need with btrfs snapshots); updating
@@ -461,11 +462,11 @@ entry names a recipe that does not exist.
 - **Why:** btrfs snapshots are cheap and atomic, the existing package
   transaction is reused unchanged, and the running system and boot menu
   are never half-updated.
-- **Details:** sol-init mounts the volume's top level at
-  `/run/sol/btrfs` (root-only, `noexec`) and the ESP at `/boot` (found
-  by `sol.esp=UUID=`, which sol-bootgen now writes). Because the top
-  level is `noexec`, the initramfs is written with sol-bootgen's library
-  (from the new system's packaged sol-init), not by running a tool from
+- **Details:** fern-init mounts the volume's top level at
+  `/run/fern/btrfs` (root-only, `noexec`) and the ESP at `/boot` (found
+  by `fern.esp=UUID=`, which fern-bootgen now writes). Because the top
+  level is `noexec`, the initramfs is written with fern-bootgen's library
+  (from the new system's packaged fern-init), not by running a tool from
   the snapshot. Package triggers (`[triggers]`) are refused until they
   are implemented. `SPK_TEST_PAUSE=before-seal` pauses a transaction for
   the QEMU test's power cut (CLAUDE.md section 8); it does nothing unset.
@@ -479,7 +480,7 @@ entry names a recipe that does not exist.
 
 ### 2026-10-19: Compositor foundation (Phase 4, stage 1)
 
-- **Decision:** sol-comp is built on Smithay 0.7.0 (the locked stack), with
+- **Decision:** fern-comp is built on Smithay 0.7.0 (the locked stack), with
   only the features in use (`wayland_frontend`, `desktop`,
   `backend_winit` for nested development; DRM/libinput/libseat come with
   the DRM backend). Input routing and the move/resize grabs are adapted
@@ -489,7 +490,7 @@ entry names a recipe that does not exist.
 - **Animation:** `spring.rs`, closed-form damped harmonic oscillator
   (frame-rate independent), presets from the HIG (critically damped).
 - **Development without a GPU:** the dev shell carries Xvfb and Mesa; the
-  cloud container runs sol-comp nested in Xvfb on Mesa's llvmpipe (GLES
+  cloud container runs fern-comp nested in Xvfb on Mesa's llvmpipe (GLES
   3.2). EGL is not pointed at Mesa globally (`MESA_EGL_VENDOR_DIR` is only
   used by tests), so on the NixOS host the nested compositor uses the real
   driver (NVIDIA).
@@ -515,7 +516,7 @@ entry names a recipe that does not exist.
   Alternatives: nine-patch shadow textures (cheap, but fixed radii and
   sizes); a real blur pass per window (expensive).
 - **Wallpaper:** PNG decoded once (`png` crate), drawn object-fit cover.
-  Found at `$SOL_WALLPAPER`, `/usr/share/sol/wallpapers/dusk.png`, or
+  Found at `$FERN_WALLPAPER`, `/usr/share/fern/wallpapers/dusk.png`, or
   `build/wallpapers/dusk.png`. A missing wallpaper falls back to the
   plain background colour; it is not an error.
 - **New windows take focus** (raised and activated), as users expect.
@@ -543,14 +544,14 @@ entry names a recipe that does not exist.
   redraw (and a re-blur) of every frame.
 - **Nested pacing:** with no damage nothing is presented, and the next
   frame is checked a 60 Hz frame later rather than immediately.
-- **Test client:** `sol-testclient` (Rust, wayland-client), the seed of
+- **Test client:** `fern-testclient` (Rust, wayland-client), the seed of
   stage 3's protocol and screenshot tests.
 
 ### 2026-10-19: Compositor tests: headless backend and pixel checks (Phase 4, stage 3)
 
-- **Decision:** sol-comp has a headless backend (offscreen texture, Mesa's
+- **Decision:** fern-comp has a headless backend (offscreen texture, Mesa's
   surfaceless EGL platform, llvmpipe forced) and an integration test that
-  starts a compositor per scenario, connects real `sol-testclient`
+  starts a compositor per scenario, connects real `fern-testclient`
   processes over Wayland, and asserts on pixels of read-back frames.
   Software rendering keeps the expected pixels identical on every machine,
   including the NVIDIA host.
@@ -563,14 +564,14 @@ entry names a recipe that does not exist.
   (EGL, the environment: `XDG_RUNTIME_DIR`, the Mesa vendor file), which
   must be set before any thread exists; running them one at a time in a
   single thread makes that sound.
-- **sol-testclient moved into the sol-comp package** so the test finds it
-  through `CARGO_BIN_EXE_sol-testclient`.
+- **fern-testclient moved into the fern-comp package** so the test finds it
+  through `CARGO_BIN_EXE_fern-testclient`.
 - **Not done:** protocol tests for protocols we do not have yet; frame
   time measurements (need real hardware).
 
 ### 2026-10-19: The graphics base (Phase 4, stage 4)
 
-- **Decision:** the stack under sol-comp is built by our recipes in the
+- **Decision:** the stack under fern-comp is built by our recipes in the
   system stage: Python (final), ninja, meson and the Python modules their
   builds need, gperf, libcap, udev, libdrm, wayland, wayland-protocols,
   xkeyboard-config, libxkbcommon, libevdev, mtdev, libinput, seatd,
@@ -602,9 +603,9 @@ entry names a recipe that does not exist.
   newest point releases, which no second source had yet.
 - **Rust recipes include `de/comp/Cargo.toml`:** cargo loads every
   workspace member; only the manifest is included so compositor changes
-  do not rebuild sol-init, spk or sol-bootgen.
+  do not rebuild fern-init, spk or fern-bootgen.
 
-### 2026-10-19: sol-comp on the display (Phase 4, stage 5)
+### 2026-10-19: fern-comp on the display (Phase 4, stage 5)
 
 - **Decision:** a DRM backend modelled on Smithay's anvil, reduced to one
   GPU: libseat session, udev for GPU discovery and hotplug, DRM + GBM +
@@ -617,23 +618,23 @@ entry names a recipe that does not exist.
   nothing once the real driver runs. Found because the QEMU test looked at
   the wrong screen.
 - **Cargo features:** `nested` (winit) and `drm`; the image's package is
-  built with `drm` only. sol-comp links dynamically (the rust toolchain's
+  built with `drm` only. fern-comp links dynamically (the rust toolchain's
   static default cannot load EGL/GBM drivers).
 - **The pointer** is ours: an arrow drawn in code (no image assets),
   placed on the cursor plane by Smithay when the hardware has one.
 - **Session keys:** Ctrl+Alt+F1..F12 switch VTs through libseat,
   Ctrl+Alt+Backspace quits the compositor.
 - **Services ship with their packages:** udev (hwdb on first boot into
-  /etc, udevd, coldplug trigger + settle), seatd, sol-comp; each recipe
+  /etc, udevd, coldplug trigger + settle), seatd, fern-comp; each recipe
   installs its unit from its recipe directory. A test parses every unit in
-  the repository with sol-init's parser.
-- **tty1 is the desktop**, the console login moved to tty2. sol-comp runs
+  the repository with fern-init's parser.
+- **tty1 is the desktop**, the console login moved to tty2. fern-comp runs
   as root through seatd until the login screen (Phase 9) starts it per
   user.
 - **QEMU:** one GPU (`-vga none -device virtio-vga`) plus virtio keyboard
   and tablet for `--screen` and windowed runs; the headless mode keeps
   QEMU's default VGA for the boot-menu screenshots.
-- **Wallpapers** are a package (`solace-wallpapers`), rendered from our
+- **Wallpapers** are a package (`fern-wallpapers`), rendered from our
   SVGs with resvg from the dev workbench until resvg has a recipe.
 - **Standard groups** added to the factory /etc/group (render, kvm, lp,
   cdrom, ...): udev's rules assign device nodes to them.
@@ -652,8 +653,8 @@ entry names a recipe that does not exist.
 - **Device nodes:** NVIDIA's modules register /dev/nvidia* without a
   device class, so a oneshot unit creates them (group video) instead of
   the setuid nvidia-modprobe (spk packages carry no setuid files).
-- **Kernel modules without kmod:** sol-init loads the modules packages
-  list (`/usr/lib/sol/modules.d/*.conf`, overridable in /etc) with
+- **Kernel modules without kmod:** fern-init loads the modules packages
+  list (`/usr/lib/fern/modules.d/*.conf`, overridable in /etc) with
   `finit_module`, letting the kernel decompress `.ko.zst`
   (`CONFIG_MODULE_DECOMPRESS`). No depmod, no dependency resolution (a list
   orders its modules), no hotplug autoloading. Alternatives: kmod (another
@@ -668,12 +669,12 @@ entry names a recipe that does not exist.
   linux-drm-syncobj when the kernel driver supports syncobj eventfds. A
   commit with a GPU buffer waits on its explicit acquire point, or else
   on the buffer's implicit fence, before it is applied.
-- **Measuring on the real display:** `SOL_COMP_STATS=1` makes the DRM
+- **Measuring on the real display:** `FERN_COMP_STATS=1` makes the DRM
   backend report frames per second, frame intervals and missed refreshes
   from the kernel's presentation timestamps; `just comp-drm` runs it on
   the host's display with an animated test window (double-buffered, one
   frame per frame callback), so the 165 Hz target can be checked on the
-  human's machine before Solace itself runs there.
+  human's machine before Fern itself runs there.
 
 
 ### 2026-10-20: Event-driven redraws on the real display (Phase 4)
@@ -697,9 +698,36 @@ frame missed the next vblank (about 5 a second).
   tracking).
 - **Result:** on the RTX 5070 Ti (DP-1, 180 Hz preferred mode) one
   animated window went from 160 to 180.1 fps with 0 missed refreshes.
-  sol-comp's logs now go to stderr, uncoloured unless it is a terminal (they
+  fern-comp's logs now go to stderr, uncoloured unless it is a terminal (they
   went to stdout, so `just comp-drm` kept an empty log file).
   Under the full 6.5 load (three animated windows plus a dock-sized
   glass panel re-blurring them) it held 180.2 fps with 0 missed refreshes:
   Phase 4's hardware milestone. Frame timing restarts when the session
   pauses, so a report never mixes in time spent on another VT.
+
+### 2026-10-20: Solace becomes Fern
+
+- **Decision (the human's):** the OS is renamed **Fern**, prefix `fern`
+  (binaries `fern-*`, `fernctl`, D-Bus `org.fern.*`, paths `/etc/fern`,
+  `/usr/lib/fern`, `/run/fern`, `/boot/fern/<id>`, kernel parameters
+  `fern.root=` etc., file types `.fernpkg`, `.fernapp`, `.fernicon`,
+  kernel release `-fern`). `spk`, `ace` and **Koi** stay; the version 1
+  label is "Fern 1: Koi". New identity: the logo is a simple pine tree (a
+  soft cone with two branch cuts, chosen from four sketches), the palette
+  is forest green and near-black/off-white (docs/design/HIG.md, Brand),
+  and the default wallpaper is **Grove** (misty pine ridges), replacing
+  Dusk.
+- **Why:** "Solace" is an existing software company whose appliance OS is
+  called SolOS, a direct clash with the name and the "SolOS 1: Koi" label.
+  Fern clashes with no operating system; the nearest is Feren OS (a Linux
+  distribution, sometimes misspelled "Fern OS"), so the name is used alone,
+  never "Fern OS". Names searched and set aside: Vesper (Vesper Linux),
+  Lyra (Lyra OS), Vela (openvela), Kumo (kumaOS), Moss (a Rust kernel),
+  Ember, Dusk, Horizon (existing OSes).
+- **Kept on purpose:** the toolchain's target triple
+  `x86_64-solace-linux-gnu`, the `$SOL_TGT` variable its recipes use (spk
+  exports it beside `$FERN_TGT`) and their package summaries. Rewording
+  those recipes changes their build stamps and rebuilds the whole
+  toolchain (hours); they change with the next toolchain update. Neither
+  is visible outside a compiler's `-dumpmachine`. The GitHub repository is
+  still `volntra/Solace-OS` until the human renames it.

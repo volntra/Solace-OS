@@ -4,17 +4,17 @@
 # The C library (packages do not list it as a dependency).
 glibc
 # The system: init, console logins, os-release, factory /etc.
-solace-base
+fern-base
 # Kernel and the boot tooling (bootgen also writes this image's ESP).
 linux
-sol-bootgen
+fern-bootgen
 spk
-solace-grub-theme
+fern-grub-theme
 grub
 
 # The desktop so far: the compositor on the display (pulls in udev, seatd,
 # Mesa, libinput and the wallpaper).
-sol-comp
+fern-comp
 
 # Everyday command-line tools for the text console.
 grep

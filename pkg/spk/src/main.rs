@@ -1,4 +1,4 @@
-//! spk: the Solace package manager.
+//! spk: the Fern package manager.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -22,7 +22,7 @@ use libspk::version::DepSpec;
 use owo_colors::OwoColorize;
 
 #[derive(Parser)]
-#[command(name = "spk", version, about = "The Solace package manager")]
+#[command(name = "spk", version, about = "The Fern package manager")]
 struct Cli {
     /// Operate on this root instead of /
     #[arg(long, global = true, default_value = "/")]
@@ -36,7 +36,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// Install packages (names, specs like `zlib>=1.3`, or .solpkg files)
+    /// Install packages (names, specs like `zlib>=1.3`, or .fernpkg files)
     Install {
         #[arg(required = true)]
         packages: Vec<String>,
@@ -62,7 +62,7 @@ enum Cmd {
     History,
     /// Check installed files against the package database
     Verify,
-    /// List the bootable systems (on a running Solace)
+    /// List the bootable systems (on a running Fern)
     Systems,
     /// Boot a previous system from now on (default: the one before the
     /// current default); it takes effect on the next boot
@@ -82,7 +82,7 @@ enum Cmd {
         /// Signing key (.key)
         #[arg(long)]
         key: PathBuf,
-        #[arg(long, default_value = "solace")]
+        #[arg(long, default_value = "fern")]
         name: String,
     },
     /// Manage signing keys
@@ -197,7 +197,7 @@ fn run(cli: Cli) -> Result<()> {
             let mut req = Request::default();
             let mut files = Vec::new();
             for p in packages {
-                if p.ends_with(".solpkg") {
+                if p.ends_with(".fernpkg") {
                     files.push(PathBuf::from(p));
                 } else {
                     req.install.push(DepSpec::parse(&p)?);
@@ -333,7 +333,7 @@ fn spinner(prefix: &str) -> ProgressBar {
     pb
 }
 
-/// Refuses to modify the host's `/` unless the host is Solace: during
+/// Refuses to modify the host's `/` unless the host is Fern: during
 /// development spk runs on other systems, where `--root /` would write into
 /// the host's own /usr.
 fn guard_host_root(root: &Path) -> Result<()> {
@@ -342,11 +342,11 @@ fn guard_host_root(root: &Path) -> Result<()> {
         return Ok(());
     }
     let os = std::fs::read_to_string("/usr/lib/os-release").unwrap_or_default();
-    if os.lines().any(|l| l.trim() == "ID=solace") {
+    if os.lines().any(|l| l.trim() == "ID=fern") {
         return Ok(());
     }
     bail!(
-        "refusing to modify / on a system that is not Solace; pass --root <dir> \
+        "refusing to modify / on a system that is not Fern; pass --root <dir> \
          to work on a separate root"
     )
 }
@@ -414,7 +414,7 @@ impl Progress {
 }
 
 fn transact(root_path: &Path, req: &Request, sources: &Sources) -> Result<()> {
-    // On a running Solace, every change is a new system snapshot.
+    // On a running Fern, every change is a new system snapshot.
     if let Some(live) = Live::detect(root_path)? {
         return system_transact(&live, req, sources);
     }
@@ -471,7 +471,7 @@ fn system_transact(live: &Live, req: &Request, sources: &Sources) -> Result<()> 
 fn live_system(root: &Path) -> Result<Live> {
     Live::detect(root)?.ok_or_else(|| {
         anyhow!(
-            "{} is not a running Solace system (system snapshots exist only there)",
+            "{} is not a running Fern system (system snapshots exist only there)",
             root.display()
         )
     })
@@ -611,7 +611,7 @@ fn print_manifest(m: &Manifest, extra: &[(&str, String)]) {
 }
 
 fn info(root: &Path, repos: &[Location], what: &str) -> Result<()> {
-    if what.ends_with(".solpkg") {
+    if what.ends_with(".fernpkg") {
         let ring = Keyring::load(root)?;
         let tmp = tempfile::tempdir()?;
         let vp = VerifiedPackage::open(Path::new(what), &ring, None, tmp.path())?;
@@ -753,7 +753,7 @@ fn base_config(o: &BuildOpts, repo: PathBuf) -> Result<BuildConfig> {
         sources: o.sources.clone(),
         repo_root: PathBuf::from("."),
         repo,
-        repo_name: "solace-local".into(),
+        repo_name: "fern-local".into(),
         key: load_key(&o.key)?,
         trusted: Vec::new(),
         host: HostTools::detect().ok(),

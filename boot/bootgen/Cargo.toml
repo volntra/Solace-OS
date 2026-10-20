@@ -1,7 +1,7 @@
 [package]
-name = "sol-bootgen"
+name = "fern-bootgen"
 version = "0.1.0"
-description = "Generates Solace's grub.cfg and manages kernels on the ESP"
+description = "Generates Fern's grub.cfg and manages kernels on the ESP"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -13,12 +13,12 @@ name = "bootgen"
 path = "src/lib.rs"
 
 [[bin]]
-name = "sol-bootgen"
+name = "fern-bootgen"
 path = "src/main.rs"
 
 [[bin]]
-name = "sol-mkinitramfs"
-path = "src/bin/sol-mkinitramfs.rs"
+name = "fern-mkinitramfs"
+path = "src/bin/fern-mkinitramfs.rs"
 
 [dependencies]
 hex = "0.4.3"

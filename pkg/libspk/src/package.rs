@@ -1,4 +1,4 @@
-//! `.solpkg` archives: creation, verification, and safe extraction.
+//! `.fernpkg` archives: creation, verification, and safe extraction.
 //!
 //! Security-critical. Spec: docs/formats/package.md. The verification
 //! order there is implemented by [`VerifiedPackage::open`]; extraction by
@@ -115,7 +115,7 @@ fn header(kind: tar::EntryType, mode: u32, size: u64, mtime: u64) -> tar::Header
     h
 }
 
-/// Builds and signs `<out_dir>/<name>-<ver>-<rel>.x86_64.solpkg` from the
+/// Builds and signs `<out_dir>/<name>-<ver>-<rel>.x86_64.fernpkg` from the
 /// files under `src`. Returns the package path and its manifest.
 ///
 /// # Errors
@@ -593,7 +593,7 @@ pub(crate) mod tests {
     fn create_open_extract_roundtrip() {
         let fx = Fixture::new();
         let p = build_pkg(&fx, &meta("hello", "1.0", &["zlib"]), "README");
-        assert_eq!(p.file_name().unwrap(), "hello-1.0-1.x86_64.solpkg");
+        assert_eq!(p.file_name().unwrap(), "hello-1.0-1.x86_64.fernpkg");
         let vp = VerifiedPackage::open(&p, &fx.ring, None, &fx.work()).unwrap();
         assert_eq!(vp.manifest.name, "hello");
         assert_eq!(vp.manifest.files.len(), 7);
@@ -650,7 +650,7 @@ pub(crate) mod tests {
         let mut bytes = fs::read(&p).unwrap();
         let mid = bytes.len() / 2;
         bytes[mid] ^= 0xff;
-        let tampered = fx.path("out/t/hello-1.0-1.x86_64.solpkg");
+        let tampered = fx.path("out/t/hello-1.0-1.x86_64.fernpkg");
         fs::create_dir_all(tampered.parent().unwrap()).unwrap();
         fs::write(&tampered, &bytes).unwrap();
         fs::copy(sig_path(&p), sig_path(&tampered)).unwrap();
@@ -705,7 +705,7 @@ pub(crate) mod tests {
     fn renamed_file_refused() {
         let fx = Fixture::new();
         let p = build_pkg(&fx, &meta("hello", "1.0", &[]), "README");
-        let renamed = fx.path("out/hello-2.0-1.x86_64.solpkg");
+        let renamed = fx.path("out/hello-2.0-1.x86_64.fernpkg");
         fs::copy(&p, &renamed).unwrap();
         fs::copy(sig_path(&p), sig_path(&renamed)).unwrap();
         let e = VerifiedPackage::open(&renamed, &fx.ring, None, &fx.work()).unwrap_err();
@@ -891,7 +891,7 @@ pub(crate) mod tests {
     #[test]
     fn garbage_refused_after_signature() {
         let fx = Fixture::new();
-        let p = fx.path("junk-1.0-1.x86_64.solpkg");
+        let p = fx.path("junk-1.0-1.x86_64.fernpkg");
         fs::write(&p, b"not zstd at all").unwrap();
         fx.key.sign_file(Purpose::Package, &p).unwrap();
         let e = VerifiedPackage::open(&p, &fx.ring, None, &fx.work()).unwrap_err();

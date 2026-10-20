@@ -1,5 +1,5 @@
 {
-  description = "Solace: a macOS-style operating system on a minimal Linux base";
+  description = "Fern: a macOS-style operating system on a minimal Linux base";
 
   # Channel tarball rather than github: so locking works without the GitHub
   # API; flake.lock still pins the exact revision by hash.
@@ -14,7 +14,7 @@
     in
     {
       devShells.${system}.default = pkgs.mkShell {
-        name = "solace-dev";
+        name = "fern-dev";
 
         packages = with pkgs; [
           # Rust (every component written in Rust)
@@ -98,20 +98,20 @@
 
         shellHook = ''
           export CCACHE_DIR="$PWD/.ccache"
-          echo "Solace dev shell. Run 'just' for recipes, 'just check' to verify."
+          echo "Fern dev shell. Run 'just' for recipes, 'just check' to verify."
         '';
       };
 
-      packages.${system}.solcheck = pkgs.rustPlatform.buildRustPackage {
-        pname = "solcheck";
+      packages.${system}.ferncheck = pkgs.rustPlatform.buildRustPackage {
+        pname = "ferncheck";
         version = "0.1.0";
         src = self;
         cargoLock.lockFile = ./Cargo.lock;
-        cargoBuildFlags = [ "-p" "solcheck" ];
-        cargoTestFlags = [ "-p" "solcheck" ];
+        cargoBuildFlags = [ "-p" "ferncheck" ];
+        cargoTestFlags = [ "-p" "ferncheck" ];
       };
 
-      checks.${system}.solcheck = self.packages.${system}.solcheck;
+      checks.${system}.ferncheck = self.packages.${system}.ferncheck;
 
       formatter.${system} = pkgs.nixfmt;
     };

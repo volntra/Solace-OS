@@ -1,10 +1,10 @@
-# Package format (`.solpkg`)
+# Package format (`.fernpkg`)
 
 A system package is two files:
 
 ```
-<name>-<version>-<release>.x86_64.solpkg       tar, zstd-compressed
-<name>-<version>-<release>.x86_64.solpkg.sig   detached signature
+<name>-<version>-<release>.x86_64.fernpkg       tar, zstd-compressed
+<name>-<version>-<release>.x86_64.fernpkg.sig   detached signature
 ```
 
 ## Archive

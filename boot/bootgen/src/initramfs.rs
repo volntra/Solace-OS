@@ -1,12 +1,12 @@
-//! The initramfs: a "newc" cpio archive holding only sol-init (as `/init`),
-//! the mount points it uses, and `/dev/console`. sol-init finds the root
+//! The initramfs: a "newc" cpio archive holding only fern-init (as `/init`),
+//! the mount points it uses, and `/dev/console`. fern-init finds the root
 //! filesystem, assembles it from btrfs subvolumes, and switches to it
 //! (init/src/pid1.rs). No shell, no busybox.
 
 use std::io::{self, Write};
 
 const MAGIC: &str = "070701";
-/// Empty directories sol-init mounts things on.
+/// Empty directories fern-init mounts things on.
 pub const DIRS: &[&str] = &["dev", "proc", "sys", "run", "tmp", "sysroot"];
 
 /// Linux mode bits.
@@ -50,7 +50,7 @@ impl<W: Write> Writer<W> {
     }
 }
 
-/// Writes the initramfs with `init` (the sol-init binary) as `/init`.
+/// Writes the initramfs with `init` (the fern-init binary) as `/init`.
 ///
 /// # Errors
 /// Write errors.

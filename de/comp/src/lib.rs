@@ -1,6 +1,6 @@
-//! sol-comp: Solace's compositor core (CLAUDE.md 6.5). It owns the
+//! fern-comp: Fern's compositor core (CLAUDE.md 6.5). It owns the
 //! screen, the Wayland protocols, input and rendering; window management
-//! policy moves to the separate sol-wm process in Phase 5.
+//! policy moves to the separate fern-wm process in Phase 5.
 
 pub mod backdrop;
 pub mod backend;

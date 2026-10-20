@@ -104,7 +104,7 @@ struct Screen {
     /// Frame callbacks are scheduled for a refresh period after an empty
     /// frame (so clients asking only for callbacks cannot spin the loop).
     callbacks_pending: bool,
-    /// Frame timing, when `SOL_COMP_STATS` is set.
+    /// Frame timing, when `FERN_COMP_STATS` is set.
     stats: Option<FrameStats>,
 }
 
@@ -136,7 +136,7 @@ pub fn init(
     let (mut session, notifier) =
         LibSeatSession::new().map_err(|e| format!("session (is seatd running?): {e}"))?;
     let seat = session.seat();
-    let path = match std::env::var_os("SOL_DRM_DEVICE") {
+    let path = match std::env::var_os("FERN_DRM_DEVICE") {
         Some(p) => PathBuf::from(p),
         None => pick_gpu(
             primary_gpu(&seat).ok().flatten(),
@@ -530,7 +530,7 @@ impl Drm {
                 refresh: Duration::from_micros(1_000_000_000 / millihertz),
                 state: LoopState::Stopped,
                 callbacks_pending: false,
-                stats: std::env::var_os("SOL_COMP_STATS")
+                stats: std::env::var_os("FERN_COMP_STATS")
                     .map(|_| FrameStats::new(Duration::from_micros(1_000_000_000 / millihertz))),
             },
         );
