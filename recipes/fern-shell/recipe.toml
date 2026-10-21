@@ -13,7 +13,7 @@ include = ["de/CMakeLists.txt", "de/design", "de/shell", "de/protocols/fern-shel
 
 [deps]
 build = ["cmake", "ninja", "pkgconf", "qtbase", "qtdeclarative", "qtsvg", "layer-shell-qt", "wayland", "libxkbcommon"]
-runtime = ["qtbase", "qtdeclarative", "qtsvg", "layer-shell-qt", "fontconfig", "inter", "dbus", "fern-settingsd"]
+runtime = ["qtbase", "qtdeclarative", "qtsvg", "layer-shell-qt", "fontconfig", "inter", "dbus", "fern-settingsd", "fern-indexd", "fern-wallpapers"]
 
 [build]
 system = "custom"

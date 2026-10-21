@@ -158,6 +158,14 @@ qemu-test-wm:
 
 # --- Desktop: settings, design system, shell (Phase 6) ----------------------
 
+# Boots the image and drives the real session by keyboard: menu bar and
+# dock, Search into dark mode, a screenshot and its banner, the control and
+# notification centers, the indexer, a killed shell coming back.
+# Screenshots in build/image/shell-*.png.
+# Phase 6 demo on the image (QEMU): the desktop shell, live
+qemu-test-shell:
+    image/qemu-test-shell.py
+
 # Build the Qt desktop (design system, shell) and its tests into build/de
 shell-build:
     cmake -S de -B build/de -G Ninja -DCMAKE_BUILD_TYPE=Debug -DFERN_BUILD_TESTS=ON
@@ -180,7 +188,7 @@ shell-test: shell-build fonts
 
 # Phase 6 demo, nested in your desktop: the whole desktop with demo apps
 shell-demo: shell-build fonts
-    cargo build -p fern-comp -p fern-wm -p fern-settingsd
+    cargo build -p fern-comp -p fern-wm -p fern-settingsd -p fern-indexd
     tools/shell-demo.sh
 
 # --- System updates (Phase 3) -----------------------------------------------

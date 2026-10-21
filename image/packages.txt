@@ -12,9 +12,11 @@ spk
 fern-grub-theme
 grub
 
-# The desktop so far: the compositor on the display (pulls in udev, seatd,
-# Mesa, libinput and the wallpaper).
+# The desktop: the compositor on the display (pulls in udev, seatd, Mesa,
+# libinput and the wallpaper), and the shell with its session (the bus,
+# settings, the file indexer, Qt).
 fern-comp
+fern-shell
 
 # Everyday command-line tools for the text console.
 grep

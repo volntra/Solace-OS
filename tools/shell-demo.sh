@@ -35,5 +35,6 @@ echo "      try: fern-settings set appearance theme dark (in another terminal, s
 conf=$(dirname "$(dirname "$(command -v dbus-daemon)")")/share/dbus-1/session.conf
 exec dbus-run-session --config-file="$conf" -- sh -c '
     "$1/target/debug/fern-settingsd" --dir "$XDG_CONFIG_HOME/fern" &
+    "$1/target/debug/fern-indexd" --root "$HOME" --db "$XDG_DATA_HOME/index.sqlite" &
     exec "$1/target/debug/fern-comp" --nested --shell "$1/build/de/shell/fern-shell"
 ' sh "$root"

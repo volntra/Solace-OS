@@ -235,6 +235,11 @@ ShellWindow {
             y: Math.round(popups.height * 0.18)
             onDone: popups.dismiss()
             onAction: name => {
+                // Panels open in Search's place.
+                if (name === "control" || name === "notifications") {
+                    popups.show(name)
+                    return
+                }
                 if (name === "about")
                     about.show()
                 else if (name === "dnd")

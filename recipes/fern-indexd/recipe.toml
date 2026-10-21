@@ -1,0 +1,26 @@
+# Our own: de/indexer in this repository. The file indexer behind Search
+# (one per session, started by the session script).
+name = "fern-indexd"
+version = "0.1.0"
+release = 1
+summary = "Fern file indexer for Search"
+license = "GPL-3.0-or-later"
+
+[[source]]
+local = "."
+# The Cargo workspace only.
+include = ["Cargo.toml", "Cargo.lock", "init", "boot/bootgen", "pkg", "tools/ferncheck", "de/comp/Cargo.toml", "de/protocols", "de/wm/Cargo.toml", "de/settingsd/Cargo.toml", "de/indexer", "third_party/smithay"]
+
+[deps]
+runtime = ["dbus"]
+
+[build]
+system = "custom"
+toolchain = "rust"
+cargo = true
+compile = '''
+cargo build --release --locked --offline --target x86_64-unknown-linux-gnu -p fern-indexd
+'''
+install = '''
+install -Dm755 /build/target/x86_64-unknown-linux-gnu/release/fern-indexd "$DESTDIR/usr/lib/fern/fern-indexd"
+'''

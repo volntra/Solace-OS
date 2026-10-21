@@ -23,6 +23,8 @@ Material {
         { name: "dnd", title: Notifications.dnd ? qsTr("Turn Off Do Not Disturb") : qsTr("Turn On Do Not Disturb"), symbol: "bell-off", words: "do not disturb dnd focus notifications quiet" },
         { name: "screenshot", title: qsTr("Take a Screenshot"), symbol: "image", words: "screenshot screen shot capture picture" },
         { name: "nightshift", title: qsTr("Night Shift"), symbol: "sun-moon", words: "night shift warm colours colors evening" },
+        { name: "control", title: qsTr("Control Center"), symbol: "sliders-horizontal", words: "control center wifi bluetooth sound volume brightness" },
+        { name: "notifications", title: qsTr("Notification Center"), symbol: "bell", words: "notification center notifications history" },
         { name: "about", title: qsTr("About Fern"), symbol: "info", words: "about fern system version computer" },
         { name: "restart", title: qsTr("Restart…"), symbol: "rotate-ccw", words: "restart reboot", enabled: System.canPower },
         { name: "shutdown", title: qsTr("Shut Down…"), symbol: "power", words: "shut down power off turn off", enabled: System.canPower }

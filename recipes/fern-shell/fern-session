@@ -1,10 +1,21 @@
 #!/bin/sh
-# The desktop session: a session bus, the user's settings daemon on it, and
-# the compositor with its window manager and shell. Started by the
-# fern-comp unit until the login screen starts sessions (Phase 9).
+# The desktop session: a session bus, the user's settings daemon and file
+# indexer on it, and the compositor with its window manager and shell.
+# Started by the fern-comp unit until the login screen starts sessions
+# (Phase 9).
+#
+# The bus listens where session tools look for it ($XDG_RUNTIME_DIR/bus),
+# so a console in the same user's session reaches it too. A bus left by
+# the session before (the unit restarts us) is stopped first.
 set -e
 mkdir -p -m 0700 "$XDG_RUNTIME_DIR"
-exec /usr/bin/dbus-run-session -- /bin/sh -c '
-  /usr/lib/fern/fern-settingsd &
-  exec /usr/bin/fern-comp --drm --shell /usr/bin/fern-shell
-'
+bus="$XDG_RUNTIME_DIR/bus"
+if [ -f "$bus.pid" ]; then
+  kill "$(cat "$bus.pid")" 2>/dev/null || true
+fi
+rm -f "$bus"
+/usr/bin/dbus-daemon --session --address="unix:path=$bus" --fork --print-pid >"$bus.pid"
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$bus"
+/usr/lib/fern/fern-settingsd &
+/usr/lib/fern/fern-indexd &
+exec /usr/bin/fern-comp --drm --shell /usr/bin/fern-shell
