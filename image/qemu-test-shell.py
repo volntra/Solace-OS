@@ -252,6 +252,9 @@ def main():
         wait_for(c, "after-restart", menu_bar_dark, "the menu bar after the restart", timeout=300)
         ok(f"fern-shell killed: fern-comp started a new one (pid {new[0]}), still dark")
 
+        # Back to the defaults, for the other image tests.
+        for domain, key in (("appearance", "theme"), ("notifications", "banner_seconds")):
+            c.run(f"{BUS} fern-settings reset {domain} {key}", f"resetting {domain}.{key}")
         c.send("fernctl poweroff\n")
         deadline = time.monotonic() + 120
         while c.p.poll() is None and time.monotonic() < deadline:

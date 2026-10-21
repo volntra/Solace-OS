@@ -166,6 +166,11 @@ qemu-test-wm:
 qemu-test-shell:
     image/qemu-test-shell.py
 
+# Phase 7 demo on the image: the five icon modes and the wallpaper's accent
+# recolour the dock (QEMU, screenshots in build/image/icons-*.png)
+qemu-test-icons:
+    image/qemu-test-icons.py
+
 # Build the Qt desktop (design system, shell) and its tests into build/de
 shell-build:
     cargo build --release -p fern-icons
