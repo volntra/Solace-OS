@@ -657,9 +657,6 @@ impl Drm {
             &|w| state.visual(w),
             &state.overlay(),
         ));
-        // Screenshots: what is shown, without the pointer.
-        let shots = state.take_screenshots(area);
-        crate::screenshot::answer(&mut self.renderer, &elements[pointer..], area, shots);
         let queued = match screen.drm.render_frame(
             &mut self.renderer,
             &elements,
@@ -679,6 +676,11 @@ impl Drm {
                 false
             }
         };
+        // Screenshots: what was just drawn, without the pointer; after the
+        // frame, so the frame's elements are drawn for the display first
+        // (some keep state from one frame to the next).
+        let shots = state.take_screenshots(area);
+        crate::screenshot::answer(&mut self.renderer, &elements[pointer..], area, shots);
         screen.state = if queued {
             LoopState::Queued
         } else {

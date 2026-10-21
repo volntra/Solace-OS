@@ -136,11 +136,14 @@ def main():
         time.sleep(1.5)
         Shot(c, "search-dark")
         c.key("ret")
-        dark = wait_for(c, "dark", menu_bar_dark, "the dark menu bar")
         sky_day = desk.mean_luma(desk.w // 4, 60, desk.w // 2, 140)
-        sky_night = dark.mean_luma(dark.w // 4, 60, dark.w // 2, 140)
-        if sky_night > sky_day - 30:
-            fail(f"the wallpaper did not turn to night ({sky_day:.0f} -> {sky_night:.0f})")
+        # The compositor decodes the night picture before it fades to it
+        # (slow in an emulated VM): wait for both.
+        wait_for(
+            c, "dark",
+            lambda s: menu_bar_dark(s) and s.mean_luma(s.w // 4, 60, s.w // 2, 140) < sky_day - 30,
+            "the dark menu bar and Grove at night", timeout=300,
+        )
         theme = c.run(f"{BUS} fern-settings get appearance theme", "the theme setting").strip()
         if "dark" not in theme:
             fail(f"the setting did not change: {theme}")

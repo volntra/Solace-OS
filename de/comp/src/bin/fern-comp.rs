@@ -143,6 +143,22 @@ fn shell_launcher(path: PathBuf, socket: std::ffi::OsString) -> ferncomp::layers
             .env("QT_QPA_PLATFORM", "wayland")
             // Its warnings go to our log (fern-log), never a journal.
             .env("QT_FORCE_STDERR_LOGGING", "1")
+            // QtWayland calls a window hidden when a frame callback is
+            // 100 ms late, and repaints all of it when the callback comes.
+            // With a compositor that is slow for a while (software
+            // rendering, a long frame) every frame is late, and each
+            // repaint makes the next frame: the shell and the compositor
+            // keep each other busy. The shell's surfaces are never hidden
+            // that way, and Qt still waits for each callback before
+            // drawing again, so it does without the timeout.
+            .env("QT_WAYLAND_FRAME_CALLBACK_TIMEOUT", "0")
+            // UTF-8 file names and text; the session's locale.
+            .env(
+                "LANG",
+                std::env::var_os("LANG")
+                    .filter(|l| !l.is_empty())
+                    .unwrap_or_else(|| "C.UTF-8".into()),
+            )
             .spawn()?;
         tracing::info!(pid = child.id(), path = %path.display(), "shell started");
         children.push(child);

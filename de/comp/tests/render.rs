@@ -1319,6 +1319,19 @@ fn wm_shell_desktop(h: &mut Harness) -> Result {
     })?;
     settle_for(h, Duration::from_secs(3))?;
     let img = h.shot("desktop")?;
+    // An idle desktop draws nothing: no frame in 5 s but (at most) the
+    // clock's minute turning over.
+    let until = Instant::now() + Duration::from_secs(5);
+    let mut frames = 0;
+    while Instant::now() < until {
+        if h.turn()? {
+            frames += 1;
+        }
+    }
+    println!("    idle desktop: {frames} frames with damage in 5 s");
+    check(frames <= 2, || {
+        format!("an idle desktop drew {frames} frames in 5 s")
+    })?;
     let bar = img.pixel(SIZE.0 / 2, 14);
     check(!near(bar, GREY, 6), || {
         format!("no menu bar at the top: {bar:?}")
