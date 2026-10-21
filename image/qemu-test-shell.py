@@ -58,6 +58,16 @@ def changed(a, b, x0, y0, x1, y1):
     return sum(abs(a.luma(x, y) - b.luma(x, y)) for x, y in pts) / max(len(pts), 1)
 
 
+def diff_above(base, box, limit):
+    """A wait_for test: the region `box` differs from `base` by more than
+    `limit` (printed, so a failure shows how close it came)."""
+    def test(s):
+        d = changed(base, s, *box(s))
+        print(f"  difference {d:.1f} (needs > {limit})", flush=True)
+        return d > limit
+    return test
+
+
 def wait_for(c, name, test, what, timeout=180):
     deadline = time.monotonic() + timeout
     while True:
@@ -162,9 +172,12 @@ def main():
             fail(f"the banner time did not change: {held}")
         quiet = Shot(c, "before-print")
         c.key("print")
+        # The banner's card starts 70 px down (menu bar, margin, padding)
+        # at the right edge; in dark mode it is a dark card on a dark sky,
+        # so look inside it only (an unchanged screen differs by ~0).
         wait_for(
             c, "banner",
-            lambda s: changed(quiet, s, s.w - 330, 40, s.w - 30, 110) > 15,
+            diff_above(quiet, lambda s: (s.w - 330, 76, s.w - 40, 130), 8),
             "the notification banner", timeout=300,
         )
         if "Screenshot" not in c.run("ls /root/Pictures/Screenshots 2>/dev/null; echo .", "the screenshots folder"):
@@ -192,7 +205,7 @@ def main():
             c.key("ret")
             wait_for(
                 c, name,
-                lambda s: changed(calm, s, s.w - 300, 120, s.w - 40, 260) > 12,
+                diff_above(calm, lambda s: (s.w - 300, 120, s.w - 40, 260), 8),
                 name.replace("-", " "), timeout=300,
             )
             c.key("esc")

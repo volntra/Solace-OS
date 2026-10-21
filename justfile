@@ -196,6 +196,12 @@ shell-demo: shell-build fonts
     cargo build -p fern-comp -p fern-wm -p fern-settingsd -p fern-indexd
     tools/shell-demo.sh
 
+# The same on the real display, from a text console (Ctrl+Alt+F3, log in);
+# for the Phase 6 hardware check. Log: build/shell-drm.log
+shell-drm: shell-build fonts
+    cargo build --release -p fern-comp -p fern-wm -p fern-settingsd -p fern-indexd
+    tools/shell-demo.sh --drm
+
 # --- System updates (Phase 3) -----------------------------------------------
 
 # Build the demo update (fern-base 0.1.1) and the update disk carrying it
