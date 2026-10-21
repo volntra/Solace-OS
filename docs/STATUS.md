@@ -1,10 +1,106 @@
 # Status
 
-_Last updated: 2026-10-20_
+_Last updated: 2026-10-21_
 
 Repository: https://github.com/volntra/Solace-OS (`main`).
 
-## Current phase: 5 (window manager): done (2026-10-20); Phase 6 next
+## Current phase: 6 (settings, design system, shell): demo passes on the image (2026-10-21); hardware check next
+
+**Demo:**
+- `just qemu-test-shell`: boots the image in QEMU and drives the real
+  session by keyboard: the session runs the bus, fern-settingsd,
+  fern-indexd and fern-shell; the menu bar and dock show over Grove;
+  Super+Space, "dark", Return turns on dark mode (menu bar, titlebars,
+  Grove at night) and the setting says so; Print saves a screenshot and
+  shows a banner; Search opens the Control Center and the Notification
+  Center; the indexer finds a file made a moment before; a killed shell
+  comes back; the machine powers off. Screenshots in
+  `build/image/shell-*.png`.
+- `just shell-demo`: the whole desktop nested in your own, with three demo
+  apps in the dock (settings kept in `build/shell-demo/`). `just
+  shell-drm` runs the same on the real display from a text console.
+- `just shell-test`: the Qt unit tests, then the real shell on the
+  compositor (headless) through the menu bar, dock, Search (apps, files,
+  actions), menus, the global menu, a status icon, the control center,
+  banners, Night Shift, both kinds of screenshot and dark mode, and an
+  idle desktop drawing nothing. Screenshots in
+  `target/tmp/fern-comp-render/wm_shell_*.png`.
+- `just check` now includes the Qt unit tests (`just qt-test`).
+
+Keys: Super+Space Search; Shift+Super+3 (or Print) a screenshot of the
+display, Shift+Super+4 of a dragged rectangle; volume and brightness
+keys show the HUD; in a menu, arrows move, Left/Right go to the next menu
+in the bar, Return chooses, Escape closes.
+
+Stages: 1 fern-settingsd ✓; 2 layer-shell, work area and `fern_shell_v1`
+in the compositor ✓; 3 Qt 6 in the image ✓; 4 the design system
+(`Fern.Design`) and HIG ✓; 5 the shell ✓; 6 the image, the QEMU test, demo
+recipes and docs ✓ (see the result above).
+
+What the shell has (CLAUDE.md 6.8):
+- Menu bar: the Fern menu (About, Settings, Sleep, Restart, Shut Down,
+  Lock, Log Out), the bold app name and the app's own menus (dbusmenu,
+  found through KDE's appmenu protocol) or our File and Window menus,
+  submenus; status icons (StatusNotifierItem); control center, Search and
+  the clock (24-hour, date and seconds as set).
+- Dock: pinned apps, running dots, recent apps, Downloads and Trash
+  stacks, magnification, autohide, bottom/left/right, drag to reorder,
+  right-click menus, launch and attention bounce, badges and progress
+  (LauncherEntry), minimize target for windows.
+- Search: apps, files and folders (fern-indexd: names under the home
+  folder, SQLite FTS5, kept current by inotify), actions (dark/light,
+  Night Shift, Do Not Disturb, screenshot, Control Center, Notification
+  Center, About, Restart, Shut Down), a calculator and unit conversion.
+  Files open in the app their type belongs to (mimeapps.list defaults).
+- Notifications: org.freedesktop.Notifications, banners top right (with a
+  picture when there is one), a history panel, Do Not Disturb.
+- Control center: Wi-Fi, Bluetooth, Do Not Disturb, light/dark, Night
+  Shift, sound and brightness sliders, what is playing (MPRIS).
+- Volume and brightness HUD, screenshots, the wallpaper crossfading
+  between Grove and Grove at night with the appearance.
+- fern-settingsd domains: appearance, wallpaper, dock, menubar,
+  notifications, nightshift (user), boot (system; changes rewrite the
+  boot menu through spk, undone if that fails).
+
+Found by running it on the image (software emulation, no KVM here) and
+fixed: the shell and the compositor kept each other busy (QtWayland
+repaints a window whole when a frame callback is late); the DRM backend's
+screenshot drew the display without the shell; the image had no UTF-8
+locale (`glibc-locales`); the first frame of a new shell window took ~20 s
+there (banners now stay mapped, the windows share a GL context);
+screenshots froze the shell while encoding (now on a worker thread); the
+QEMU test asked for a banner time over the schema's 30 s cap, so banners
+kept the 5 s default (one or two frames there) and were never seen;
+"notification" in Search ran Do Not Disturb instead of opening the
+Notification Center (actions now rank by title first); the Do Not Disturb
+moon covered the menu bar's Search icon.
+fern-comp also no longer draws anything while the desktop is idle (tested).
+
+**Not done in Phase 6** (honest list):
+- Screen recording (needs PipeWire and an encoder; with the ScreenCast
+  portal in Phase 11). Window screenshots (Space in the chooser).
+- Settings panes in Search (the Settings app is Phase 8).
+- Sleep, Lock Screen and Log Out are shown but do nothing until the
+  greeter and lock screen (Phase 9); Restart and Shut Down work.
+- Wi-Fi, Bluetooth and sound tiles say "Not available" on the image:
+  NetworkManager, BlueZ and PipeWire are not in the base yet.
+- Adaptive app icons (Phase 7): apps without an icon get a letter.
+- Night Shift has no visible effect in QEMU (virtio-gpu has no gamma
+  ramps); it needs the real-hardware check. "Sunset" is 19:00 to 7:00
+  until location services exist.
+- Matching Qt and GTK themes for third-party apps (with Flatpak, Phase 11),
+  and design-system screenshots in docs/design/HIG.md for every control
+  (the shell screenshots are in docs/design/img).
+- The shell runs as root in the image, like the compositor, until the
+  login screen starts user sessions (Phase 9). polkit is not in the base:
+  the system settings daemon accepts changes from root only.
+- The compositor decodes a new wallpaper on its main thread (seconds in
+  the VM, a few tens of ms on real hardware; it should move to a worker).
+- No Compose (dead keys) table: the image has no X11 locale data, and
+  xkbcommon logs that it found no Compose file for C.UTF-8.
+- The Phase 6 real-hardware check on the NVIDIA PC (human).
+
+## Phase 5 (window manager): done (2026-10-20)
 
 **Demo:**
 - `just qemu-test-wm`: boots the image in QEMU and drives fern-wm with
@@ -561,6 +657,8 @@ Phase 1's demo still works: `just demo`.
 2. On the human's PC: `just wm-demo` nested in the NixOS desktop (if it
    keeps Super for itself, use `just comp-drm` from a text console), and
    GPU clients (a browser, EGL demos) under `just comp-drm`.
-3. Phase 6: fern-settingsd, the QML design system, and the shell (menu
-   bar, dock over foreign-toplevel, search, notifications, control
-   center). The core needs layer-shell first.
+3. The Phase 6 hardware check on the human's PC: `just shell-demo`
+   nested, then `just shell-drm` from a text console (the whole desktop on
+   the real display, log in `build/shell-drm.log`), including Night Shift
+   (gamma ramps, not visible in QEMU) and blur on the GPU.
+4. Phase 7: the adaptive icon engine (fern-icons) and the icon set.
