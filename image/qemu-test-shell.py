@@ -102,6 +102,7 @@ def main():
     try:
         c.boot_and_login()
         ok("booted and logged in on the serial console")
+        c.plain_session()
         deadline = time.monotonic() + 300
         while "shell started" not in c.run("fernctl logs -n 200 fern-comp", "fern-comp's log"):
             if time.monotonic() > deadline:
@@ -152,15 +153,19 @@ def main():
         del search
 
         # A screenshot with Print: a banner at the top right, and the file.
-        # Without KVM (software emulation, software GL) the capture alone
-        # takes a minute or more; banners stay 180 s so the test sees one.
-        c.run(f"{BUS} fern-settings set notifications banner_seconds 180", "a longer banner time")
+        # Without KVM (software emulation, software GL) a frame can take
+        # seconds; banners stay the longest time allowed (30 s, from 5) so
+        # the test sees one.
+        c.run(f"{BUS} fern-settings set notifications banner_seconds 30", "a longer banner time")
+        held = c.run(f"{BUS} fern-settings get notifications banner_seconds", "the banner time").strip()
+        if "30" not in held:
+            fail(f"the banner time did not change: {held}")
         quiet = Shot(c, "before-print")
         c.key("print")
         wait_for(
             c, "banner",
             lambda s: changed(quiet, s, s.w - 330, 40, s.w - 30, 110) > 15,
-            "the notification banner", timeout=420,
+            "the notification banner", timeout=300,
         )
         if "Screenshot" not in c.run("ls /root/Pictures/Screenshots 2>/dev/null; echo .", "the screenshots folder"):
             fail("a banner, but no screenshot file")

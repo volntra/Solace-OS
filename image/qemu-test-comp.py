@@ -220,6 +220,8 @@ def main():
         wait_for(c, "back", glass_over_stripes, "the desktop after switching back", slow)
         ok("Ctrl+Alt+F1: the desktop is back")
 
+        # Later tests run without the blur override.
+        c.run("rm -f /etc/fern/session.env", "removing session.env")
         c.send("fernctl poweroff\n")
         deadline = time.monotonic() + 120
         while c.p.poll() is None and time.monotonic() < deadline:

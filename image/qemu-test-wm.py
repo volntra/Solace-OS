@@ -105,6 +105,7 @@ def main():
     try:
         c.boot_and_login()
         ok("booted and logged in on the serial console")
+        c.plain_session()
         deadline = time.monotonic() + 300
         while "display ready" not in c.run("fernctl logs -n 200 fern-comp", "fern-comp's log"):
             if time.monotonic() > deadline:

@@ -110,6 +110,26 @@ class Console:
         self.run("stty cols 200", "stty")
         return int(m.group(1))
 
+    def plain_session(self):
+        """Removes session settings an earlier run left on the disk
+        (/etc/fern/session.env, e.g. the Phase 4 test's blur) and, if there
+        were any, restarts the session and waits for its display."""
+        had = self.run("[ -e /etc/fern/session.env ] && rm /etc/fern/session.env && echo removed", "session.env")
+        if "removed" not in had:
+            return
+
+        def ready():
+            out = self.run("fernctl logs -n 5000 fern-comp | grep -c 'display ready'", "fern-comp's log").split()
+            return int(out[-1]) if out and out[-1].isdigit() else 0
+
+        before = ready()
+        self.run("fernctl restart fern-comp", "restarting the session")
+        deadline = time.monotonic() + 300
+        while ready() <= before:
+            if time.monotonic() > deadline:
+                fail("the session did not come back after removing session.env")
+            time.sleep(3)
+
     # --- QEMU monitor -------------------------------------------------
 
     def _monitor(self, cmd):
