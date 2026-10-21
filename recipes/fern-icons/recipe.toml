@@ -1,0 +1,27 @@
+# Our own: de/icons in this repository. The adaptive icon engine
+# (libfernicons, C API for the Qt image provider) and Fern's icon set.
+name = "fern-icons"
+version = "0.1.0"
+release = 1
+summary = "Fern adaptive icon engine and icon set"
+license = "GPL-3.0-or-later"
+
+[[source]]
+local = "."
+# The Cargo workspace, the icon set and the shape it is drawn on.
+include = ["Cargo.toml", "Cargo.lock", "init", "boot/bootgen", "pkg", "tools/ferncheck", "de/comp/Cargo.toml", "de/protocols", "de/wm/Cargo.toml", "de/settingsd/Cargo.toml", "de/indexer/Cargo.toml", "de/icons", "de/design/shape", "third_party/smithay"]
+
+[build]
+system = "custom"
+toolchain = "rust"
+cargo = true
+compile = '''
+cargo build --release --locked --offline --target x86_64-unknown-linux-gnu -p fern-icons --lib
+'''
+install = '''
+out=/build/target/x86_64-unknown-linux-gnu/release
+install -Dm755 "$out/libfernicons.so" "$DESTDIR/usr/lib/libfernicons.so"
+install -Dm644 de/icons/include/fern-icons.h "$DESTDIR/usr/include/fern/fern-icons.h"
+mkdir -p "$DESTDIR/usr/share/fern/icons"
+cp -r de/icons/set/icons/. "$DESTDIR/usr/share/fern/icons/"
+'''

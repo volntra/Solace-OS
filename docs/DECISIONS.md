@@ -28,6 +28,7 @@ entry names a recipe that does not exist.
 - `fern-init`: ours (init/): PID 1, service manager, fernctl, fern-log.
 - `fern-settingsd`: ours (de/settingsd/): the settings daemon and fern-settings.
 - `fern-indexd`: ours (de/indexer): the file indexer behind Search.
+- `fern-icons`: ours (de/icons): the adaptive icon engine and the icon set.
 - `fern-shell`: ours (de/design, de/shell): the design system, the desktop shell and the session script.
 - `fern-wallpapers`: our wallpapers, rendered from assets/wallpapers.
 - `file`: libmagic, used by builds and later by Files for type detection.

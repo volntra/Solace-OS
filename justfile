@@ -197,6 +197,10 @@ shell-demo: shell-build fonts
     cargo build -p fern-comp -p fern-wm -p fern-settingsd -p fern-indexd
     tools/shell-demo.sh
 
+# The icon re-tint target: a 12-icon dock changes mode in < 16 ms, warm cache
+icons-bench:
+    cargo test --release -p fern-icons --test bench -- --nocapture
+
 # Every icon in the set in every mode, for review: build/icon-sheet.png
 icon-sheet ACCENT="#B4430F":
     de/icons/set/gen-icons.py

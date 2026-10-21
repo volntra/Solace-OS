@@ -12,14 +12,15 @@ local = "."
 include = ["de/CMakeLists.txt", "de/design", "de/shell", "de/protocols/fern-shell-v1.xml", "assets/symbols"]
 
 [deps]
-build = ["cmake", "ninja", "pkgconf", "qtbase", "qtdeclarative", "qtsvg", "layer-shell-qt", "wayland", "libxkbcommon"]
-runtime = ["qtbase", "qtdeclarative", "qtsvg", "layer-shell-qt", "fontconfig", "inter", "dbus", "fern-settingsd", "fern-indexd", "fern-wallpapers"]
+build = ["cmake", "ninja", "pkgconf", "qtbase", "qtdeclarative", "qtsvg", "layer-shell-qt", "wayland", "libxkbcommon", "fern-icons"]
+runtime = ["qtbase", "qtdeclarative", "qtsvg", "layer-shell-qt", "fontconfig", "inter", "dbus", "fern-settingsd", "fern-indexd", "fern-wallpapers", "fern-icons"]
 
 [build]
 system = "custom"
 configure = '''
 cmake -S de -B _build -G Ninja -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release \
-  -DFERN_BUILD_TESTS=OFF -DFERN_QML_INSTALL_DIR=lib/qt6/qml
+  -DFERN_BUILD_TESTS=OFF -DFERN_QML_INSTALL_DIR=lib/qt6/qml \
+  -DFERN_ICONS_LIB_DIR=/usr/lib -DFERN_ICONS_INCLUDE_DIR=/usr/include/fern
 '''
 compile = '''
 ninja -C _build

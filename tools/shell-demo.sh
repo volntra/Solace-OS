@@ -27,7 +27,9 @@ demo=$root/build/shell-demo
 mkdir -p "$demo/data/applications" "$demo/config/fern"
 
 client=$bin/fern-testclient
-for app in "org.fern.Notes Notes ff5a5fff" "org.fern.Mail Mail 3a86ffff" "org.fern.Photos Photos 2ec4b6ff"; do
+# The built-in apps (Phase 8 onwards) stand in as demo windows, so the
+# dock shows their icons.
+for app in "org.fern.Files Files 4a98f0ff" "org.fern.Settings Settings 8c9893ff" "org.fern.Terminal Terminal 2e3431ff"; do
     read -r id name color <<<"$app"
     cat >"$demo/data/applications/$id.desktop" <<EOF
 [Desktop Entry]
@@ -37,16 +39,19 @@ Exec=$client --title $name --app-id $id --color $color --size 640x420
 EOF
 done
 [ -f "$demo/config/fern/dock.toml" ] ||
-    echo 'pinned = ["org.fern.Notes", "org.fern.Mail", "org.fern.Photos"]' >"$demo/config/fern/dock.toml"
+    echo 'pinned = ["org.fern.Files", "org.fern.Settings", "org.fern.Terminal"]' >"$demo/config/fern/dock.toml"
 
 export XDG_DATA_HOME=$demo/data
 export XDG_DATA_DIRS=$demo/data:${XDG_DATA_DIRS:-/usr/share}
 export XDG_CONFIG_HOME=$demo/config
 export FERN_FONTS=$root/build/fonts
+# The repository's icon set (drawn fresh each run, never cached).
+export FERN_ICONS_DIRS=$root/de/icons/set/icons
 export QML_IMPORT_PATH=$root/build/de/qml${QML_IMPORT_PATH:+:$QML_IMPORT_PATH}
 
 echo "Keys: Super+Space Search | click the tree for the Fern menu | the clock for notifications"
 echo "      try: fern-settings set appearance theme dark (in another terminal, same bus)"
+echo "           fern-settings set appearance icon_mode tinted|wallpaper|clear|dark|default"
 conf=$(dirname "$(dirname "$(command -v dbus-daemon)")")/share/dbus-1/session.conf
 exec dbus-run-session --config-file="$conf" -- sh -c '
     "$1/fern-settingsd" --dir "$XDG_CONFIG_HOME/fern" &

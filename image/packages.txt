@@ -17,6 +17,7 @@ grub
 # libinput and the wallpaper), and the shell with its session (the bus,
 # settings, the file indexer, Qt).
 fern-comp
+fern-icons
 fern-shell
 
 # Everyday command-line tools for the text console.
