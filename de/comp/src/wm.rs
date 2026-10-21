@@ -233,6 +233,13 @@ pub enum Overlay {
         align: u32,
         text: String,
     },
+    /// An app's icon (`crate::render`: the adaptive icon engine).
+    Icon {
+        app_id: String,
+        x: i32,
+        y: i32,
+        size: i32,
+    },
 }
 
 /// A request waiting for commit.
@@ -486,6 +493,7 @@ impl Comp {
         crate::render::OverlayDraw {
             items: &self.wm.overlay,
             beneath,
+            icon_style: self.icon_style,
             window: Box::new(|id| self.wm.windows.get(&id).map(|r| r.window.clone())),
         }
     }
@@ -972,6 +980,9 @@ impl Comp {
                 align: enum_u32(align),
                 text,
             }),
+            R::OverlayIcon { app_id, x, y, size } => {
+                Pending::Overlay(Overlay::Icon { app_id, x, y, size })
+            }
             R::Commit => {
                 self.wm_commit();
                 return;

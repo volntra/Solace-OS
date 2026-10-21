@@ -121,8 +121,10 @@ window manager can move, restack and refocus without intermediate frames.
 Drawn above all windows, replaced as a whole at commit after
 `overlay_clear`: rounded rectangles (`overlay_rect`), the wallpaper in a
 rounded rectangle (`overlay_wallpaper`), a window's picture scaled into a
-rectangle (`overlay_mirror`; the window itself stays where it is), and
-text (`overlay_text`). Overview, the Spaces strip, the app switcher and
+rectangle (`overlay_mirror`; the window itself stays where it is),
+text (`overlay_text`), and an app's icon (`overlay_icon`, drawn by the
+adaptive icon engine in the style the shell set). Overview, the Spaces
+strip, the app switcher and
 the tiling preview are drawn with these. `overlay_beneath` draws the
 overlay just below one window instead (the tiling preview sits under the
 window being dragged); `overlay_clear` puts it back on top.

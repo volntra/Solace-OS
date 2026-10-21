@@ -70,6 +70,8 @@ Compositor::Compositor(QObject *parent)
             m_ext->set_color_temperature(uint32_t(m_kelvin));
         if (m_ext->isActive() && m_dark)
             m_ext->set_dark_mode(1);
+        if (m_ext->isActive() && m_iconMode >= 0)
+            m_ext->set_icon_style(uint32_t(m_iconMode), m_iconAccent);
         emit activeChanged();
     });
 }
@@ -141,6 +143,20 @@ void Compositor::setDarkMode(bool dark)
     m_dark = dark;
     if (m_ext->isActive())
         m_ext->set_dark_mode(dark ? 1 : 0);
+}
+
+void Compositor::setIconStyle(const QString &mode, const QColor &accent)
+{
+    static const QStringList modes = {QStringLiteral("default"), QStringLiteral("dark"), QStringLiteral("tinted"),
+                                      QStringLiteral("wallpaper"), QStringLiteral("clear")};
+    const int m = std::max(0, int(modes.indexOf(mode)));
+    const uint rgb = accent.rgb() & 0xFFFFFF;
+    if (m == m_iconMode && rgb == m_iconAccent)
+        return;
+    m_iconMode = m;
+    m_iconAccent = rgb;
+    if (m_ext->isActive())
+        m_ext->set_icon_style(uint32_t(m), rgb);
 }
 
 int Compositor::screenshot(const QRect &area)

@@ -435,6 +435,19 @@
       <arg name="text" type="string"/>
     </request>
 
+    <request name="overlay_icon">
+      <description summary="an app's icon, size by size pixels">
+        The app's adaptive icon (docs/formats/icon.md), drawn by the core in
+        the icon style the shell set (fern_shell_v1.set_icon_style): its
+        .fernicon, else its own freedesktop icon on a plate, else the
+        generic app icon.
+      </description>
+      <arg name="app_id" type="string"/>
+      <arg name="x" type="int"/>
+      <arg name="y" type="int"/>
+      <arg name="size" type="int"/>
+    </request>
+
     <request name="commit">
       <description summary="apply every request since the last commit"/>
     </request>

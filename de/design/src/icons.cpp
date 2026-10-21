@@ -14,18 +14,8 @@
 
 FernIcons *fernIconsEngine()
 {
-    static FernIcons *engine = [] {
-        const QByteArray env = qgetenv("FERN_ICONS_DIRS");
-        if (env.isEmpty())
-            return fern_icons_new(nullptr, 0, "");
-        QList<QByteArray> dirs = env.split(':');
-        dirs.removeAll(QByteArray());
-        std::vector<const char *> ptrs;
-        for (const QByteArray &d : std::as_const(dirs))
-            ptrs.push_back(d.constData());
-        // The development set has no business in the user's cache.
-        return fern_icons_new(ptrs.data(), ptrs.size(), nullptr);
-    }();
+    // The standard places, or $FERN_ICONS_DIRS (the engine reads it).
+    static FernIcons *engine = fern_icons_new(nullptr, 0, "");
     return engine;
 }
 

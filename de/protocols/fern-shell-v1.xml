@@ -79,6 +79,17 @@
       <arg name="dark" type="uint"/>
     </request>
 
+    <request name="set_icon_style">
+      <description summary="how the compositor draws app icons">
+        The icon mode (0 default, 1 dark, 2 tinted, 3 wallpaper, 4 clear)
+        and the accent (0xRRGGBB) the shell draws app icons with, so the
+        icons the compositor draws (the app switcher) match. The shell
+        sends it whenever either changes, and once after binding.
+      </description>
+      <arg name="mode" type="uint"/>
+      <arg name="accent" type="uint"/>
+    </request>
+
     <request name="bind_key">
       <description summary="a global shortcut for the shell">
         Pressing keysym with exactly these modifiers (shift 1, ctrl 2, alt

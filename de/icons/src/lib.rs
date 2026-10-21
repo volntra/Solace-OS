@@ -124,8 +124,16 @@ impl Engine {
 
     /// The standard places: `$XDG_DATA_HOME/fern/icons`, each
     /// `$XDG_DATA_DIRS/fern/icons`, and the cache in
-    /// `$XDG_CACHE_HOME/fern/icons` (or under `~/.cache`).
+    /// `$XDG_CACHE_HOME/fern/icons` (or under `~/.cache`). For development,
+    /// `$FERN_ICONS_DIRS` (colon-separated) replaces the places, without a
+    /// disk cache.
     pub fn standard() -> Self {
+        if let Some(list) = std::env::var_os("FERN_ICONS_DIRS").filter(|v| !v.is_empty()) {
+            let dirs = std::env::split_paths(&list)
+                .filter(|d| !d.as_os_str().is_empty())
+                .collect();
+            return Self::new(dirs, None);
+        }
         let env = |k: &str| {
             std::env::var_os(k)
                 .filter(|v| !v.is_empty())
@@ -262,6 +270,69 @@ impl Engine {
             m.clear();
         }
     }
+}
+
+/// The freedesktop icon file of the app `app_id`: its desktop entry's
+/// `Icon=` (an absolute path, or a name looked up in the hicolor theme:
+/// the scalable SVG, else the largest PNG), searching
+/// `$XDG_DATA_HOME` and `$XDG_DATA_DIRS`.
+pub fn legacy_icon(app_id: &str) -> Option<PathBuf> {
+    if !valid_id(app_id) {
+        return None;
+    }
+    let mut data = Vec::new();
+    if let Some(home) = std::env::var_os("XDG_DATA_HOME").filter(|v| !v.is_empty()) {
+        data.push(PathBuf::from(home));
+    } else if let Some(home) = std::env::var_os("HOME") {
+        data.push(PathBuf::from(home).join(".local/share"));
+    }
+    let dirs = std::env::var("XDG_DATA_DIRS")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| "/usr/local/share:/usr/share".into());
+    data.extend(dirs.split(':').filter(|d| !d.is_empty()).map(PathBuf::from));
+    legacy_icon_in(app_id, &data)
+}
+
+/// hicolor sizes to look in, best first.
+const SIZES: [&str; 7] = [
+    "scalable", "512x512", "256x256", "128x128", "96x96", "64x64", "48x48",
+];
+
+fn legacy_icon_in(app_id: &str, data: &[PathBuf]) -> Option<PathBuf> {
+    let entry = data
+        .iter()
+        .map(|d| d.join("applications").join(format!("{app_id}.desktop")))
+        .find(|p| p.is_file())?;
+    let text = fs::read_to_string(entry).ok()?;
+    let mut in_entry = false;
+    let mut icon = None;
+    for line in text.lines() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            in_entry = line == "[Desktop Entry]";
+        } else if in_entry && let Some(v) = line.strip_prefix("Icon=") {
+            icon = Some(v.trim().to_string());
+        }
+    }
+    let icon = icon.filter(|i| !i.is_empty())?;
+    if Path::new(&icon).is_absolute() {
+        return Path::new(&icon).is_file().then(|| PathBuf::from(icon));
+    }
+    if !valid_id(&icon) {
+        return None;
+    }
+    for d in data {
+        for size in SIZES {
+            for ext in ["svg", "png"] {
+                let p = d.join(format!("icons/hicolor/{size}/apps/{icon}.{ext}"));
+                if p.is_file() {
+                    return Some(p);
+                }
+            }
+        }
+    }
+    None
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -419,6 +490,41 @@ mod tests {
             .unwrap();
         assert_eq!(files(), 4);
         assert_ne!(changed.data, old.data);
+    }
+
+    #[test]
+    fn finds_an_apps_own_icon_through_its_desktop_entry() {
+        let data = tempfile::tempdir().unwrap();
+        let d = data.path();
+        fs::create_dir_all(d.join("applications")).unwrap();
+        fs::create_dir_all(d.join("icons/hicolor/48x48/apps")).unwrap();
+        fs::create_dir_all(d.join("icons/hicolor/256x256/apps")).unwrap();
+        fs::write(d.join("icons/hicolor/48x48/apps/org.example.Big.png"), b"x").unwrap();
+        fs::write(
+            d.join("icons/hicolor/256x256/apps/org.example.Big.png"),
+            b"x",
+        )
+        .unwrap();
+        fs::write(
+            d.join("applications/org.example.App.desktop"),
+            "[Desktop Entry]\nName=App\nIcon=org.example.Big\n[Desktop Action new]\nIcon=other\n",
+        )
+        .unwrap();
+        let dirs = vec![d.to_path_buf()];
+        // The largest size wins.
+        assert_eq!(
+            legacy_icon_in("org.example.App", &dirs).unwrap(),
+            d.join("icons/hicolor/256x256/apps/org.example.Big.png")
+        );
+        assert!(legacy_icon_in("org.example.Missing", &dirs).is_none());
+        // Names that would escape the theme are refused.
+        fs::write(
+            d.join("applications/org.example.Bad.desktop"),
+            "[Desktop Entry]\nIcon=../../etc/x\n",
+        )
+        .unwrap();
+        assert!(legacy_icon_in("org.example.Bad", &dirs).is_none());
+        assert!(legacy_icon_in("../applications/x", &dirs).is_none());
     }
 
     #[test]

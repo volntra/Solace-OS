@@ -78,6 +78,9 @@ XML: `de/protocols/fern-shell-v1.xml`.
   display, Shift+Super+4 a dragged rectangle; also in Search.
 - `set_dark_mode(dark)`: the shell follows the appearance setting and
   tells the core, which draws window titlebars in the dark palette.
+- `set_icon_style(mode, accent)`: the icon mode (0 default, 1 dark,
+  2 tinted, 3 wallpaper, 4 clear) and accent the shell draws app icons
+  with; the core draws its own icons (the app switcher's) the same way.
 - `app_menu(service, path)` (event): where the active window's menus are,
   sent on bind and whenever it changes; empty strings when it has none.
 

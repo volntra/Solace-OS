@@ -1,6 +1,6 @@
 //! The re-tint target (CLAUDE.md 6.9): with a warm cache, a full dock
 //! changes mode in under 16 ms. A dock here is 12 icons at 128 px (48 pt
-//! icons on a 2x display, the size AppIcon asks for), drawn one after
+//! icons on a 2x display, the size `AppIcon` asks for), drawn one after
 //! another by a fresh engine whose memory cache is empty, so every icon
 //! comes from the disk cache. Timing is only asserted in release builds
 //! (`just icons-bench`); debug builds just run it.
@@ -29,7 +29,13 @@ const DOCK: [&str; 12] = [
 fn a_dock_retints_within_a_frame() {
     let set = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("set/icons");
     let cache = tempfile::tempdir().unwrap();
-    let modes = [Mode::Default, Mode::Dark, Mode::Tinted, Mode::Wallpaper, Mode::Clear];
+    let modes = [
+        Mode::Default,
+        Mode::Dark,
+        Mode::Tinted,
+        Mode::Wallpaper,
+        Mode::Clear,
+    ];
     let draw = |engine: &Engine, mode: Mode| {
         for id in DOCK {
             engine
@@ -49,7 +55,7 @@ fn a_dock_retints_within_a_frame() {
     for mode in modes {
         draw(&cold, mode);
     }
-    let cold_ms = start.elapsed().as_secs_f64() * 1000.0 / modes.len() as f64;
+    let cold_ms = start.elapsed().as_secs_f64() * 1000.0 / 5.0;
 
     // Warm: a new engine (as after a restart), every mode from disk.
     let warm = Engine::new(vec![set], Some(cache.path().into()));
@@ -59,8 +65,14 @@ fn a_dock_retints_within_a_frame() {
         draw(&warm, mode);
         worst = worst.max(start.elapsed().as_secs_f64() * 1000.0);
     }
-    println!("dock of {}: cold {cold_ms:.1} ms a mode, warm worst {worst:.2} ms a mode", DOCK.len());
+    println!(
+        "dock of {}: cold {cold_ms:.1} ms a mode, warm worst {worst:.2} ms a mode",
+        DOCK.len()
+    );
     if !cfg!(debug_assertions) {
-        assert!(worst < 16.0, "re-tinting the dock took {worst:.2} ms (target 16)");
+        assert!(
+            worst < 16.0,
+            "re-tinting the dock took {worst:.2} ms (target 16)"
+        );
     }
 }

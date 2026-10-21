@@ -537,6 +537,14 @@ impl Dispatch<FernShellV1, ()> for Comp {
                 state.dark = dark != 0;
                 state.request_redraw();
             }
+            R::SetIconStyle { mode, accent } => {
+                let mode = usize::try_from(mode)
+                    .ok()
+                    .and_then(|m| fernicons::Mode::ALL.get(m).copied())
+                    .unwrap_or(fernicons::Mode::Default);
+                state.icon_style = (mode, accent & 0x00FF_FFFF);
+                state.request_redraw();
+            }
             R::BindKey {
                 id,
                 modifiers,

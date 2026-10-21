@@ -249,6 +249,12 @@ pub enum Cmd {
         align: u32,
         text: String,
     },
+    OverlayIcon {
+        app_id: String,
+        x: i32,
+        y: i32,
+        size: i32,
+    },
 }
 
 /// The window manager's key bindings: (id, modifiers, keysym).
@@ -1703,6 +1709,11 @@ mod tests {
         assert_eq!(s.picked, 1);
         assert!(cmds.iter().any(|c| matches!(c,
             Cmd::OverlayText { text, .. } if text == "Files")));
+        // Each app's icon, by its id.
+        for app in ["org.fern.Files", "org.fern.Terminal"] {
+            assert!(cmds.iter().any(|c| matches!(c,
+                Cmd::OverlayIcon { app_id, size: 48, .. } if app_id == app)));
+        }
         // Letting go of Super: Files comes forward.
         let cmds = wm.handle(Event::Key {
             keysym: 0xffeb,

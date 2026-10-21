@@ -4,6 +4,7 @@
 // singleton.
 #pragma once
 
+#include <QColor>
 #include <QImage>
 #include <QObject>
 #include <QPointer>
@@ -65,6 +66,9 @@ public:
     Q_INVOKABLE void setColorTemperature(int kelvin);
     // Dark mode for what the compositor draws (titlebars).
     Q_INVOKABLE void setDarkMode(bool dark);
+    // The icon mode (default, dark, tinted, wallpaper, clear) and accent
+    // the shell draws app icons with, for the icons the compositor draws.
+    Q_INVOKABLE void setIconStyle(const QString &mode, const QColor &accent);
     // A screenshot of this rectangle of the desktop (empty: the display
     // under the pointer) on the next frame; screenshotTaken or
     // screenshotFailed follow with the returned id (-1: no compositor).
@@ -86,6 +90,8 @@ private:
     QString m_menuService, m_menuPath;
     int m_kelvin = 0;
     bool m_dark = false;
+    int m_iconMode = -1;
+    uint m_iconAccent = 0;
     int m_lastShot = 0;
     bool m_wallpaperSet = false;
 };

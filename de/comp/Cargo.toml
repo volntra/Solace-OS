@@ -49,6 +49,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client", "unstable"] }
 fern-wm-proto = { path = "../protocols", features = ["server", "client"] }
+fern-icons = { path = "../icons" }
 ab_glyph = "0.2"
 
 [dev-dependencies]

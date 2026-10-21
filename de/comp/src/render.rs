@@ -252,7 +252,15 @@ pub struct Shaders {
     /// Ids for second pictures (mirrors, wallpaper thumbnails), by
     /// (window, place in the overlay, surface), stable while shown.
     overlay_ids: RefCell<std::collections::HashMap<(u32, usize, usize), Id>>,
+    /// The adaptive icon engine (de/icons), made on first use; shared by
+    /// clones.
+    icons: std::rc::Rc<std::cell::OnceCell<fernicons::Engine>>,
+    /// Overlay icons by what they were drawn from; kept while drawn.
+    overlay_icons: RefCell<std::collections::HashMap<IconKey, Option<Rendered>>>,
 }
+
+/// What an overlay icon was drawn from: app id, mode, accent, pixels.
+type IconKey = (String, fernicons::Mode, u32, u32);
 
 /// What a line of overlay text was rendered from: text, size, colour,
 /// room.
@@ -311,6 +319,8 @@ impl Shaders {
             overlay_shapes: ShapeCache::default(),
             overlay_texts: RefCell::default(),
             overlay_ids: RefCell::default(),
+            icons: std::rc::Rc::default(),
+            overlay_icons: RefCell::default(),
         })
     }
 }
@@ -803,6 +813,8 @@ pub struct OverlayDraw<'a> {
     pub items: &'a [Overlay],
     /// Drawn just below this window (`None`: above all).
     pub beneath: Option<Window>,
+    /// The shell's icon mode and accent, for overlay icons.
+    pub icon_style: (fernicons::Mode, u32),
     /// The window a protocol id names, for mirrors.
     pub window: Box<dyn Fn(u32) -> Option<Window> + 'a>,
 }
@@ -835,6 +847,8 @@ fn overlay_elements(
     let fb_height = area.size.to_physical_precise_round::<f64, i32>(s).h as f32;
     let mut texts = shaders.overlay_texts.borrow_mut();
     let mut used = std::collections::HashMap::new();
+    let mut icons = shaders.overlay_icons.borrow_mut();
+    let mut icons_used = std::collections::HashMap::new();
     let mut ids = shaders.overlay_ids.borrow_mut();
     let mut ids_used = std::collections::HashMap::new();
     let mut id_for = |key: (u32, usize, usize)| {
@@ -928,6 +942,36 @@ fn overlay_elements(
                 }
                 used.insert(key, made);
             }
+            Overlay::Icon { app_id, x, y, size } => {
+                if *size <= 0 {
+                    continue;
+                }
+                let (mode, accent) = draw.icon_style;
+                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                let px = (f64::from(*size) * scale).round().clamp(8.0, 1024.0) as u32;
+                let key: IconKey = (app_id.clone(), mode, accent, px);
+                let drawn = icons
+                    .remove(&key)
+                    .unwrap_or_else(|| app_icon(&shaders.icons, app_id, mode, accent, px));
+                if let Some((buffer, _)) = &drawn {
+                    let at = Point::<f64, Logical>::from((
+                        f64::from(*x) - origin.x,
+                        f64::from(*y) - origin.y,
+                    ));
+                    if let Ok(e) = MemoryRenderBufferRenderElement::from_buffer(
+                        renderer,
+                        at.to_physical(s),
+                        buffer,
+                        None,
+                        None,
+                        None,
+                        Kind::Unspecified,
+                    ) {
+                        out.push_front(OutputElement::Image(e));
+                    }
+                }
+                icons_used.insert(key, drawn);
+            }
             Overlay::Wallpaper { x, y, w, h, radius } => {
                 let Some(wallpaper) = wallpaper else {
                     continue;
@@ -1013,10 +1057,55 @@ fn overlay_elements(
     // What is no longer shown is dropped; the rest is kept for next frame.
     *texts = used;
     *ids = ids_used;
+    *icons = icons_used;
 }
 
 /// Text rendered into a buffer, with its size in pixels.
 type Rendered = (MemoryRenderBuffer, (i32, i32));
+
+/// An app's icon at `px` pixels: its .fernicon, else its own freedesktop
+/// icon on a plate, else the generic app icon; `None` if the engine has no
+/// icons at all. Drawn on this thread (a few ms, once per icon shown).
+fn app_icon(
+    engine: &std::cell::OnceCell<fernicons::Engine>,
+    app_id: &str,
+    mode: fernicons::Mode,
+    accent: u32,
+    px: u32,
+) -> Option<Rendered> {
+    let engine = engine.get_or_init(fernicons::Engine::standard);
+    let legacy = fernicons::legacy_icon(app_id);
+    let own = fernicons::Request {
+        id: app_id,
+        legacy: legacy.as_deref(),
+        mode,
+        accent,
+        size: px,
+    };
+    let generic = fernicons::Request {
+        id: "fern.app",
+        legacy: None,
+        ..own
+    };
+    let image = engine
+        .render(&own)
+        .or_else(|_| engine.render(&generic))
+        .map_err(|e| tracing::debug!(app_id, "no icon: {e}"))
+        .ok()?;
+    let side = i32::try_from(image.size).ok()?;
+    // The engine's RGBA bytes, premultiplied: DRM's ABGR8888.
+    Some((
+        MemoryRenderBuffer::from_slice(
+            &image.data,
+            Fourcc::Abgr8888,
+            (side, side),
+            1,
+            Transform::Normal,
+            None,
+        ),
+        (side, side),
+    ))
+}
 
 /// Titlebar height, logical pixels (HIG: Window).
 pub const TITLEBAR_HEIGHT: i32 = 28;

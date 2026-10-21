@@ -5,8 +5,9 @@
 //! Super+grave (the key above Tab) cycles through the windows of the app
 //! in front.
 //!
-//! Each app shows a live picture of its last window until the icon set
-//! (Phase 7) gives it its icon.
+//! Each app shows a live picture of its last window, its icon (the
+//! adaptive icon engine, drawn by the core in the shell's icon style) on
+//! the picture's lower right, and its name.
 
 use super::{Cmd, Wm, mods};
 
@@ -23,6 +24,8 @@ const CELL_W: i32 = 136;
 const CELL_H: i32 = 128;
 const PICTURE_W: i32 = 112;
 const PICTURE_H: i32 = 84;
+/// The app icon, overlapping the picture's lower-right corner.
+const ICON: i32 = 48;
 const PANEL_PAD: i32 = 18;
 const PANEL: u32 = 0x10_15_12_D9;
 const PICKED: u32 = 0xF6_F7_F3_2E;
@@ -120,6 +123,12 @@ impl Wm {
                 y: cy + 10,
                 w: PICTURE_W,
                 h: PICTURE_H,
+            });
+            out.push(Cmd::OverlayIcon {
+                app_id: app.clone(),
+                x: cx + (CELL_W - PICTURE_W) / 2 + PICTURE_W - ICON + 10,
+                y: cy + 10 + PICTURE_H - ICON + 12,
+                size: ICON,
             });
             let title = self.windows.get(id).map_or("", |w| w.title.as_str());
             out.push(Cmd::OverlayText {

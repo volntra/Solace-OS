@@ -120,6 +120,7 @@ fn send(p: &FernWmV1, cmd: Cmd) {
             };
             p.overlay_text(x, y, width, size, rgba, a, text);
         }
+        Cmd::OverlayIcon { app_id, x, y, size } => p.overlay_icon(app_id, x, y, size),
     }
 }
 

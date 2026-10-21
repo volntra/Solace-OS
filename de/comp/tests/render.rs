@@ -978,6 +978,18 @@ fn wm_switcher(h: &mut Harness) -> Result {
         format!("no switcher panel: {panel:?}")
     })?;
     check(h.focused(1), || "switched before Super was let go".into())?;
+    // Each app's icon on its picture's lower right: neither app has an icon
+    // of its own, so the generic one, a grey plate, over the first app's
+    // blue picture (the panel is centred: 2 cells of 136 + 2 x 18).
+    let icon = img.pixel(
+        (SIZE.0 - 308) / 2 + 18 + 86 + 8,
+        (SIZE.1 - 164) / 2 + 18 + 58 + 24,
+    );
+    let grey = (i32::from(icon[0]) - i32::from(icon[1])).abs() < 25
+        && (i32::from(icon[1]) - i32::from(icon[2])).abs() < 25;
+    check(grey && (80.0..230.0).contains(&luma(icon)), || {
+        format!("no app icon on the switcher: {icon:?}")
+    })?;
     // Let go of Super: the picked app comes forward.
     h.data.state.key_input(meta, false, 3);
     h.settle()?;
@@ -1976,6 +1988,11 @@ fn main() -> ExitCode {
     unsafe {
         std::env::set_var("XDG_RUNTIME_DIR", &runtime);
         std::env::set_var("LIBGL_ALWAYS_SOFTWARE", "1");
+        // The repository's icon set, for icons the compositor draws.
+        std::env::set_var(
+            "FERN_ICONS_DIRS",
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../icons/set/icons"),
+        );
         // Titles in screenshots, when `just fonts` has unpacked Inter.
         std::env::set_var(
             "FERN_FONTS",

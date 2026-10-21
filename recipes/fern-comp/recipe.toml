@@ -11,11 +11,11 @@ license = "GPL-3.0-or-later"
 [[source]]
 local = "."
 # The Cargo workspace only.
-include = ["Cargo.toml", "Cargo.lock", "init", "boot/bootgen", "pkg", "tools/ferncheck", "de/comp", "de/protocols", "de/wm", "de/settingsd", "de/indexer", "de/icons/Cargo.toml", "third_party/smithay"]
+include = ["Cargo.toml", "Cargo.lock", "init", "boot/bootgen", "pkg", "tools/ferncheck", "de/comp", "de/protocols", "de/wm", "de/settingsd", "de/indexer", "de/icons", "de/design/shape", "third_party/smithay"]
 
 [deps]
 build = ["pkgconf", "seatd", "libinput", "libudev", "mesa", "libglvnd", "libdrm", "libxkbcommon"]
-runtime = ["seatd", "libinput", "libudev", "mesa", "libglvnd", "libxkbcommon", "xkeyboard-config", "gcc-libs", "fern-wallpapers", "inter", "udev"]
+runtime = ["seatd", "libinput", "libudev", "mesa", "libglvnd", "libxkbcommon", "xkeyboard-config", "gcc-libs", "fern-wallpapers", "fern-icons", "inter", "udev"]
 
 [build]
 system = "custom"

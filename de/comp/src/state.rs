@@ -84,6 +84,9 @@ pub struct Comp {
     pub color_temperature: u32,
     /// Dark mode, as the shell says: titlebars in the dark palette.
     pub dark: bool,
+    /// How the shell draws app icons (mode, accent `0xRRGGBB`): the icons
+    /// the core draws (the app switcher) match.
+    pub icon_style: (fernicons::Mode, u32),
     /// Screenshots the shell asked for (`crate::screenshot`).
     pub screenshots: Vec<crate::screenshot::Request>,
     /// The shell's bindings and blur, and the work areas (`crate::layers`).
@@ -189,6 +192,7 @@ impl Comp {
             color_temperature: 0,
             screenshots: Vec::new(),
             dark: false,
+            icon_style: (fernicons::Mode::Default, fernicons::FALLBACK_ACCENT),
             shell: crate::layers::Shell::default(),
             wallpaper_request: None,
         }

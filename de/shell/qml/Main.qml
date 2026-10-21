@@ -64,10 +64,14 @@ QtObject {
     // Titlebars follow the appearance too.
     readonly property bool dark: Theme.dark
     onDarkChanged: Compositor.setDarkMode(dark)
+    // And the app switcher's icons follow the dock's.
+    readonly property string iconStyle: Theme.iconMode + Theme.iconAccent
+    onIconStyleChanged: Compositor.setIconStyle(Theme.iconMode, Theme.iconAccent)
     Component.onCompleted: {
         Compositor.setWallpaper(wallpaperPath)
         Compositor.setColorTemperature(colorTemperature)
         Compositor.setDarkMode(Theme.dark)
+        Compositor.setIconStyle(Theme.iconMode, Theme.iconAccent)
         // Super+Space: Search. The volume and brightness keys.
         Compositor.bindKey(1, 8, 0x20)
         Compositor.bindKey(2, 0, 0x1008FF13)
