@@ -121,11 +121,24 @@ def main():
         c.boot_and_login()
         ok("booted and logged in on the serial console")
 
-        deadline = time.monotonic() + 300
-        while "display ready" not in c.run("fernctl logs -n 200 fern-comp", "fern-comp's log"):
-            if time.monotonic() > deadline:
-                fail("fern-comp never reported a display: " + c.run("fernctl status fern-comp"))
-            time.sleep(3)
+        def displays_ready():
+            out = c.run("fernctl logs -n 2000 fern-comp | grep -c 'display ready'", "fern-comp's log").split()
+            return int(out[-1]) if out and out[-1].isdigit() else 0
+
+        def wait_display(n):
+            deadline = time.monotonic() + 300
+            while displays_ready() < n:
+                if time.monotonic() > deadline:
+                    fail("fern-comp never reported a display: " + c.run("fernctl status fern-comp"))
+                time.sleep(3)
+
+        wait_display(1)
+        # The image renders in software here, where fern-comp leaves blur
+        # off by default; this test is about blur, so it asks for it and
+        # restarts the session.
+        c.run("mkdir -p /etc/fern && echo FERN_COMP_BLUR=1 > /etc/fern/session.env && fernctl restart fern-comp",
+              "blur on for this session", timeout=120)
+        wait_display(2)
         ok("fern-comp took the display")
 
         shot = wait_for(c, "wallpaper", is_wallpaper, "the wallpaper")

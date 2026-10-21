@@ -151,7 +151,13 @@ pub fn init(
     let node = DrmNode::from_path(&path)?;
     tracing::info!(gpu = %path.display(), "opening");
     let (manager, mut renderer, drm_events) = open_gpu(&mut session, &path, node)?;
-    let shaders = Shaders::compile(&mut renderer)?;
+    let mut shaders = Shaders::compile(&mut renderer)?;
+    let software = EGLDevice::device_for_display(renderer.egl_context().display())
+        .is_ok_and(|d| d.is_software());
+    shaders.blur_on = render::blur_wanted(!software);
+    if !shaders.blur_on {
+        tracing::info!("blur off (software rendering; FERN_COMP_BLUR=1 turns it on)");
+    }
 
     let mut libinput =
         Libinput::new_with_udev::<LibinputSessionInterface<LibSeatSession>>(session.clone().into());

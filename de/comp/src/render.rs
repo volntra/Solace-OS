@@ -235,6 +235,11 @@ pub struct Shaders {
     shadow: GlesPixelProgram,
     shape: GlesPixelProgram,
     blur: BlurShaders,
+    /// Blur behind windows and shell surfaces that ask for it. Off when
+    /// the GPU renders in software (each blur is several full passes):
+    /// the materials' tint alone, like reduced transparency. Set by the
+    /// backend; `FERN_COMP_BLUR=0` or `1` decides instead.
+    pub blur_on: bool,
     /// Inter, for titles and overlay text.
     pub fonts: Fonts,
     /// The traffic lights' hover glyphs (close, minimize, zoom), made on
@@ -252,6 +257,16 @@ pub struct Shaders {
 /// What a line of overlay text was rendered from: text, size, colour,
 /// room.
 type TextKey = (String, i32, u32, i32);
+
+/// Whether to blur: `FERN_COMP_BLUR` (0 or 1) when set, else `default`.
+#[must_use]
+pub fn blur_wanted(default: bool) -> bool {
+    match std::env::var("FERN_COMP_BLUR").as_deref() {
+        Ok("0") => false,
+        Ok("1") => true,
+        _ => default,
+    }
+}
 
 impl Shaders {
     /// # Errors
@@ -290,6 +305,7 @@ impl Shaders {
             shadow,
             shape,
             blur,
+            blur_on: true,
             fonts: Fonts::load(),
             glyphs: RefCell::new(None),
             overlay_shapes: ShapeCache::default(),
@@ -629,7 +645,11 @@ pub fn output_elements(
                 "blur wanted"
             );
         }
-        let blurred = if still { wanted } else { Vec::new() };
+        let blurred = if still && shaders.blur_on {
+            wanted
+        } else {
+            Vec::new()
+        };
         // The backdrop is made before the window's own shadow is added:
         // a window does not see its shadow through itself.
         let mut backdrops = Vec::new();
@@ -732,7 +752,9 @@ fn layer_elements(
             let Some(geo) = map.layer_geometry(layer) else {
                 continue;
             };
-            if let Some((rect, radius)) = crate::layers::shell_blur(layer.wl_surface()) {
+            if let Some((rect, radius)) = crate::layers::shell_blur(layer.wl_surface())
+                && shaders.blur_on
+            {
                 let r = Rectangle::new(geo.loc + rect.loc, rect.size);
                 let r_px = r.to_physical_precise_round(s);
                 #[allow(clippy::cast_possible_truncation)]
