@@ -1,9 +1,13 @@
 import QtQuick
+import QtQuick.Window
 import Fern.Design
 
-// An app's icon at `size`. Apps without one (and until the adaptive icon
-// engine arrives in Phase 7) get a tile: our rounded square in a colour
-// picked from the app's id, with its initial. Stacks get folder tiles.
+// An app's icon at `size`, drawn by the adaptive icon engine in the
+// current icon mode (Theme.iconMode): the app's .fernicon, else its own
+// icon file on a plate, else the generic app icon. A new mode, accent or
+// wallpaper crossfades to the new look. Stacks (the Dock's Downloads and
+// Trash) use the set's folder and Trash icons. If the engine can draw
+// nothing at all (no icon set installed), a lettered tile stands in.
 Item {
     id: icon
     property int size: 48
@@ -14,62 +18,54 @@ Item {
     width: size
     height: size
 
-    readonly property var tints: [
-        ["#5EA8F7", "#2C6FD6"], ["#62CC8C", "#1C7546"], ["#FFB56B", "#EE6419"],
-        ["#B990FF", "#6438DB"], ["#58D6C4", "#178A82"], ["#F07AA8", "#B83468"],
-        ["#FFD27A", "#E59A1F"], ["#9AA39D", "#525A57"]
-    ]
-    readonly property var colors: {
-        let h = 0
-        for (let i = 0; i < appId.length; i++)
-            h = (h * 31 + appId.charCodeAt(i)) >>> 0
-        return stack === "trash" ? ["#F2F4F1", "#C9CFCA"] : stack === "downloads" ? ["#8DB8F8", "#3F7EE8"] : tints[h % tints.length]
+    readonly property string iconId: stack === "downloads" ? "folder.downloads" : stack === "trash" ? "trash" : appId
+    readonly property string wanted: Theme.icon(iconId, stack.length ? "" : source.toString())
+    // Pixels at the screen's scale, in steps, so a magnifying dock does not
+    // ask for a new picture every frame.
+    readonly property int pixels: {
+        const px = size * Screen.devicePixelRatio
+        return px <= 32 ? 32 : px <= 64 ? 64 : px <= 128 ? 128 : 256
     }
 
-    Image {
-        id: picture
+    // Two layers: the one shown, and the next look loading behind it.
+    property Image front: first
+    onWantedChanged: {
+        const back = front === first ? second : first
+        if (back.source.toString() === wanted && back.status === Image.Ready)
+            front = back
+        else
+            back.source = wanted
+    }
+    Component.onCompleted: first.source = wanted
+
+    component Layer: Image {
         anchors.fill: parent
-        source: icon.stack.length ? "" : icon.source
-        sourceSize: Qt.size(icon.size * 2, icon.size * 2)
+        sourceSize: Qt.size(icon.pixels, icon.pixels)
         smooth: true
         mipmap: true
-        visible: status === Image.Ready
+        opacity: icon.front === this ? 1 : 0
+        visible: opacity > 0
+        Behavior on opacity {
+            NumberAnimation { duration: Theme.reduceMotion ? 0 : 450; easing.type: Easing.InOutQuad }
+        }
+        onStatusChanged: if (status === Image.Ready && source.toString() === icon.wanted) icon.front = this
     }
+    Layer { id: first }
+    Layer { id: second }
+
     Rectangle {
-        visible: !picture.visible
+        visible: icon.front.status === Image.Error
         anchors.fill: parent
         anchors.margins: icon.size * 0.06
         radius: width * 0.225
-        gradient: Gradient {
-            GradientStop { position: 0; color: icon.colors[0] }
-            GradientStop { position: 1; color: icon.colors[1] }
-        }
-        border.width: 1
-        border.color: Qt.alpha("#000000", 0.08)
-        // The top gloss.
-        Rectangle {
-            anchors.fill: parent
-            radius: parent.radius
-            gradient: Gradient {
-                GradientStop { position: 0; color: Qt.alpha("#FFFFFF", 0.28) }
-                GradientStop { position: 0.5; color: Qt.alpha("#FFFFFF", 0) }
-            }
-        }
+        color: "#7A8580"
         Text {
             anchors.centerIn: parent
-            visible: !icon.stack.length
             text: icon.name.length ? icon.name.charAt(0).toUpperCase() : "?"
             font.family: Theme.fontFamily
             font.pixelSize: icon.size * 0.46
             font.weight: Font.Bold
             color: "#FFFFFF"
-        }
-        Symbol {
-            anchors.centerIn: parent
-            visible: icon.stack.length > 0
-            name: icon.stack === "trash" ? "trash-2" : "download"
-            size: icon.size * 0.5
-            color: icon.stack === "trash" ? "#6B7570" : "#FFFFFF"
         }
     }
 }

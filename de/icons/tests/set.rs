@@ -14,7 +14,13 @@ fn every_icon_renders_in_every_mode() {
     let engine = Engine::new(vec![set()], None);
     let mut ids: Vec<String> = std::fs::read_dir(set())
         .unwrap()
-        .filter_map(|e| e.ok()?.file_name().to_str()?.strip_suffix(".fernicon").map(str::to_string))
+        .filter_map(|e| {
+            e.ok()?
+                .file_name()
+                .to_str()?
+                .strip_suffix(".fernicon")
+                .map(str::to_string)
+        })
         .collect();
     ids.sort();
     assert!(ids.len() >= 40, "only {} icons", ids.len());
@@ -30,8 +36,17 @@ fn every_icon_renders_in_every_mode() {
                 })
                 .unwrap_or_else(|e| panic!("{id} in {}: {e}", mode.name()));
             // Something is drawn, and the corners stay clear.
-            assert!(image.data.chunks(4).any(|p| p[3] > 200), "{id} {}: empty", mode.name());
-            assert_eq!(image.data[3], 0, "{id} {}: a corner is painted", mode.name());
+            assert!(
+                image.data.chunks(4).any(|p| p[3] > 200),
+                "{id} {}: empty",
+                mode.name()
+            );
+            assert_eq!(
+                image.data[3],
+                0,
+                "{id} {}: a corner is painted",
+                mode.name()
+            );
         }
     }
 }

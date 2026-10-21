@@ -168,6 +168,7 @@ qemu-test-shell:
 
 # Build the Qt desktop (design system, shell) and its tests into build/de
 shell-build:
+    cargo build --release -p fern-icons
     cmake -S de -B build/de -G Ninja -DCMAKE_BUILD_TYPE=Debug -DFERN_BUILD_TESTS=ON
     cmake --build build/de
 

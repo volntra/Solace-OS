@@ -25,11 +25,6 @@ QtObject {
         domain: "nightshift"
         defaults: ({ manual: false, schedule: "off", from: 1320, to: 420, warmth: 60 })
     }
-    readonly property SettingsDomain wallpaper: SettingsDomain {
-        domain: "wallpaper"
-        defaults: ({ light: "/usr/share/fern/wallpapers/grove.png",
-                     dark: "/usr/share/fern/wallpapers/grove-night.png" })
-    }
 
     // Do Not Disturb and banner time live in settings; the server follows.
     readonly property Binding dndBinding: Binding {
@@ -64,7 +59,7 @@ QtObject {
     onColorTemperatureChanged: Compositor.setColorTemperature(colorTemperature)
 
     // The wallpaper of the current mode, crossfaded by the compositor.
-    readonly property string wallpaperPath: Theme.dark && (wallpaper.dark ?? "").length ? wallpaper.dark : (wallpaper.light ?? "")
+    readonly property string wallpaperPath: Theme.wallpaper
     onWallpaperPathChanged: Compositor.setWallpaper(wallpaperPath)
     // Titlebars follow the appearance too.
     readonly property bool dark: Theme.dark

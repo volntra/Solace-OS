@@ -1194,6 +1194,8 @@ fn wm_shell_desktop(h: &mut Harness) -> Result {
     std::fs::create_dir_all(tmp.join("home")).map_err(|e| e.to_string())?;
     let client = env!("CARGO_BIN_EXE_fern-testclient");
     for (id, name, color) in [
+        ("org.fern.Files", "Files", "4a98f0ff"),
+        ("org.fern.Settings", "Settings", "8c9893ff"),
         ("org.fern.Notes", "Notes", "ff5a5fff"),
         ("org.fern.Mail", "Mail", "3a86ffff"),
         ("org.fern.Photos", "Photos", "2ec4b6ff"),
@@ -1212,7 +1214,7 @@ fn wm_shell_desktop(h: &mut Harness) -> Result {
     .map_err(|e| e.to_string())?;
     std::fs::write(
         config.join("fern/dock.toml"),
-        "pinned = [\"org.fern.Notes\", \"org.fern.Mail\", \"org.fern.Photos\"]\n",
+        "pinned = [\"org.fern.Files\", \"org.fern.Settings\", \"org.fern.Notes\", \"org.fern.Mail\", \"org.fern.Photos\"]\n",
     )
     .map_err(|e| e.to_string())?;
 
@@ -1274,6 +1276,11 @@ fn wm_shell_desktop(h: &mut Harness) -> Result {
         ("XDG_DATA_DIRS".into(), data.clone().into()),
         ("XDG_CONFIG_HOME".into(), config.clone().into()),
         ("FERN_FONTS".into(), root.join("build/fonts").into()),
+        // The repository's icon set (no disk cache).
+        (
+            "FERN_ICONS_DIRS".into(),
+            root.join("de/icons/set/icons").into(),
+        ),
         ("QT_QPA_PLATFORM".into(), "wayland".into()),
         // Qt's software renderer unless FERN_SHELL_QUICK_BACKEND says
         // otherwise (empty: Qt's default, OpenGL, as on the image).
@@ -1608,6 +1615,57 @@ fn wm_shell_desktop(h: &mut Harness) -> Result {
         println!("    dark mode skipped: no build/wallpapers (just wallpapers)");
     }
 
+    // Adaptive icons (Phase 7): every icon mode redraws the dock's icons
+    // (Files, Settings, the demo apps' generic icon, Downloads and Trash),
+    // and in the
+    // Wallpaper mode a new wallpaper recolours them.
+    let dock = layer_rect(h, "fern-dock").ok_or("no dock")?;
+    let icons = |h: &mut Harness, label: &str| -> std::result::Result<[f64; 3], String> {
+        let img = h.shot(label)?;
+        let (x, y, w, hh) = (dock.loc.x, dock.loc.y, dock.size.w, dock.size.h);
+        Ok(mean(&img, x + 16, y + hh - 64, x + w - 16, y + hh - 16))
+    };
+    setting("appearance", "accent", "orange".into())?;
+    let mut seen: Vec<(&str, [f64; 3])> = Vec::new();
+    for mode in ["default", "dark", "tinted", "wallpaper", "clear"] {
+        setting("appearance", "icon_mode", mode.into())?;
+        // Drawn off the GUI thread, then a 0.45 s crossfade.
+        settle_for(h, Duration::from_secs(3))?;
+        let now = icons(h, &format!("icons-{mode}"))?;
+        for (other, before) in &seen {
+            check(distance(now, *before) > 6.0, || {
+                format!(
+                    "the dock's icons look the same in the {mode} and {other} modes: {now:?} {before:?}"
+                )
+            })?;
+        }
+        seen.push((mode, now));
+    }
+    // Two plain wallpapers, red then blue: the Wallpaper mode follows.
+    let plain = |name: &str, rgb: [u8; 3]| -> std::result::Result<Value<'static>, String> {
+        let file = tmp.join(name);
+        let rgba = [rgb[0], rgb[1], rgb[2], 255].repeat(64 * 64);
+        ferncomp::backend::headless::Image {
+            width: 64,
+            height: 64,
+            rgba,
+        }
+        .save_png(&file)?;
+        Ok(Value::from(file.display().to_string()))
+    };
+    setting("appearance", "icon_mode", "wallpaper".into())?;
+    setting("wallpaper", "light", plain("red.png", [200, 40, 40])?)?;
+    settle_for(h, Duration::from_secs(3))?;
+    let red = icons(h, "icons-wallpaper-red")?;
+    setting("wallpaper", "light", plain("blue.png", [40, 70, 210])?)?;
+    settle_for(h, Duration::from_secs(3))?;
+    let blue = icons(h, "icons-wallpaper-blue")?;
+    check(red[0] > red[2] && blue[2] > blue[0], || {
+        format!("the icons did not follow the wallpaper: {red:?} on red, {blue:?} on blue")
+    })?;
+    setting("appearance", "icon_mode", "auto".into())?;
+    setting("appearance", "accent", "fern".into())?;
+
     // "notification" in Search opens the Notification Center: actions
     // whose title matches come before Do Not Disturb, whose keywords match
     // too. Escape closes it.
@@ -1809,6 +1867,41 @@ fn settle_for(h: &mut Harness, d: Duration) -> Result {
 }
 
 /// Whether a shell surface with this namespace is mapped.
+/// Where a layer surface is on screen.
+fn layer_rect(
+    h: &Harness,
+    namespace: &str,
+) -> Option<smithay::utils::Rectangle<i32, smithay::utils::Logical>> {
+    let map = smithay::desktop::layer_map_for_output(h.headless.output());
+    let layer = map.layers().find(|l| l.namespace() == namespace)?;
+    map.layer_geometry(layer)
+}
+
+/// The mean colour of a region of a screenshot.
+fn mean(img: &Image, x0: i32, y0: i32, x1: i32, y1: i32) -> [f64; 3] {
+    let mut sum = [0.0; 3];
+    let mut n = 0.0;
+    for y in (y0..y1).step_by(2) {
+        for x in (x0..x1).step_by(2) {
+            let p = img.pixel(x, y);
+            for c in 0..3 {
+                sum[c] += f64::from(p[c]);
+            }
+            n += 1.0;
+        }
+    }
+    sum.map(|v| if n > 0.0 { v / n } else { 0.0 })
+}
+
+/// How far apart two colours are (0 to 441).
+fn distance(a: [f64; 3], b: [f64; 3]) -> f64 {
+    a.iter()
+        .zip(b)
+        .map(|(x, y)| (x - y).powi(2))
+        .sum::<f64>()
+        .sqrt()
+}
+
 fn has_layer(h: &Harness, namespace: &str) -> bool {
     smithay::desktop::layer_map_for_output(h.headless.output())
         .layers()

@@ -12,7 +12,12 @@ QtObject {
     readonly property SettingsDomain appearance: SettingsDomain {
         domain: "appearance"
         defaults: ({ theme: "light", accent: "fern", reduce_motion: false,
-                     reduce_transparency: false, text_size: "default" })
+                     reduce_transparency: false, text_size: "default", icon_mode: "auto" })
+    }
+    readonly property SettingsDomain wallpaperSettings: SettingsDomain {
+        domain: "wallpaper"
+        defaults: ({ light: "/usr/share/fern/wallpapers/grove.png",
+                     dark: "/usr/share/fern/wallpapers/grove-night.png" })
     }
 
     // --- Mode -----------------------------------------------------------
@@ -55,16 +60,47 @@ QtObject {
     })
     readonly property string accentName: {
         const a = appearance.accent ?? "fern"
-        // "wallpaper" picks its colour from the wallpaper in Phase 7; until
-        // then it is the Fern green.
+        if (a === "wallpaper")
+            return a
         return accents[a] !== undefined ? a : (a.startsWith("#") ? "custom" : "fern")
     }
-    readonly property color accent: accentName === "custom"
+    // "wallpaper": the colour the wallpaper suggests, at the tones the
+    // presets use (HCT tone 40 under white text, 80 under Ink, text 35),
+    // which keeps every pair WCAG AA whatever the hue.
+    readonly property color accent: accentName === "wallpaper"
+        ? Icons.tone(wallpaperAccent.color, dark ? 80 : 40)
+        : accentName === "custom"
         ? (dark ? Qt.lighter(appearance.accent, 1.45) : appearance.accent)
         : accents[accentName][dark ? 1 : 0]
     readonly property color textOnAccent: dark ? ink : "#FFFFFF"
-    readonly property color accentText: accentName === "custom"
+    readonly property color accentText: accentName === "wallpaper"
+        ? Icons.tone(wallpaperAccent.color, dark ? 80 : 35)
+        : accentName === "custom"
         ? accent : accents[accentName][dark ? 1 : 2]
+    // The accent as chosen, before light/dark: what Tinted icons take.
+    readonly property color accentBase: accentName === "wallpaper" ? wallpaperAccent.color
+        : accentName === "custom" ? appearance.accent : accents[accentName][0]
+
+    // --- Wallpaper ------------------------------------------------------
+
+    // The wallpaper of the current mode (the compositor draws it).
+    readonly property string wallpaper: dark && (wallpaperSettings.dark ?? "").length
+        ? wallpaperSettings.dark : (wallpaperSettings.light ?? "")
+    readonly property WallpaperAccent wallpaperAccent: WallpaperAccent { source: theme.wallpaper }
+
+    // --- Icons (CLAUDE.md 6.9, docs/formats/icon.md) --------------------
+
+    // "auto": Default in light mode, Dark in dark mode.
+    readonly property string iconMode: {
+        const m = appearance.icon_mode ?? "auto"
+        return m === "auto" ? (dark ? "dark" : "default") : m
+    }
+    readonly property color iconAccent: iconMode === "wallpaper" ? wallpaperAccent.color : accentBase
+    // The image URL of an icon in the current mode: `id` an app id or a
+    // name from the icon set, `legacy` the app's own icon file (or "").
+    function icon(id, legacy) {
+        return Icons.url(id, legacy ?? "", iconMode, iconAccent)
+    }
     readonly property color selection: Qt.alpha(accent, dark ? 0.32 : 0.22)
     readonly property color focusRing: Qt.alpha(accent, 0.45)
 

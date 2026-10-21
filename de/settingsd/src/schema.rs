@@ -143,6 +143,12 @@ pub static DOMAINS: &[Domain] = &[
                 Default::Text("default"),
                 "Text size across the desktop",
             ),
+            key(
+                "icon_mode",
+                Kind::Choice(&["auto", "default", "dark", "tinted", "wallpaper", "clear"]),
+                Default::Text("auto"),
+                "How app icons look: as designed, dark, tinted with the accent, tinted from the wallpaper, or clear glass (auto: dark in dark mode)",
+            ),
         ],
     },
     Domain {

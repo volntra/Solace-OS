@@ -63,7 +63,7 @@ TestCase {
     }
 
     function test_unknown_accent_falls_back() {
-        Theme.appearance.accent = "wallpaper"
+        Theme.appearance.accent = "teal"
         compare(Theme.accentName, "fern")
         Theme.appearance.accent = "#336699"
         compare(Theme.accentName, "custom")

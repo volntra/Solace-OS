@@ -1,8 +1,9 @@
-// The Fern.Design plugin: registers the symbol image provider with every
-// engine that imports the module.
+// The Fern.Design plugin: registers the symbol and adaptive icon image
+// providers with every engine that imports the module.
 #include <QQmlEngine>
 #include <QQmlEngineExtensionPlugin>
 
+#include "icons.h"
 #include "symbolprovider.h"
 
 extern void qml_register_types_Fern_Design();
@@ -26,6 +27,8 @@ public:
         Q_UNUSED(uri)
         if (!engine->imageProvider(QStringLiteral("symbol")))
             engine->addImageProvider(QStringLiteral("symbol"), new SymbolProvider);
+        if (!engine->imageProvider(QStringLiteral("fernicon")))
+            engine->addImageProvider(QStringLiteral("fernicon"), new IconProvider);
     }
 };
 
