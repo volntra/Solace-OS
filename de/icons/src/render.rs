@@ -177,21 +177,21 @@ fn dark_roles(
 
 /// Repaints a layer in one colour, keeping each pixel's lightness as its
 /// opacity. `invert` uses darkness instead (for dark glyphs).
-fn luminance_mask(layer: &mut Pixmap, c: Rgb, invert: bool) {
+fn luminance_mask(layer: &mut Pixmap, colour: Rgb, invert: bool) {
     for px in layer.pixels_mut() {
-        let a = px.alpha();
-        if a == 0 {
+        let alpha = px.alpha();
+        if alpha == 0 {
             continue;
         }
-        let d = px.demultiply();
-        let mut l = lightness(d.red(), d.green(), d.blue()).clamp(0.0, 1.0);
+        let rgb = px.demultiply();
+        let mut light = lightness(rgb.red(), rgb.green(), rgb.blue()).clamp(0.0, 1.0);
         if invert {
-            l = 1.0 - l;
+            light = 1.0 - light;
         }
         // Shadows and dark detail vanish; mid tones read as cut-outs.
-        let k = ((l - 0.2) / 0.75).clamp(0.0, 1.0).powf(1.1);
-        let na = (f32::from(a) * k).round() as u8;
-        *px = ColorU8::from_rgba(c.red, c.green, c.blue, na).premultiply();
+        let opacity = ((light - 0.2) / 0.75).clamp(0.0, 1.0).powf(1.1);
+        let out = (f32::from(alpha) * opacity).round() as u8;
+        *px = ColorU8::from_rgba(colour.red, colour.green, colour.blue, out).premultiply();
     }
 }
 
