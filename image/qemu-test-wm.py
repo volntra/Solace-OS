@@ -174,7 +174,9 @@ def main():
         during = Shot(c, "during-restart")
         if abs(during.fraction(RED) - red_before) > 0.005:
             fail("windows changed when fern-wm died")
-        deadline = time.monotonic() + 60
+        # Software emulation: a restart (and the shell's re-layout) can take
+        # minutes there.
+        deadline = time.monotonic() + 300
         new = wm_pid(c)
         while not new.isdigit() or new == pid:
             if time.monotonic() > deadline:

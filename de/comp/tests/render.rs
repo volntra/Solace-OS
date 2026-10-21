@@ -1275,7 +1275,14 @@ fn wm_shell_desktop(h: &mut Harness) -> Result {
         ("XDG_CONFIG_HOME".into(), config.clone().into()),
         ("FERN_FONTS".into(), root.join("build/fonts").into()),
         ("QT_QPA_PLATFORM".into(), "wayland".into()),
-        ("QT_QUICK_BACKEND".into(), "software".into()),
+        // Qt's software renderer unless FERN_SHELL_QUICK_BACKEND says
+        // otherwise (empty: Qt's default, OpenGL, as on the image).
+        (
+            "QT_QUICK_BACKEND".into(),
+            std::env::var("FERN_SHELL_QUICK_BACKEND")
+                .unwrap_or_else(|_| "software".into())
+                .into(),
+        ),
         ("QT_FORCE_STDERR_LOGGING".into(), "1".into()),
         (
             "QML_IMPORT_PATH".into(),
