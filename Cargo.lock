@@ -943,6 +943,7 @@ version = "0.1.0"
 dependencies = [
  "ab_glyph",
  "bitflags 2.13.2",
+ "fern-icons",
  "fern-wm",
  "fern-wm-proto",
  "png 0.17.16",
