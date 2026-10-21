@@ -48,10 +48,26 @@ Material {
             out.push({ kind: "app", id: a.id, title: a.name, subtitle: a.comment, icon: a.icon })
         for (const f of files.results)
             out.push({ kind: "file", path: f.path, title: f.name, subtitle: f.where, symbol: fileSymbol(f) })
+        // Actions whose title starts with the text first, then those with
+        // a title word starting with it, then those matching a keyword:
+        // "notification" is the Notification Center before Do Not Disturb.
         const q = query.toLowerCase()
-        for (const a of actions)
-            if (a.enabled !== false && (a.title.toLowerCase().includes(q) || a.words.split(" ").some(w => w.startsWith(q))))
-                out.push({ kind: "action", name: a.name, title: a.title, symbol: a.symbol, subtitle: qsTr("Action") })
+        const rank = a => {
+            const title = a.title.toLowerCase()
+            if (title.startsWith(q))
+                return 0
+            if (title.split(/\s+/).some(w => w.startsWith(q)))
+                return 1
+            if (title.includes(q) || a.words.split(" ").some(w => w.startsWith(q)))
+                return 2
+            return -1
+        }
+        const found = actions.filter(a => a.enabled !== false)
+            .map((a, i) => ({ a, i, r: rank(a) }))
+            .filter(m => m.r >= 0)
+            .sort((x, y) => x.r - y.r || x.i - y.i)
+        for (const m of found)
+            out.push({ kind: "action", name: m.a.name, title: m.a.title, symbol: m.a.symbol, subtitle: qsTr("Action") })
         return out
     }
     property int current: 0

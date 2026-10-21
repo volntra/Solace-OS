@@ -1608,6 +1608,43 @@ fn wm_shell_desktop(h: &mut Harness) -> Result {
         println!("    dark mode skipped: no build/wallpapers (just wallpapers)");
     }
 
+    // "notification" in Search opens the Notification Center: actions
+    // whose title matches come before Do Not Disturb, whose keywords match
+    // too. Escape closes it.
+    key(h, 8, 0x20)?;
+    wait_long(h, "Search did not open for the Notification Center", |h| {
+        has_layer(h, "fern-popups")
+    })?;
+    settle_for(h, Duration::from_millis(500))?;
+    for k in "notification".chars() {
+        key_press(h, k as u32)?;
+    }
+    settle_for(h, Duration::from_secs(2))?;
+    key_press(h, 0xff0d)?;
+    settle_for(h, Duration::from_secs(2))?;
+    h.shot("search-notification-center")?;
+    let dnd = conn
+        .call_method(
+            Some("org.fern.Settings"),
+            "/org/fern/Settings",
+            Some("org.fern.Settings1"),
+            "Get",
+            &("notifications", "dnd"),
+        )
+        .map_err(|e| format!("Get notifications.dnd: {e}"))?
+        .body()
+        .deserialize::<zbus::zvariant::OwnedValue>()
+        .map_err(|e| format!("notifications.dnd: {e}"))
+        .and_then(|v| bool::try_from(v).map_err(|e| format!("notifications.dnd: {e}")))?;
+    check(!dnd, || "\"notification\" in Search turned on Do Not Disturb".into())?;
+    check(has_layer(h, "fern-popups"), || {
+        "\"notification\" in Search opened nothing".into()
+    })?;
+    key_press(h, 0xff1b)?;
+    wait_long(h, "the Notification Center did not close", |h| {
+        !has_layer(h, "fern-popups")
+    })?;
+
     // Files in Search: "trip" finds Documents/Trip notes.txt through the
     // indexer, and Return opens it in the app for text files, which gets
     // the file's path.
@@ -1789,17 +1826,15 @@ fn click_at(h: &mut Harness, x: f64, y: f64) -> Result {
 /// Presses and releases a key that goes to the focused client (US
 /// layout).
 fn key_press(h: &mut Harness, keysym: u32) -> Result {
-    // xkb keycodes are evdev + 8.
+    // xkb keycodes are evdev + 8. Letters a-z, in alphabetical order.
+    const LETTERS: [u32; 26] = [
+        30, 48, 46, 32, 18, 33, 34, 35, 23, 36, 37, 38, 50, 49, 24, 25, 16, 19, 31, 20, 22, 47,
+        17, 45, 21, 44,
+    ];
     let evdev = match keysym {
+        0x61..=0x7a => LETTERS[(keysym - 0x61) as usize],
         0xff1b => 1,   // Escape
         0xff0d => 28,  // Return
-        0x61 => 30,    // a
-        0x69 => 23,    // i
-        0x6c => 38,    // l
-        0x6d => 50,    // m
-        0x74 => 20,    // t
-        0x72 => 19,    // r
-        0x70 => 25,    // p
         0xff51 => 105, // Left
         0xff53 => 106, // Right
         0xff54 => 108, // Down

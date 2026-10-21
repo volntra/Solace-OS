@@ -176,6 +176,12 @@ ShellWindow {
         }
         BarItem { symbol: "sliders-horizontal"; menu: "control" }
         BarItem { symbol: "search"; menu: "search" }
+        // Do Not Disturb: a moon by the clock, in the row so it takes room.
+        BarItem {
+            visible: Notifications.dnd
+            symbol: "moon"
+            menu: "notifications"
+        }
         BarItem {
             id: clock
             menu: "notifications"
@@ -189,14 +195,6 @@ ShellWindow {
             Timer {
                 interval: 1000; running: true; repeat: true
                 onTriggered: clock.now = new Date()
-            }
-            Rectangle {
-                // Do Not Disturb: a small moon by the clock.
-                visible: Notifications.dnd
-                anchors.right: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-                width: 16; height: 16; color: "transparent"
-                Symbol { anchors.centerIn: parent; name: "moon"; size: 13; color: bar.fg }
             }
         }
     }
