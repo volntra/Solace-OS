@@ -11,12 +11,18 @@ local = "."
 # The Cargo workspace, the icon set and the shape it is drawn on.
 include = ["Cargo.toml", "Cargo.lock", "init", "boot/bootgen", "pkg", "tools/ferncheck", "de/comp/Cargo.toml", "de/protocols", "de/wm/Cargo.toml", "de/settingsd/Cargo.toml", "de/indexer/Cargo.toml", "de/icons", "de/design/shape", "third_party/smithay"]
 
+[deps]
+runtime = ["gcc-libs"]
+
 [build]
 system = "custom"
 toolchain = "rust"
 cargo = true
 compile = '''
-cargo build --release --locked --offline --target x86_64-unknown-linux-gnu -p fern-icons --lib
+# A shared library (for Qt), so not the rust toolchain's static default,
+# which cannot make one (as for fern-comp).
+RUSTFLAGS="-C linker=cc" cargo build --release --locked --offline \
+  --target x86_64-unknown-linux-gnu -p fern-icons --lib
 '''
 install = '''
 out=/build/target/x86_64-unknown-linux-gnu/release
