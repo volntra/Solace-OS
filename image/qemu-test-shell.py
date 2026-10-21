@@ -96,6 +96,12 @@ def pids(c, comm):
     return [w for w in out if w.isdigit()]
 
 
+def search_field(s):
+    """Inside Search's field (y 165-210 on a 1280x800 screen), where a
+    dark panel on the night sky still differs."""
+    return (s.w // 3, s.h // 5 + 5, 2 * s.w // 3, s.h // 4 + 10)
+
+
 def menu_bar_light(s):
     return s.mean_luma(s.w // 3, 6, 2 * s.w // 3, 22) > 150
 
@@ -140,7 +146,7 @@ def main():
         before = desk
         search = wait_for(
             c, "search",
-            lambda s: changed(before, s, s.w // 3, s.h // 6, 2 * s.w // 3, s.h // 4) > 20,
+            diff_above(before, search_field, 8),
             "the Search panel",
         )
         time.sleep(5)
@@ -196,7 +202,7 @@ def main():
             # Typing before Search holds the keyboard would be lost.
             wait_for(
                 c, f"{name}-search",
-                lambda s: changed(calm, s, s.w // 3, s.h // 6, 2 * s.w // 3, s.h // 4) > 20,
+                diff_above(calm, search_field, 8),
                 "the Search panel", timeout=300,
             )
             time.sleep(5)
