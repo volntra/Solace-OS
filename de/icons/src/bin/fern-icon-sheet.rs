@@ -106,8 +106,8 @@ fn run() -> Result<(), String> {
     for (col, (&mode, &backdrop)) in Mode::ALL.iter().zip(backdrops.iter()).enumerate() {
         let col = u32::try_from(col).unwrap_or(0);
         let mut paint = Paint::default();
-        let [_, r, g, b] = u32::to_be_bytes(backdrop);
-        paint.set_color(Color::from_rgba8(r, g, b, 255));
+        let [_, red, green, blue] = u32::to_be_bytes(backdrop);
+        paint.set_color(Color::from_rgba8(red, green, blue, 255));
         #[allow(clippy::cast_precision_loss)]
         let rect = Rect::from_xywh((col * cell) as f32, 0.0, cell as f32, (cell * rows) as f32)
             .ok_or("bad rect")?;
