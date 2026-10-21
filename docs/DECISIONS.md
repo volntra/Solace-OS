@@ -38,6 +38,7 @@ entry names a recipe that does not exist.
 - `gawk`: awk, needed by builds (glibc, kernel).
 - `gcc`: the compiler (C, C++) plus gcc-libs (libgcc_s, libstdc++) at runtime.
 - `glibc`: the C library (locked stack: NVIDIA userspace and Steam need it).
+- `glibc-locales`: compiled locales (C.UTF-8, the system locale Qt needs for UTF-8 file names), apart from glibc so adding one rebuilds only this.
 - `gmp`: GCC's arithmetic library.
 - `gperf`: perfect-hash generator; udev's build needs it.
 - `grep`: needed by builds and scripts.

@@ -1,0 +1,3 @@
+# The locales the system has: name, charmap. C.UTF-8 is the system's own
+# (LANG in /etc/profile); language packs (the installer's) add more.
+C.UTF-8 UTF-8

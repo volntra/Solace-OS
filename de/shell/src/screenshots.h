@@ -20,8 +20,9 @@ public:
     using QObject::QObject;
 
     // Saves a picture the compositor took (Compositor.screenshotTaken)
-    // under today's name; returns its path, empty on failure.
-    Q_INVOKABLE QString saveNow(const QImage &image) const;
+    // under today's name, off the UI thread (PNG encoding takes seconds
+    // on a slow machine); saved or failed follows.
+    Q_INVOKABLE void saveNow(const QImage &image);
 
     // Where they go, and what they are called; public for tests.
     Q_INVOKABLE static QString folder();
@@ -30,4 +31,8 @@ public:
     static QString freePath(const QString &dir, const QString &name);
     // Saves `image` in `dir` and returns its path, or empty on failure.
     static QString save(const QImage &image, const QString &dir, const QDateTime &when);
+
+signals:
+    void saved(const QString &path);
+    void failed();
 };

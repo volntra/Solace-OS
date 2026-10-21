@@ -1,0 +1,29 @@
+# The compiled locales (C.UTF-8 for now), made with glibc's localedef from
+# its own locale sources. Separate from glibc so adding a locale rebuilds
+# this, not everything built against glibc.
+name = "glibc-locales"
+version = "2.44"
+release = 1
+summary = "Compiled locales: C.UTF-8"
+license = "LGPL-2.1-or-later"
+
+[[source]]
+local = "recipes/glibc-locales"
+include = ["locales.txt"]
+
+[deps]
+build = ["glibc"]
+runtime = ["glibc"]
+
+[build]
+system = "custom"
+compile = "true"
+install = '''
+mkdir -p "$DESTDIR/usr/lib/locale"
+grep -v '^#' locales.txt | while read -r name charmap; do
+  [ -n "$name" ] || continue
+  input=${name%%.*}
+  localedef --prefix="$DESTDIR" --no-archive -i "$input" -f "$charmap" "$name"
+done
+test -f "$DESTDIR/usr/lib/locale/C.utf8/LC_CTYPE"
+'''

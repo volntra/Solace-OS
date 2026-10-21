@@ -1,8 +1,9 @@
 # Packages in the QEMU system image (image/build.sh). Dependencies are
 # pulled in by the solver; list only what the image needs directly.
 
-# The C library (packages do not list it as a dependency).
+# The C library (packages do not list it as a dependency), and C.UTF-8.
 glibc
+glibc-locales
 # The system: init, console logins, os-release, factory /etc.
 fern-base
 # Kernel and the boot tooling (bootgen also writes this image's ESP).

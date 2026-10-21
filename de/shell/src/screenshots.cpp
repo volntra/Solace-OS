@@ -1,8 +1,11 @@
 #include "screenshots.h"
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
+#include <QPointer>
 #include <QStandardPaths>
+#include <QThreadPool>
 
 QString Screenshots::folder()
 {
@@ -32,7 +35,21 @@ QString Screenshots::save(const QImage &image, const QString &dir, const QDateTi
     return image.save(path, "PNG") ? path : QString();
 }
 
-QString Screenshots::saveNow(const QImage &image) const
+void Screenshots::saveNow(const QImage &image)
 {
-    return save(image, folder(), QDateTime::currentDateTime());
+    const QDateTime when = QDateTime::currentDateTime();
+    const QString dir = folder();
+    QPointer<Screenshots> self(this);
+    QThreadPool::globalInstance()->start([self, image, dir, when] {
+        const QString path = save(image, dir, when);
+        // Back on the UI thread.
+        QMetaObject::invokeMethod(qApp, [self, path] {
+            if (!self)
+                return;
+            if (path.isEmpty())
+                emit self->failed();
+            else
+                emit self->saved(path);
+        });
+    });
 }

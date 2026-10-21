@@ -105,11 +105,7 @@ QtObject {
             }
         }
         function onScreenshotTaken(id, image) {
-            const path = Screenshots.saveNow(image)
-            if (path.length)
-                Notifications.post(qsTr("Screenshot"), qsTr("Screenshot saved"), path.split("/").pop(), path)
-            else
-                Notifications.post(qsTr("Screenshot"), qsTr("The screenshot could not be saved"), Screenshots.folder())
+            Screenshots.saveNow(image)
         }
         function onScreenshotFailed(id) {
             Notifications.post(qsTr("Screenshot"), qsTr("The screenshot could not be taken"), "")
@@ -120,6 +116,15 @@ QtObject {
     function screenshot(area) {
         if (Compositor.screenshot(area) < 0)
             Notifications.post(qsTr("Screenshot"), qsTr("The screenshot could not be taken"), "")
+    }
+    readonly property Connections screenshotFiles: Connections {
+        target: Screenshots
+        function onSaved(path) {
+            Notifications.post(qsTr("Screenshot"), qsTr("Screenshot saved"), path.split("/").pop(), path)
+        }
+        function onFailed() {
+            Notifications.post(qsTr("Screenshot"), qsTr("The screenshot could not be saved"), Screenshots.folder())
+        }
     }
     readonly property ScreenshotSelect screenshotSelect: ScreenshotSelect {
         onChosen: area => Qt.callLater(() => shell.screenshot(area))

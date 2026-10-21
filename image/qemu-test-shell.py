@@ -147,24 +147,24 @@ def main():
         ok("Super+Space, \"dark\", Return: dark mode, Grove at night, and the setting says dark")
         del search
 
-        # A screenshot with Print: the file, and a banner at the top right.
+        # A screenshot with Print: a banner at the top right, and the file.
+        # Banners stay 30 s here: a software-rendered VM is slow to encode
+        # the picture and to take our screenshots.
+        c.run(f"{BUS} fern-settings set notifications banner_seconds 30", "a longer banner time")
         quiet = Shot(c, "before-print")
         c.key("print")
-        deadline = time.monotonic() + 60
-        while "Screenshot" not in c.run("ls /root/Pictures/Screenshots 2>/dev/null; echo .", "the screenshots folder"):
-            if time.monotonic() > deadline:
-                fail("Print saved no screenshot: " + c.run("fernctl logs -n 40 fern-comp"))
-            time.sleep(1)
         wait_for(
             c, "banner",
             lambda s: changed(quiet, s, s.w - 330, 40, s.w - 30, 110) > 15,
-            "the notification banner",
+            "the notification banner", timeout=90,
         )
+        if "Screenshot" not in c.run("ls /root/Pictures/Screenshots 2>/dev/null; echo .", "the screenshots folder"):
+            fail("a banner, but no screenshot file")
         ok("Print: a PNG in ~/Pictures/Screenshots and a notification banner")
         wait_for(
             c, "banner-gone",
             lambda s: changed(quiet, s, s.w - 330, 40, s.w - 30, 200) < 6,
-            "the banner to go", timeout=60,
+            "the banner to go", timeout=90,
         )
 
         # The control center and the notification center, from Search.
