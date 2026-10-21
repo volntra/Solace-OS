@@ -1,5 +1,7 @@
 #include "notifications.h"
 
+#include "log.h"
+
 #include <QFileInfo>
 #include <QUrl>
 
@@ -179,6 +181,8 @@ uint Notifications::add(Item item, uint replaces)
         m_bannerUntil[item.id] = ms ? QDateTime::currentMSecsSinceEpoch() + ms : 0;
         m_tick.start();
     }
+    // Never the text: what people are told stays out of the system log.
+    qCInfo(lcShell) << "notification" << item.id << "from" << item.app << (item.banner ? "as a banner" : "quietly");
     emit countChanged();
     emit notified(int(item.id));
     return item.id;

@@ -1,5 +1,7 @@
 #include "screenshots.h"
 
+#include "log.h"
+
 #include <QCoreApplication>
 #include <QDir>
 #include <QFileInfo>
@@ -42,6 +44,7 @@ void Screenshots::saveNow(const QImage &image)
     QPointer<Screenshots> self(this);
     QThreadPool::globalInstance()->start([self, image, dir, when] {
         const QString path = save(image, dir, when);
+        qCInfo(lcShell) << "screenshot saved" << path;
         // Back on the UI thread.
         QMetaObject::invokeMethod(qApp, [self, path] {
             if (!self)

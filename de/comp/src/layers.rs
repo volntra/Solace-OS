@@ -195,10 +195,18 @@ impl Comp {
         {
             let mut map = layer_map_for_output(&output);
             map.arrange();
-            if initial == Some(true)
-                && let Some(layer) = map.layer_for_surface(surface, WindowSurfaceType::TOPLEVEL)
-            {
-                layer.layer_surface().send_configure();
+            if let Some(layer) = map.layer_for_surface(surface, WindowSurfaceType::TOPLEVEL) {
+                tracing::debug!(
+                    namespace = layer.namespace(),
+                    geometry = ?map.layer_geometry(layer),
+                    initial = initial == Some(true),
+                    "layer commit"
+                );
+                if initial == Some(true) {
+                    layer.layer_surface().send_configure();
+                }
+            } else {
+                tracing::debug!("layer commit for a surface not in the layer map");
             }
         }
         self.layers_changed();

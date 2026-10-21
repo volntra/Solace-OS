@@ -9,6 +9,9 @@
 
 int main(int argc, char *argv[])
 {
+    // One GL context's shaders and textures for all the shell's windows: a
+    // panel opening for the first time does not compile everything again.
+    QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("fern-shell"));
     app.setOrganizationName(QStringLiteral("Fern"));

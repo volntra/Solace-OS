@@ -7,6 +7,7 @@ qt_add_qml_module(fern-shell
     URI Fern.Shell
     VERSION 1.0
     SOURCES
+        src/log.h src/log.cpp
         src/shellwindow.h src/shellwindow.cpp
         src/compositor.h src/compositor.cpp
         src/windows.h src/windows.cpp
@@ -65,7 +66,7 @@ if(FERN_BUILD_TESTS)
     qt_add_executable(tst_nightshift tests/tst_nightshift.cpp src/nightshift.cpp)
     target_include_directories(tst_nightshift PRIVATE src)
     target_link_libraries(tst_nightshift PRIVATE Qt6::Test)
-    qt_add_executable(tst_screenshots tests/tst_screenshots.cpp src/screenshots.cpp)
+    qt_add_executable(tst_screenshots tests/tst_screenshots.cpp src/screenshots.cpp src/log.cpp)
     target_include_directories(tst_screenshots PRIVATE src)
     target_link_libraries(tst_screenshots PRIVATE Qt6::Test Qt6::Gui Qt6::Qml)
     qt_add_executable(tst_filesearch tests/tst_filesearch.cpp src/filesearch.cpp)

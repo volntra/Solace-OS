@@ -65,7 +65,7 @@ def wait_for(c, name, test, what, timeout=180):
         if test(shot):
             return shot
         if time.monotonic() > deadline:
-            logs = c.run("fernctl logs -n 40 fern-comp", "fern-comp's log")
+            logs = c.run("fernctl logs -n 300 fern-comp | grep -v 'MESA\\|INFO' | tail -40", "fern-comp's log")
             fail(f"timed out waiting for {what} (last screenshot: {OUT}/shell-{name}.png)\n{logs}")
         c._read()
         time.sleep(1.5)
@@ -132,8 +132,9 @@ def main():
             lambda s: changed(before, s, s.w // 3, s.h // 6, 2 * s.w // 3, s.h // 4) > 20,
             "the Search panel",
         )
+        time.sleep(5)
         typed(c, "dark")
-        time.sleep(1.5)
+        time.sleep(15)
         Shot(c, "search-dark")
         c.key("ret")
         sky_day = desk.mean_luma(desk.w // 4, 60, desk.w // 2, 140)
@@ -151,15 +152,15 @@ def main():
         del search
 
         # A screenshot with Print: a banner at the top right, and the file.
-        # Banners stay 30 s here: a software-rendered VM is slow to encode
-        # the picture and to take our screenshots.
-        c.run(f"{BUS} fern-settings set notifications banner_seconds 30", "a longer banner time")
+        # Without KVM (software emulation, software GL) the capture alone
+        # takes a minute or more; banners stay 180 s so the test sees one.
+        c.run(f"{BUS} fern-settings set notifications banner_seconds 180", "a longer banner time")
         quiet = Shot(c, "before-print")
         c.key("print")
         wait_for(
             c, "banner",
             lambda s: changed(quiet, s, s.w - 330, 40, s.w - 30, 110) > 15,
-            "the notification banner", timeout=90,
+            "the notification banner", timeout=420,
         )
         if "Screenshot" not in c.run("ls /root/Pictures/Screenshots 2>/dev/null; echo .", "the screenshots folder"):
             fail("a banner, but no screenshot file")
@@ -167,28 +168,34 @@ def main():
         wait_for(
             c, "banner-gone",
             lambda s: changed(quiet, s, s.w - 330, 40, s.w - 30, 200) < 6,
-            "the banner to go", timeout=90,
+            "the banner to go", timeout=300,
         )
 
         # The control center and the notification center, from Search.
         for name, words in [("control-center", "control"), ("notification-center", "notification")]:
             calm = Shot(c, f"before-{name}")
             c.key("meta_l-spc")
-            time.sleep(1.5)
+            # Typing before Search holds the keyboard would be lost.
+            wait_for(
+                c, f"{name}-search",
+                lambda s: changed(calm, s, s.w // 3, s.h // 6, 2 * s.w // 3, s.h // 4) > 20,
+                "the Search panel", timeout=300,
+            )
+            time.sleep(5)
             typed(c, words)
-            time.sleep(1.5)
+            time.sleep(15)
             c.key("ret")
             wait_for(
                 c, name,
                 lambda s: changed(calm, s, s.w - 300, 120, s.w - 40, 260) > 12,
-                name.replace("-", " "),
+                name.replace("-", " "), timeout=300,
             )
             c.key("esc")
             wait_for(
                 c, f"{name}-closed",
                 lambda s: changed(calm, s, s.w - 300, 120, s.w - 40, 260) < 6,
                 f"the {name.replace('-', ' ')} to close",
-                timeout=60,
+                timeout=180,
             )
         ok("Search opens the Control Center and the Notification Center; Escape closes them")
 
@@ -211,14 +218,14 @@ def main():
         # The shell is restarted if it dies.
         old = pids(c, "fern-shell")
         c.run(f"kill {old[0]}", "killing fern-shell")
-        deadline = time.monotonic() + 60
+        deadline = time.monotonic() + 120
         new = pids(c, "fern-shell")
         while not new or new == old:
             if time.monotonic() > deadline:
                 fail("fern-comp did not restart the shell: " + c.run("fernctl logs -n 40 fern-comp"))
             time.sleep(1)
             new = pids(c, "fern-shell")
-        wait_for(c, "after-restart", menu_bar_dark, "the menu bar after the restart")
+        wait_for(c, "after-restart", menu_bar_dark, "the menu bar after the restart", timeout=300)
         ok(f"fern-shell killed: fern-comp started a new one (pid {new[0]}), still dark")
 
         c.send("fernctl poweroff\n")

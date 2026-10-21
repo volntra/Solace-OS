@@ -16,6 +16,8 @@ fi
 rm -f "$bus"
 /usr/bin/dbus-daemon --session --address="unix:path=$bus" --fork --print-pid >"$bus.pid"
 export DBUS_SESSION_BUS_ADDRESS="unix:path=$bus"
+# What the shell does goes to the log (fern-log).
+export QT_LOGGING_RULES="${QT_LOGGING_RULES:-fern.shell.info=true}"
 /usr/lib/fern/fern-settingsd &
 /usr/lib/fern/fern-indexd &
 exec /usr/bin/fern-comp --drm --shell /usr/bin/fern-shell

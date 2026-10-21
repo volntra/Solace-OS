@@ -1,5 +1,7 @@
 #include "shellwindow.h"
 
+#include "log.h"
+
 #include "compositor.h"
 
 #include <LayerShellQt/Window>
@@ -29,6 +31,7 @@ void ShellWindow::setOpen(bool open)
         return;
     m_open = open;
     emit openChanged();
+    qCInfo(lcShell) << "window" << m_scope << (open ? "opens" : "closes") << size();
     if (!m_complete)
         return;
     if (open) {
@@ -70,6 +73,7 @@ void ShellWindow::applyLayer()
 void ShellWindow::exposeEvent(QExposeEvent *event)
 {
     QQuickWindow::exposeEvent(event);
+    qCInfo(lcShell) << "window" << m_scope << (isExposed() ? "exposed" : "not exposed") << size();
     if (isExposed() && !m_blurSent)
         applyBlur();
 }

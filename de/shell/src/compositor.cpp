@@ -1,5 +1,7 @@
 #include "compositor.h"
 
+#include "log.h"
+
 #include <QGuiApplication>
 
 #include <sys/mman.h>
@@ -34,6 +36,7 @@ void ShellExtension::fern_shell_v1_screenshot_done(uint32_t id, int32_t fd, uint
         }
     }
     close(fd);
+    qCInfo(lcShell) << "screenshot" << id << width << "x" << height << (image.isNull() ? "unreadable" : "received");
     if (image.isNull())
         emit screenshotFailed(int(id));
     else
