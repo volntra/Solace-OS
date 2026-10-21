@@ -1,0 +1,17 @@
+# The icon shape (CLAUDE.md 6.9), defined once: a superellipse
+# |x|^n + |y|^n = 1, whose curvature changes continuously from the flat
+# sides into the corners. The icon engine (de/icons) reads this file when
+# it is built and is the only thing that draws the shape.
+
+# n: 2 is a circle, larger is squarer. 5 matches the soft corners of the
+# dock's tiles before Phase 7 (a rounded square with a 22.5% radius).
+exponent = 5.0
+
+# The plate's width as a fraction of the icon's square; the rest is room
+# for its shadow.
+plate = 0.88
+
+# The shadow under the plate, as fractions of the icon's size.
+shadow_offset = 0.012
+shadow_blur = 0.02
+shadow_alpha = 0.28

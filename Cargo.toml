@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["tools/ferncheck", "pkg/libspk", "pkg/spk", "init", "boot/bootgen", "de/comp", "de/protocols", "de/wm", "de/settingsd", "de/indexer"]
+members = ["tools/ferncheck", "pkg/libspk", "pkg/spk", "init", "boot/bootgen", "de/comp", "de/protocols", "de/wm", "de/settingsd", "de/indexer", "de/icons"]
 
 [workspace.package]
 edition = "2024"

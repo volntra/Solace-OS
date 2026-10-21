@@ -9,7 +9,7 @@ license = "GPL-3.0-or-later"
 [[source]]
 local = "."
 # The Cargo workspace only.
-include = ["Cargo.toml", "Cargo.lock", "init", "boot/bootgen", "pkg", "tools/ferncheck", "de/comp/Cargo.toml", "de/protocols", "de/wm/Cargo.toml", "de/settingsd/Cargo.toml", "de/indexer", "third_party/smithay"]
+include = ["Cargo.toml", "Cargo.lock", "init", "boot/bootgen", "pkg", "tools/ferncheck", "de/comp/Cargo.toml", "de/protocols", "de/wm/Cargo.toml", "de/settingsd/Cargo.toml", "de/indexer", "de/icons/Cargo.toml", "third_party/smithay"]
 
 [deps]
 runtime = ["dbus"]

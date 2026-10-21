@@ -11,7 +11,7 @@ license = "GPL-3.0-or-later"
 [[source]]
 local = "."
 # The Cargo workspace only.
-include = ["Cargo.toml", "Cargo.lock", "init", "boot/bootgen", "pkg", "tools/ferncheck", "de/comp", "de/protocols", "de/wm", "de/settingsd", "de/indexer", "third_party/smithay"]
+include = ["Cargo.toml", "Cargo.lock", "init", "boot/bootgen", "pkg", "tools/ferncheck", "de/comp", "de/protocols", "de/wm", "de/settingsd", "de/indexer", "de/icons/Cargo.toml", "third_party/smithay"]
 
 [deps]
 build = ["pkgconf", "seatd", "libinput", "libudev", "mesa", "libglvnd", "libdrm", "libxkbcommon"]

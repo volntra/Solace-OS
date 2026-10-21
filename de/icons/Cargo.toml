@@ -1,0 +1,28 @@
+[package]
+name = "fern-icons"
+version = "0.1.0"
+description = "Fern adaptive icons: renders .fernicon icons and legacy icons in five modes, with a C API for Qt"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[lib]
+name = "fernicons"
+path = "src/lib.rs"
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+resvg = { version = "0.48.1", default-features = false }
+material-colors = { version = "0.5.0", default-features = false, features = ["std", "quantize"] }
+roxmltree = "0.21.1"
+serde = { version = "1", features = ["derive"] }
+sha2 = "0.10.9"
+toml = { version = "1.1.8", default-features = false, features = ["parse", "serde", "std"] }
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+tempfile = "3.27.0"
