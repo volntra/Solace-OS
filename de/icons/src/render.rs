@@ -148,16 +148,25 @@ fn dark_background(size: u32, key: u32) -> Pixmap {
     gradient(size, hct(h, c, 21.0), hct(h, c, 9.0), (1.0, 1.0))
 }
 
-/// Dark mode's role colours: lightness clamped to stay readable on a dark
-/// plate; a neutral role (a white glyph) takes the key's hue instead.
-fn dark_roles(roles: &BTreeMap<String, u32>, key: u32) -> BTreeMap<String, u32> {
+/// Dark mode's role colours: the designer's (`[dark]`) where given;
+/// otherwise lightness clamped to stay readable on a dark plate, and a
+/// neutral role (a white glyph) takes the key's hue.
+fn dark_roles(
+    roles: &BTreeMap<String, u32>,
+    designed: &BTreeMap<String, u32>,
+    key: u32,
+) -> BTreeMap<String, u32> {
     let (kh, kc, _) = split(color::rgb(key));
     roles
         .iter()
         .map(|(name, &c)| {
+            if let Some(&d) = designed.get(name) {
+                return (name.clone(), d);
+            }
             let (h, chroma, t) = split(color::rgb(c));
             let out = if chroma < 10.0 {
-                hct(kh, kc.max(36.0), 80.0)
+                // A grey icon's glyph stays grey.
+                hct(kh, if kc < 10.0 { kc } else { kc.max(36.0) }, 80.0)
             } else {
                 hct(h, chroma, t.clamp(65.0, 92.0))
             };
@@ -179,7 +188,9 @@ fn luminance_mask(layer: &mut Pixmap, c: Rgb, invert: bool) {
         if invert {
             l = 1.0 - l;
         }
-        let na = (f32::from(a) * l.powf(0.8)).round() as u8;
+        // Shadows and dark detail vanish; mid tones read as cut-outs.
+        let k = ((l - 0.2) / 0.75).clamp(0.0, 1.0).powf(1.1);
+        let na = (f32::from(a) * k).round() as u8;
         *px = ColorU8::from_rgba(c.red, c.green, c.blue, na).premultiply();
     }
 }
@@ -233,7 +244,10 @@ pub fn native(icon: &Icon, mode: Mode, accent: u32, size: u32) -> Result<Pixmap,
             };
             let fg = match &icon.dark_foreground {
                 Some(text) => designed_fg(&icon.roles, text)?,
-                None => designed_fg(&dark_roles(&icon.roles, icon.key), &icon.foreground)?,
+                None => designed_fg(
+                    &dark_roles(&icon.roles, &icon.dark, icon.key),
+                    &icon.foreground,
+                )?,
             };
             (bg, fg)
         }
@@ -463,6 +477,19 @@ mod tests {
         );
         let cg = at(&c, glyph.0, glyph.1);
         assert!(cg.red() > 240 && cg.blue() > 240);
+    }
+
+    #[test]
+    fn designed_dark_roles_win() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut icon = sample_icon(dir.path());
+        icon.dark.insert("primary".into(), 0xFFC94D);
+        let k = native(&icon, Mode::Dark, 0, 128).unwrap();
+        let g = at(&k, 64, 64);
+        assert!(
+            g.red() > 240 && g.blue() < 120,
+            "the designer's yellow: {g:?}"
+        );
     }
 
     #[test]

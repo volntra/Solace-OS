@@ -21,6 +21,8 @@ struct Meta {
     #[serde(default)]
     roles: BTreeMap<String, String>,
     #[serde(default)]
+    dark: BTreeMap<String, String>,
+    #[serde(default)]
     tint: Tint,
 }
 
@@ -55,6 +57,8 @@ pub struct Icon {
     pub key: u32,
     /// Role name to `0xRRGGBB`.
     pub roles: BTreeMap<String, u32>,
+    /// The designer's role colours for Dark mode (others are derived).
+    pub dark: BTreeMap<String, u32>,
     pub tint: Tint,
     pub background: String,
     pub foreground: String,
@@ -118,15 +122,22 @@ impl Icon {
         }
         let key = color::parse(&meta.key)
             .ok_or_else(|| bad(dir, format!("key {:?} is not #rrggbb", meta.key)))?;
-        let mut roles = BTreeMap::new();
-        for (name, value) in meta.roles {
-            if !ROLES.contains(&name.as_str()) {
-                return Err(bad(dir, format!("unknown role {name:?}")));
-            }
-            let c = color::parse(&value)
-                .ok_or_else(|| bad(dir, format!("role {name}: {value:?} is not #rrggbb")))?;
-            roles.insert(name, c);
-        }
+        let parse_roles =
+            |table: BTreeMap<String, String>| -> Result<BTreeMap<String, u32>, Error> {
+                let mut out = BTreeMap::new();
+                for (name, value) in table {
+                    if !ROLES.contains(&name.as_str()) {
+                        return Err(bad(dir, format!("unknown role {name:?}")));
+                    }
+                    let c = color::parse(&value).ok_or_else(|| {
+                        bad(dir, format!("role {name}: {value:?} is not #rrggbb"))
+                    })?;
+                    out.insert(name, c);
+                }
+                Ok(out)
+            };
+        let roles = parse_roles(meta.roles)?;
+        let dark = parse_roles(meta.dark)?;
         let background =
             read_svg(dir, "background.svg")?.ok_or_else(|| bad(dir, "no background.svg"))?;
         let foreground =
@@ -135,6 +146,7 @@ impl Icon {
             dir: dir.to_path_buf(),
             key,
             roles,
+            dark,
             tint: meta.tint,
             background,
             foreground,

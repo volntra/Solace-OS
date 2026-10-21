@@ -196,6 +196,14 @@ shell-demo: shell-build fonts
     cargo build -p fern-comp -p fern-wm -p fern-settingsd -p fern-indexd
     tools/shell-demo.sh
 
+# Every icon in the set in every mode, for review: build/icon-sheet.png
+icon-sheet ACCENT="#B4430F":
+    de/icons/set/gen-icons.py
+    cargo build --release -p fern-icons
+    # The Wallpaper column uses Grove's accent once `just wallpapers` has run.
+    w=build/wallpapers/grove.png; target/release/fern-icon-sheet --dir de/icons/set/icons --size 96 \
+      --accent "{{ACCENT}}" $([ -f $w ] && echo --wallpaper $w) --out build/icon-sheet.png
+
 # The same on the real display, from a text console (Ctrl+Alt+F3, log in);
 # for the Phase 6 hardware check. Log: build/shell-drm.log
 shell-drm: shell-build fonts

@@ -64,7 +64,12 @@ fn all_ids(dirs: &[PathBuf]) -> Vec<String> {
         .filter_map(|d| std::fs::read_dir(d).ok())
         .flatten()
         .filter_map(Result::ok)
-        .filter_map(|e| e.file_name().to_str()?.strip_suffix(".fernicon").map(str::to_string))
+        .filter_map(|e| {
+            e.file_name()
+                .to_str()?
+                .strip_suffix(".fernicon")
+                .map(str::to_string)
+        })
         .collect();
     ids.sort();
     ids.dedup();
@@ -74,7 +79,11 @@ fn all_ids(dirs: &[PathBuf]) -> Vec<String> {
 fn run() -> Result<(), String> {
     let args = parse()?;
     let engine = Engine::new(args.dirs.clone(), None);
-    let ids = if args.ids.is_empty() { all_ids(&args.dirs) } else { args.ids.clone() };
+    let ids = if args.ids.is_empty() {
+        all_ids(&args.dirs)
+    } else {
+        args.ids.clone()
+    };
     if ids.is_empty() {
         return Err("no icons found".into());
     }
@@ -87,18 +96,29 @@ fn run() -> Result<(), String> {
     let rows = u32::try_from(ids.len()).map_err(|_| "too many icons")?;
     let mut sheet = Pixmap::new(cell * cols, cell * rows).ok_or("sheet too large")?;
     // Backdrops: light, dark, dark, dark green, and a blue-green for glass.
-    let backdrops = [0x00EC_EFE9, 0x001A_1F1C, 0x001A_1F1C, 0x0023_3631, 0x003B_6E8C];
+    let backdrops = [
+        0x00EC_EFE9,
+        0x001A_1F1C,
+        0x001A_1F1C,
+        0x0023_3631,
+        0x003B_6E8C,
+    ];
     for (col, (&mode, &backdrop)) in Mode::ALL.iter().zip(backdrops.iter()).enumerate() {
         let col = u32::try_from(col).unwrap_or(0);
         let mut paint = Paint::default();
         let [_, r, g, b] = u32::to_be_bytes(backdrop);
         paint.set_color(Color::from_rgba8(r, g, b, 255));
         #[allow(clippy::cast_precision_loss)]
-        let rect = Rect::from_xywh((col * cell) as f32, 0.0, cell as f32, (cell * rows) as f32).ok_or("bad rect")?;
+        let rect = Rect::from_xywh((col * cell) as f32, 0.0, cell as f32, (cell * rows) as f32)
+            .ok_or("bad rect")?;
         sheet.fill_rect(rect, &paint, Transform::identity(), None);
         for (row, id) in ids.iter().enumerate() {
             let row = u32::try_from(row).unwrap_or(0);
-            let accent = if mode == Mode::Wallpaper { wallpaper_accent } else { args.accent };
+            let accent = if mode == Mode::Wallpaper {
+                wallpaper_accent
+            } else {
+                args.accent
+            };
             let image = engine
                 .render(&Request {
                     id,
@@ -108,15 +128,32 @@ fn run() -> Result<(), String> {
                     size: args.size,
                 })
                 .map_err(|e| format!("{id}: {e}"))?;
-            let icon = Pixmap::from_vec(image.data.clone(), IntSize::from_wh(image.size, image.size).ok_or("size")?)
-                .ok_or("bad image")?;
+            let icon = Pixmap::from_vec(
+                image.data.clone(),
+                IntSize::from_wh(image.size, image.size).ok_or("size")?,
+            )
+            .ok_or("bad image")?;
             let x = i32::try_from(col * cell + (cell - args.size) / 2).unwrap_or(0);
             let y = i32::try_from(row * cell + (cell - args.size) / 2).unwrap_or(0);
-            sheet.draw_pixmap(x, y, icon.as_ref(), &PixmapPaint::default(), Transform::identity(), None);
+            sheet.draw_pixmap(
+                x,
+                y,
+                icon.as_ref(),
+                &PixmapPaint::default(),
+                Transform::identity(),
+                None,
+            );
         }
     }
-    sheet.save_png(&args.out).map_err(|e| format!("{}: {e}", args.out.display()))?;
-    println!("{} icons x {} modes -> {}", ids.len(), cols, args.out.display());
+    sheet
+        .save_png(&args.out)
+        .map_err(|e| format!("{}: {e}", args.out.display()))?;
+    println!(
+        "{} icons x {} modes -> {}",
+        ids.len(),
+        cols,
+        args.out.display()
+    );
     Ok(())
 }
 

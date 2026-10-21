@@ -31,6 +31,9 @@ primary = "#FFFFFF"
 secondary = "#CFE0FF"
 highlight = "#FFC94D"
 
+[dark]                 # optional: role colours for Dark mode (without
+highlight = "#1E4E9C"  # dark layers); roles left out are derived
+
 [tint]                 # which layers the Tinted, Wallpaper and Clear
 background = true      # modes may recolour (default true): a layer that
 foreground = true      # says false keeps its own colours in every mode
@@ -70,7 +73,7 @@ one of five modes:
 | Mode | Background | Foreground |
 |---|---|---|
 | Default | as designed | as designed, roles from `[roles]` |
-| Dark | `dark-background.svg`, or a near-black gradient with a hint of the key hue | `dark-foreground.svg`, or the design with each role's lightness clamped to stay readable; neutral roles take the key hue |
+| Dark | `dark-background.svg`, or a near-black gradient with a hint of the key hue | `dark-foreground.svg`, or the design with the `[dark]` role colours; other roles get their lightness clamped to stay readable, and neutral ones take the key hue |
 | Tinted | a dark gradient in the accent's hue | a luminance mask coloured with a light accent tone |
 | Wallpaper | as Tinted, with the accent taken from the wallpaper | as Tinted |
 | Clear | frosted glass: translucent white | a white luminance mask |
