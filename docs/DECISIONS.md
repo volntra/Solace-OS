@@ -1030,3 +1030,40 @@ frame missed the next vblank (about 5 a second).
   visible on real hardware (Phase 6 hardware check); the e2e test checks
   that the request reaches the core. "Sunset" is 19:00 to 7:00 until
   location services exist.
+
+### 2026-10-21: File search by our own indexer (Phase 6, stage 5)
+
+- **Decision:** `fern-indexd` (de/indexer, Rust) indexes file and folder
+  names under the home folder in SQLite FTS5 (rusqlite, bundled) and
+  follows changes with inotify; Search asks it over the session bus
+  (`org.fern.Search1`, docs/protocols/search.md). Names only for now.
+- **Why inotify, not fanotify:** fanotify's directory events need
+  CAP_SYS_ADMIN, and the indexer runs as the user.
+- **Alternatives:** tracker/localsearch (large, GNOME-shaped, indexes
+  contents with many extractors), baloo (KDE frameworks), plocate (no
+  live updates).
+
+### 2026-10-21: The shell on a slow display (Phase 6, stage 6)
+
+Found by running the shell on the image in QEMU without KVM (software
+emulation, llvmpipe), where every frame is slow:
+- **Frame callbacks:** QtWayland redraws a window whole when a frame
+  callback is late (100 ms by default), so the shell and a slow
+  compositor kept each other busy. fern-comp starts the shell with
+  `QT_WAYLAND_FRAME_CALLBACK_TIMEOUT=0` (wait as long as it takes), and the
+  shell renders with swap interval 0 (Qt's GL swap otherwise waits up to
+  100 ms for its own frame sync and leaves the window unexposed). The core
+  already sends frame callbacks a refresh period after an idle frame.
+- **One GL context:** every new GL context compiled its shaders again
+  (~20 s per window there); the shell's windows share one
+  (`Qt::AA_ShareOpenGLContexts`). The banners window stays mapped at a
+  fixed size (input region empty when nothing shows), so a notification
+  never waits for a new window or a resize round trip.
+- **No blur in software:** when the DRM renderer is software (llvmpipe),
+  the core draws materials without the blur passes (a frame took ~80 s
+  with them). `FERN_COMP_BLUR=0/1` overrides, set in
+  `/etc/fern/session.env`, which the session sources (the Phase 4 QEMU
+  test turns blur on there to check it).
+- **Locales:** Qt needs a UTF-8 locale for file names; compiled locales
+  come from a separate `glibc-locales` package so adding one does not
+  rebuild everything that depends on glibc.
