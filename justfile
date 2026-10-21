@@ -173,9 +173,9 @@ design-test: shell-build
 # in target/tmp/fern-comp-render/wm_shell_*.png.
 # Shell tests, unit and end to end (the Phase 6 demo, automated)
 shell-test: shell-build fonts
-    for t in calculator apps badges nightshift screenshots; do QT_QPA_PLATFORM=offscreen build/de/shell/tst_$t; done
+    for t in calculator apps badges nightshift screenshots filesearch; do QT_QPA_PLATFORM=offscreen build/de/shell/tst_$t; done
     dbus-run-session --config-file="$(dirname "$(dirname "$(command -v dbus-daemon)")")/share/dbus-1/session.conf" -- build/de/shell/tst_tray
-    cargo build -p fern-settingsd -p fern-wm
+    cargo build -p fern-settingsd -p fern-wm -p fern-indexd
     FERN_SHELL_BIN="$PWD/build/de/shell/fern-shell" cargo test -p fern-comp --test render -- wm_shell
 
 # Phase 6 demo, nested in your desktop: the whole desktop with demo apps

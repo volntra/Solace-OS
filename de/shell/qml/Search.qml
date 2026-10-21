@@ -27,7 +27,15 @@ Material {
         { name: "restart", title: qsTr("Restart…"), symbol: "rotate-ccw", words: "restart reboot", enabled: System.canPower },
         { name: "shutdown", title: qsTr("Shut Down…"), symbol: "power", words: "shut down power off turn off", enabled: System.canPower }
     ]
-    // Every row: {kind: "answer"|"app"|"action", ...}.
+    // Files and folders, from the indexer (none when it is not running).
+    readonly property FileSearch files: FileSearch { text: search.query }
+    function fileSymbol(f) {
+        if (f.folder)
+            return "folder"
+        return /\.(png|jpe?g|gif|webp|svg|avif|heic|bmp|tiff?)$/i.test(f.name) ? "image" : "file"
+    }
+
+    // Every row: {kind: "answer"|"app"|"file"|"action", ...}.
     readonly property var rows: {
         const out = []
         if (!query.length)
@@ -36,6 +44,8 @@ Material {
             out.push({ kind: "answer", title: answer, subtitle: qsTr("Return copies it") })
         for (const a of Apps.search(query, 6))
             out.push({ kind: "app", id: a.id, title: a.name, subtitle: a.comment, icon: a.icon })
+        for (const f of files.results)
+            out.push({ kind: "file", path: f.path, title: f.name, subtitle: f.where, symbol: fileSymbol(f) })
         const q = query.toLowerCase()
         for (const a of actions)
             if (a.enabled !== false && (a.title.toLowerCase().includes(q) || a.words.split(" ").some(w => w.startsWith(q))))
@@ -54,6 +64,9 @@ Material {
             clipboard.copy()
         } else if (row.kind === "app") {
             Apps.launch(row.id)
+        } else if (row.kind === "file") {
+            if (!Apps.open(row.path))
+                Notifications.post(qsTr("Search"), qsTr("No app can open “%1”").arg(row.title), row.subtitle)
         } else if (row.name === "dark" || row.name === "light") {
             Theme.appearance.theme = row.name
         } else if (row.name === "restart") {
@@ -72,7 +85,7 @@ Material {
         width: parent.width - 24
         height: 44
         font.pixelSize: Theme.size(20)
-        placeholderText: qsTr("Search apps, actions, sums")
+        placeholderText: qsTr("Search apps, files, actions, sums")
         focus: true
         Component.onCompleted: forceActiveFocus()
         Keys.onDownPressed: search.current = Math.min(search.rows.length - 1, search.current + 1)

@@ -51,6 +51,40 @@ Exec=should-not-win
         QCOMPARE(Apps::execArgs(QStringLiteral("app \"\"")), (QStringList{"app", ""}));
     }
 
+    void exec_files()
+    {
+        const QStringList one{QStringLiteral("/home/sam/My File.txt")};
+        QCOMPARE(Apps::execArgs(QStringLiteral("edit %f"), one), (QStringList{"edit", "/home/sam/My File.txt"}));
+        QCOMPARE(Apps::execArgs(QStringLiteral("edit %U --new"), one),
+                 (QStringList{"edit", "file:///home/sam/My%20File.txt", "--new"}));
+        QCOMPARE(Apps::execArgs(QStringLiteral("edit %F"), {"/a", "/b"}), (QStringList{"edit", "/a", "/b"}));
+        QCOMPARE(Apps::execArgs(QStringLiteral("edit --file=%f"), one), (QStringList{"edit", "--file=/home/sam/My File.txt"}));
+        // No files: the codes go, as for launching.
+        QCOMPARE(Apps::execArgs(QStringLiteral("edit %F %i")), QStringList{"edit"});
+    }
+    void choosing_apps()
+    {
+        QList<DesktopEntry> apps;
+        auto entry = [&](const char *id, QStringList mimes) {
+            DesktopEntry e;
+            e.id = QString::fromLatin1(id);
+            e.mimeTypes = mimes;
+            apps.append(e);
+        };
+        entry("org.example.Viewer", {"image/png", "image/jpeg"});
+        entry("org.example.Editor", {"text/plain"});
+        entry("org.example.Paint", {"image/png"});
+        const QStringList png{"image/png"};
+        // First that handles it, without a default.
+        QCOMPARE(Apps::chooseApp(png, apps, {}), QStringLiteral("org.example.Viewer"));
+        // The user's default wins; one not installed is skipped.
+        const QByteArray user = "[Added Associations]\nimage/png=org.example.Viewer.desktop;\n"
+                                "[Default Applications]\nimage/png=org.gone.App.desktop;org.example.Paint.desktop;\n";
+        QCOMPARE(Apps::chooseApp(png, apps, {user}), QStringLiteral("org.example.Paint"));
+        // A file type nobody handles falls back to its parent type.
+        QCOMPARE(Apps::chooseApp({"text/x-csrc", "text/plain"}, apps, {}), QStringLiteral("org.example.Editor"));
+        QVERIFY(Apps::chooseApp({"application/x-nothing"}, apps, {user}).isEmpty());
+    }
     void search_order()
     {
         QTemporaryDir dir;

@@ -1204,6 +1204,12 @@ fn wm_shell_desktop(h: &mut Harness) -> Result {
         )
         .map_err(|e| e.to_string())?;
     }
+    // An app for text files: it shows the file it opened as its title.
+    std::fs::write(
+        apps.join("org.fern.Texts.desktop"),
+        format!("[Desktop Entry]\nType=Application\nName=Texts\nMimeType=text/plain;\nExec={client} --title %f --app-id org.fern.Texts --size 420x260\n"),
+    )
+    .map_err(|e| e.to_string())?;
     std::fs::write(
         config.join("fern/dock.toml"),
         "pinned = [\"org.fern.Notes\", \"org.fern.Mail\", \"org.fern.Photos\"]\n",
@@ -1246,6 +1252,19 @@ fn wm_shell_desktop(h: &mut Harness) -> Result {
                 settingsd.display()
             )
         })?;
+    h.clients.push(daemon);
+    // The file indexer, over a home folder with one document in it.
+    let documents = tmp.join("home/Documents");
+    std::fs::create_dir_all(&documents).map_err(|e| e.to_string())?;
+    std::fs::write(documents.join("Trip notes.txt"), "pack the tent").map_err(|e| e.to_string())?;
+    let indexd = root.join("target/debug/fern-indexd");
+    let daemon = Command::new(&indexd)
+        .args(["--address", &address, "--root"])
+        .arg(tmp.join("home"))
+        .arg("--db")
+        .arg(tmp.join("index.sqlite"))
+        .spawn()
+        .map_err(|e| format!("{} (cargo build -p fern-indexd): {e}", indexd.display()))?;
     h.clients.push(daemon);
 
     let env: Vec<(String, std::ffi::OsString)> = vec![
@@ -1568,6 +1587,33 @@ fn wm_shell_desktop(h: &mut Harness) -> Result {
     } else {
         println!("    dark mode skipped: no build/wallpapers (just wallpapers)");
     }
+
+    // Files in Search: "trip" finds Documents/Trip notes.txt through the
+    // indexer, and Return opens it in the app for text files, which gets
+    // the file's path.
+    key(h, 8, 0x20)?;
+    wait_long(h, "Search did not open again", |h| {
+        has_layer(h, "fern-popups")
+    })?;
+    settle_for(h, Duration::from_millis(500))?;
+    for k in ['t', 'r', 'i', 'p'] {
+        key_press(h, k as u32)?;
+    }
+    settle_for(h, Duration::from_secs(2))?;
+    h.shot("search-file")?;
+    key_press(h, 0xff0d)?;
+    let w = h.wait_for_window("Texts, from Search")?;
+    let title = w.toplevel().and_then(|t| {
+        smithay::wayland::compositor::with_states(t.wl_surface(), |st| {
+            st.data_map
+                .get::<smithay::wayland::shell::xdg::XdgToplevelSurfaceData>()
+                .and_then(|d| d.lock().ok().and_then(|d| d.title.clone()))
+        })
+    });
+    let want = documents.join("Trip notes.txt").display().to_string();
+    check(title.as_deref() == Some(want.as_str()), || {
+        format!("Search did not open the file: a window titled {title:?}")
+    })?;
     Ok(())
 }
 
@@ -1731,6 +1777,9 @@ fn key_press(h: &mut Harness, keysym: u32) -> Result {
         0x69 => 23,    // i
         0x6c => 38,    // l
         0x6d => 50,    // m
+        0x74 => 20,    // t
+        0x72 => 19,    // r
+        0x70 => 25,    // p
         0xff51 => 105, // Left
         0xff53 => 106, // Right
         0xff54 => 108, // Down

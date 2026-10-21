@@ -12,7 +12,7 @@ struct DesktopEntry
 {
     QString id;       // file name without .desktop: org.fern.Files
     QString name, genericName, comment, exec, icon, wmClass;
-    QStringList keywords, categories;
+    QStringList keywords, categories, mimeTypes;
     bool terminal = false;
     bool hidden = false; // NoDisplay or Hidden: not listed, still launchable
 };
@@ -45,10 +45,18 @@ public:
     // keywords, comment.
     Q_INVOKABLE QVariantList search(const QString &text, int limit = 8) const;
     Q_INVOKABLE bool launch(const QString &id);
+    // Opens a file or folder in its app; false when no app can.
+    Q_INVOKABLE bool open(const QString &path);
 
     // Parsing, public for tests.
     static DesktopEntry parse(const QString &id, const QByteArray &data, const QString &locale);
-    static QStringList execArgs(const QString &exec);
+    static QStringList execArgs(const QString &exec, const QStringList &files = {});
+    // The app for a file of MIME type `mime` (with its parent types, most
+    // specific first): the user's default from mimeapps.list files (most
+    // important first), else the first entry handling it. Empty if none.
+    static QString chooseApp(const QStringList &mimeChain, const QList<DesktopEntry> &apps,
+                             const QList<QByteArray> &mimeappsLists);
+    QString appFor(const QString &path) const;
     static int score(const DesktopEntry &e, const QString &text);
     void loadFrom(const QStringList &dirs);
     static QString findIcon(const QString &icon, const QStringList &dataDirs);

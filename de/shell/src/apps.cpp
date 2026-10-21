@@ -2,7 +2,9 @@
 
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QLocale>
+#include <QMimeDatabase>
 #include <QProcess>
 #include <QStandardPaths>
 #include <QUrl>
@@ -120,6 +122,7 @@ DesktopEntry Apps::parse(const QString &id, const QByteArray &data, const QStrin
         else if (key == QLatin1String("Icon")) e.icon = value;
         else if (key == QLatin1String("StartupWMClass")) e.wmClass = value;
         else if (key == QLatin1String("Categories")) e.categories = value.split(QLatin1Char(';'), Qt::SkipEmptyParts);
+        else if (key == QLatin1String("MimeType")) e.mimeTypes = value.split(QLatin1Char(';'), Qt::SkipEmptyParts);
         else if (key == QLatin1String("Terminal")) e.terminal = value == QLatin1String("true");
         else if (key == QLatin1String("Type")) type = value;
         else if (key == QLatin1String("NoDisplay") || key == QLatin1String("Hidden"))
@@ -130,13 +133,15 @@ DesktopEntry Apps::parse(const QString &id, const QByteArray &data, const QStrin
     return e;
 }
 
-QStringList Apps::execArgs(const QString &exec)
+QStringList Apps::execArgs(const QString &exec, const QStringList &files)
 {
-    // The Exec key's quoting rules (Desktop Entry spec, "The Exec key"),
-    // with the field codes dropped: we never pass files from here.
+    // The Exec key's quoting rules (Desktop Entry spec, "The Exec key").
+    // %f and %u take the first file (as a path or a file URL), %F and %U
+    // all of them as separate arguments; the other field codes go.
     QStringList args;
     QString cur;
     bool quoted = false, any = false;
+    const auto url = [](const QString &f) { return QUrl::fromLocalFile(f).toString(QUrl::FullyEncoded); };
     for (int i = 0; i < exec.size(); ++i) {
         const QChar c = exec.at(i);
         if (quoted) {
@@ -157,9 +162,23 @@ QStringList Apps::execArgs(const QString &exec)
             any = false;
         } else if (c == QLatin1Char('%') && i + 1 < exec.size()) {
             const QChar code = exec.at(++i);
-            if (code == QLatin1Char('%'))
+            const bool alone = cur.isEmpty() && !any
+                && (i + 1 >= exec.size() || exec.at(i + 1).isSpace());
+            if (code == QLatin1Char('%')) {
                 cur += code;
-            // %f %F %u %U %i %c %k and the deprecated ones: nothing.
+            } else if ((code == QLatin1Char('F') || code == QLatin1Char('U')) && alone) {
+                for (const QString &f : files)
+                    args.append(code == QLatin1Char('F') ? f : url(f));
+                // The list stands for the whole argument.
+                ++i;
+            } else if ((code == QLatin1Char('f') || code == QLatin1Char('F')) && !files.isEmpty()) {
+                cur += files.first();
+                any = true;
+            } else if ((code == QLatin1Char('u') || code == QLatin1Char('U')) && !files.isEmpty()) {
+                cur += url(files.first());
+                any = true;
+            }
+            // %i %c %k and the deprecated ones: nothing.
         } else {
             cur += c;
         }
@@ -296,6 +315,86 @@ QVariantList Apps::search(const QString &text, int limit) const
                                {QStringLiteral("icon"), e->icon}});
     }
     return out;
+}
+
+QString Apps::chooseApp(const QStringList &mimeChain, const QList<DesktopEntry> &apps,
+                        const QList<QByteArray> &mimeappsLists)
+{
+    auto known = [&](const QString &id) {
+        return std::any_of(apps.cbegin(), apps.cend(), [&](const DesktopEntry &e) { return e.id == id; });
+    };
+    for (const QString &mime : mimeChain) {
+        // [Default Applications] mime=a.desktop;b.desktop; the first one
+        // installed wins.
+        for (const QByteArray &list : mimeappsLists) {
+            bool section = false;
+            for (const QByteArray &raw : list.split('\n')) {
+                const QByteArray line = raw.trimmed();
+                if (line.startsWith('[')) {
+                    section = line == "[Default Applications]";
+                    continue;
+                }
+                const int eq = line.indexOf('=');
+                if (!section || eq < 0 || line.left(eq).trimmed() != mime.toUtf8())
+                    continue;
+                for (const QByteArray &d : line.mid(eq + 1).split(';')) {
+                    QString id = QString::fromUtf8(d.trimmed());
+                    if (id.endsWith(QLatin1String(".desktop")))
+                        id.chop(8);
+                    if (!id.isEmpty() && known(id))
+                        return id;
+                }
+            }
+        }
+        for (const DesktopEntry &e : apps)
+            if (e.mimeTypes.contains(mime))
+                return e.id;
+    }
+    return {};
+}
+
+QString Apps::appFor(const QString &path) const
+{
+    QMimeDatabase db;
+    const QMimeType type = db.mimeTypeForFile(path);
+    QStringList chain{type.name()};
+    chain += type.allAncestors();
+    QList<QByteArray> lists;
+    QStringList configDirs{qEnvironmentVariable("XDG_CONFIG_HOME", QDir::homePath() + QStringLiteral("/.config"))};
+    configDirs += qEnvironmentVariable("XDG_CONFIG_DIRS", QStringLiteral("/etc/xdg")).split(QLatin1Char(':'), Qt::SkipEmptyParts);
+    for (const QString &d : appDirs())
+        configDirs.append(d);
+    for (const QString &d : configDirs) {
+        QFile f(QDir(d).filePath(QStringLiteral("mimeapps.list")));
+        if (f.open(QIODevice::ReadOnly))
+            lists.append(f.readAll());
+    }
+    return chooseApp(chain, m_apps, lists);
+}
+
+bool Apps::open(const QString &path)
+{
+    if (!QFileInfo::exists(path))
+        return false;
+    const QString id = appFor(path);
+    for (const DesktopEntry &e : std::as_const(m_apps)) {
+        if (e.id != id)
+            continue;
+        QStringList args = execArgs(e.exec, {path});
+        if (args.isEmpty())
+            return false;
+        const QString program = args.takeFirst();
+        QProcess p;
+        p.setProgram(program);
+        p.setArguments(args);
+        p.setWorkingDirectory(QFileInfo(path).absolutePath());
+        p.setStandardInputFile(QProcess::nullDevice());
+        if (!p.startDetached())
+            return false;
+        emit launched(id);
+        return true;
+    }
+    return false;
 }
 
 bool Apps::launch(const QString &id)

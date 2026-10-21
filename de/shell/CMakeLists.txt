@@ -21,6 +21,7 @@ qt_add_qml_module(fern-shell
         src/tray.h src/tray.cpp
         src/nightshift.h src/nightshift.cpp
         src/screenshots.h src/screenshots.cpp
+        src/filesearch.h src/filesearch.cpp
     QML_FILES
         qml/Main.qml
         qml/MenuBar.qml
@@ -67,6 +68,9 @@ if(FERN_BUILD_TESTS)
     qt_add_executable(tst_screenshots tests/tst_screenshots.cpp src/screenshots.cpp)
     target_include_directories(tst_screenshots PRIVATE src)
     target_link_libraries(tst_screenshots PRIVATE Qt6::Test Qt6::Gui Qt6::Qml)
+    qt_add_executable(tst_filesearch tests/tst_filesearch.cpp src/filesearch.cpp)
+    target_include_directories(tst_filesearch PRIVATE src)
+    target_link_libraries(tst_filesearch PRIVATE Qt6::Test Qt6::DBus)
     qt_add_executable(tst_apps tests/tst_apps.cpp src/apps.cpp)
     target_include_directories(tst_apps PRIVATE src)
     target_link_libraries(tst_apps PRIVATE Qt6::Test Qt6::Qml Qt6::Gui)
