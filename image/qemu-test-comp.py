@@ -100,6 +100,10 @@ def start_client(c, args):
 
 
 TITLEBAR = 28
+# The shell's menu bar and dock: the work area is between them (the dock
+# keeps its 52 px icons, 7 px padding twice and a 6 px margin).
+MENUBAR = 28
+DOCK_ZONE = 72
 GAP = 8
 TITLEBAR_COLOURS = [(0xEA, 0xEC, 0xE7), (0xF3, 0xF4, 0xF1)]
 
@@ -169,7 +173,7 @@ def main():
         sx, sy = GAP, GAP + TITLEBAR
         wait_for(
             c, "filled",
-            lambda s: has_stripes(s, sh // 2, 40, sw - 40) and has_stripes(s, sh - GAP - 20, 40, sw - 40),
+            lambda s: has_stripes(s, sh // 2, 40, sw - 40) and has_stripes(s, sh - DOCK_ZONE - GAP - 20, 40, sw - 40),
             "the striped window filling the screen (Super+Up)",
         )
         ok("Super+Up: the window fills the screen")
@@ -183,7 +187,8 @@ def main():
         slow = 1200
         wait_for(
             c, "glass-open",
-            lambda s: near(s.pixel(sw * 3 // 4, GAP + TITLEBAR // 2 - 6), TITLEBAR_COLOURS[1], 3),
+            # Below the shell's menu bar: windows fill the work area.
+            lambda s: near(s.pixel(sw * 3 // 4, MENUBAR + GAP + TITLEBAR // 2 - 6), TITLEBAR_COLOURS[1], 3),
             "the glass window taking focus",
             slow,
         )
@@ -201,7 +206,7 @@ def main():
         # left half) is cut: its corner pixel
         # shows the wallpaper, a pixel one radius in along the edge shows a
         # stripe.
-        bottom = sh - GAP - 1
+        bottom = sh - DOCK_ZONE - GAP - 1
         right = sw - GAP - 1
         corner, edge = shot.pixel(right, bottom), shot.pixel(right - 14, bottom)
         if any(near(corner, b, 40) for b in BANDS) or not any(near(edge, b, 12) for b in BANDS):

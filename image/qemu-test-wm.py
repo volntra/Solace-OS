@@ -29,6 +29,10 @@ MONITOR = f"{OUT}/qemu-test-wm.monitor"
 CLIENT = "/usr/lib/fern/test/fern-testclient"
 TITLEBAR = 28
 GAP = 8
+# The shell keeps the menu bar's height at the top and the dock's room at
+# the bottom out of the work area (generous: the dock's size varies).
+MENUBAR = 28
+DOCK_ROOM = 110
 RED = (0xFF, 0x5A, 0x5F)
 BLUE = (0x3A, 0x86, 0xFF)
 LEAF = (0x7C, 0xC4, 0x8A)
@@ -76,11 +80,11 @@ def start_client(c, args):
 
 
 def left_half(s, colour):
-    return s.fraction(colour, x0=GAP + 10, y0=GAP + TITLEBAR + 10, x1=s.w // 2 - 10, y1=s.h - GAP - 10) > 0.95
+    return s.fraction(colour, x0=GAP + 10, y0=MENUBAR + GAP + TITLEBAR + 10, x1=s.w // 2 - 10, y1=s.h - DOCK_ROOM) > 0.95
 
 
 def right_half(s, colour):
-    return s.fraction(colour, x0=s.w // 2 + 10, y0=GAP + TITLEBAR + 10, x1=s.w - GAP - 10, y1=s.h - GAP - 10) > 0.95
+    return s.fraction(colour, x0=s.w // 2 + 10, y0=MENUBAR + GAP + TITLEBAR + 10, x1=s.w - GAP - 10, y1=s.h - DOCK_ROOM) > 0.95
 
 
 # The image has no procps: processes are found in /proc.
