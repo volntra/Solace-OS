@@ -432,6 +432,30 @@ pub fn build(recipe: &Recipe, cfg: &BuildConfig, on: &mut dyn FnMut(BuildEvent))
     })
 }
 
+/// Records the current build stamp of `recipe` when it has none and its
+/// packages (this version) are already in the repo, so the next build
+/// skips it: for when the stamp store was lost (`spk bootstrap --adopt`).
+/// Never builds and never touches packages. It cannot tell whether the
+/// recipe changed since its packages were built, so the caller removes
+/// the stamps of recipes known to have changed (or rebuilds them with
+/// `--force`); their dependents' stamps then no longer match either.
+///
+/// # Errors
+/// The repo cannot be read or the stamp cannot be written.
+pub fn adopt(recipe: &Recipe, cfg: &BuildConfig) -> Result<bool> {
+    let keyring = keyring_of(cfg);
+    let stamp_path = cfg.work.join("stamps").join(format!("{}.stamp", recipe.name));
+    if stamp_path.exists() || !outputs_in_repo(recipe, cfg, &keyring)? {
+        return Ok(false);
+    }
+    let stamp = build_stamp(recipe, cfg, &keyring)?;
+    if let Some(d) = stamp_path.parent() {
+        fs::create_dir_all(d).at(d)?;
+    }
+    fs::write(&stamp_path, stamp).at(&stamp_path)?;
+    Ok(true)
+}
+
 /// Adds freshly built packages to the repo, records the build stamp, and
 /// (unless `keep_work`) removes the work trees.
 fn publish(

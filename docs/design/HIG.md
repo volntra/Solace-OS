@@ -176,8 +176,9 @@ opens the next one.
 - Drag a pinned app to reorder it.
 - With autohide, the dock slides out of sight on the smooth spring, and a
   3 px strip at the screen edge brings it back.
-- Until the adaptive icons arrive (Phase 7), an app without an icon gets
-  a tile: a gradient picked from its id, with its initial.
+- Icons are adaptive (see Icons below). An app with no icon of any kind
+  gets the generic app icon; Downloads and Trash use the folder and Trash
+  icons.
 
 **Search** (Super+Space). A 640 px popover 18 % down the screen, with a
 44 px field in Inter 20. Results come in this order:
@@ -213,6 +214,40 @@ It shows a symbol and a 16-step level, and fades after 1.5 s.
 **Wallpaper.** The compositor draws the wallpaper. A change crossfades
 over 0.88 s on the gentle curve. In dark mode the shell shows the dark
 partner, which by default is Grove at night.
+
+## Icons *(Phase 7)*
+
+Every icon sits on the same plate: a superellipse (n = 5) 88 % of the
+icon's square, with a soft shadow below, a faint outline and a light top
+edge (`de/design/shape/squircle.toml`; docs/formats/icon.md). The engine
+draws them; nothing else draws the shape.
+
+![Icons in the five modes](img/icons-modes.png)
+
+*Left to right: Default, Dark, Tinted (orange accent), Wallpaper (Grove's
+accent), Clear.*
+
+- **Modes** (`appearance.icon_mode`): Default as designed; Dark, a
+  near-black plate with the glyph in the icon's key hue (or the
+  designer's dark colours); Tinted, a dark plate in the accent's hue
+  with the glyph in a light accent tone; Wallpaper, the same with the
+  wallpaper's accent; Clear, frosted glass with a white glyph. `auto`
+  (the default) is Default in light mode and Dark in dark mode.
+- **Drawing an icon.** Background on the full 1024 square, lighter at
+  the top; a light glyph (white or near it), because the accent modes
+  turn lightness into opacity: light shapes stay solid and dark detail
+  becomes a cut-out. Keep shapes between about 200 and 824. Small
+  glyphs on folders, drives and documents are Lucide symbols at stroke
+  2.2 to 2.6.
+- **Folders** are a white folder on a sky-blue plate, with a glyph for
+  the place; **documents** a white page with a folded corner on a plate
+  in the type's colour; **drives** a white glyph on a coloured plate.
+- **Changes** (mode, accent, wallpaper) crossfade over 0.45 s.
+- Apps without a `.fernicon` keep their own icon, on a pale plate in its
+  dominant colour (Dark: a deep one); in the accent modes it is tinted
+  like ours.
+- The app switcher shows each app's icon, 48 px, on the lower right of
+  its window's picture.
 
 ## Windows *(Phase 5)*
 

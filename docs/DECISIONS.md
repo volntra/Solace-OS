@@ -1068,3 +1068,74 @@ emulation, llvmpipe), where every frame is slow:
 - **Locales:** Qt needs a UTF-8 locale for file names; compiled locales
   come from a separate `glibc-locales` package so adding one does not
   rebuild everything that depends on glibc.
+
+### 2026-10-21: The adaptive icon engine (Phase 7)
+
+- **Decision:** `de/icons` (fern-icons, Rust) renders icons with resvg
+  and tiny-skia, works in HCT through `material-colors` (an MIT/Apache
+  port of Material Color Utilities: CAM16/HCT, the Celebi quantizer and
+  its scoring for the wallpaper's accent), and is the only code that
+  draws the plate shape, defined once in `de/design/shape/squircle.toml`
+  (a superellipse, n = 5, 88% of the square). Qt reaches it through a C
+  API in `libfernicons.so` (soname set by `build.rs`), wrapped by an
+  async image provider (`image://fernicon/MODE/ACCENT/ID[/LEGACY]`); the
+  compositor links the Rust crate directly.
+- **Rendering:** both layers on a 1024 canvas, clipped to the plate;
+  roles recoloured by rewriting the tagged attributes in the SVG text
+  (roxmltree positions) before parsing, so the designer's SVG stays
+  plain SVG. The accent modes turn lightness into opacity with a curve
+  that drops shadows and dark detail (cut-outs) and keeps light shapes
+  solid; a legacy icon whose glyph is mostly dark is inverted first.
+- **Format additions:** `[dark]` in icon.toml lets the designer pick role
+  colours for Dark mode without drawing dark layers (a document's glyph
+  stays dark on its light page). Icon layers may not contain text,
+  pictures, `<use>`, `<style>` or outside references.
+- **Cache:** `~/.cache/fern/icons/<sha256>.png`, keyed by engine version,
+  the icon's file names, sizes and change times, the mode, the accent
+  (only in the modes that use it) and the pixel size; plus 512 in memory.
+  A 12-icon dock changes mode in 3.1 ms from a warm cache (target 16 ms);
+  cold, 66 ms (`just icons-bench`).
+- **Settings:** `appearance.icon_mode` (`auto` default, `default`,
+  `dark`, `tinted`, `wallpaper`, `clear`): `auto` follows dark mode, as
+  the five modes alone would leave light icons in a dark desktop. The
+  shell sends the resolved mode and accent to the compositor
+  (`fern_shell_v1.set_icon_style`) for the icons it draws itself.
+- **The wallpaper accent** is also an accent for the whole desktop
+  (`appearance.accent = wallpaper`): its HCT tones 40 (under white text),
+  80 (under Ink) and 35 (text) keep WCAG AA for any hue (tested on nine).
+- **Alternatives:** librsvg (C, GNOME stack, a second SVG engine beside
+  Qt's), drawing icons in QML shaders (Qt only: the compositor's
+  switcher and the installer's preview could not share it), a hand port
+  of HCT (the existing port is tested against the reference values).
+
+### 2026-10-21: The icon set is generated (Phase 7)
+
+- **Decision:** `de/icons/set/gen-icons.py` writes all 43 icons (4
+  built-in apps, a generic app icon, 13 folders, two Trash states, 6
+  drives, 17 file types) from a few shared shapes; the output is
+  committed and checked by a test that renders every icon in every mode.
+  Small glyphs are Lucide symbols (ISC), fetched from the same
+  `lucide-static` release as the UI symbols.
+- **Why:** one style everywhere (same plate, same light, same shadow,
+  same glyph weight), and a change to the style is one edit.
+- **Not done:** overrides for the ~40 most common Flatpak apps
+  (CLAUDE.md 6.9). Drawing them means either redrawing other projects'
+  logos in our style (their trademarks; most logo policies forbid
+  modified versions) or original metaphor icons (a globe for a browser)
+  that users would not recognise as their app. Until the human chooses,
+  those apps keep their own icon on our plate, which every mode already
+  tints like ours. Open question in STATUS.md.
+
+### 2026-10-21: `spk bootstrap --adopt`
+
+- **Decision:** a recovery flag that records build stamps for packages
+  already in the stage's repo (same version-release), building nothing,
+  for when `build/work` (where stamps live) is deleted to free disk.
+  Afterwards the stamps of recipes known to have changed are deleted, so
+  they and their dependents rebuild. Used once on 2026-10-21: adopted 86
+  packages, then rebuilt the eight built from this repository.
+- **Why:** without it, losing the stamps meant rebuilding the whole
+  system stage (hours) though every package was current.
+- **Alternatives:** keeping stamps in the repo next to the packages
+  (better long term: the stamp would travel with the package; noted for
+  Phase 14), or storing them in package manifests.

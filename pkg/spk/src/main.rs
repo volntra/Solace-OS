@@ -150,6 +150,12 @@ struct BootstrapArgs {
     /// Stop after this recipe (useful while writing recipes)
     #[arg(long)]
     until: Option<String>,
+    /// Only record build stamps for packages already in the repos (after
+    /// the work directory and its stamps were lost); builds nothing. Then
+    /// delete the stamps of recipes that changed since those packages were
+    /// built, and bootstrap again.
+    #[arg(long)]
+    adopt: bool,
     #[command(flatten)]
     opts: BuildOpts,
 }
@@ -838,7 +844,18 @@ fn bootstrap_cmd(a: &BootstrapArgs) -> Result<()> {
         // Each stage keeps its own build stamps.
         cfg.work = a.opts.work.join(&st.name);
         let order: Vec<&libspk::recipe::Recipe> = recipes.iter().collect();
-        run_builds(&order, &cfg, &format!("{} ", st.name))?;
+        if a.adopt {
+            for r in &order {
+                let what = if build::adopt(r, &cfg).with_context(|| format!("adopting {}", r.name))? {
+                    "adopted"
+                } else {
+                    "left as is"
+                };
+                anstream::println!("{} {} {} ({what})", "=".dimmed(), r.name, r.pkg_version());
+            }
+        } else {
+            run_builds(&order, &cfg, &format!("{} ", st.name))?;
+        }
         if a.until.as_ref().is_some_and(|u| st.recipes.contains(u)) {
             break;
         }
