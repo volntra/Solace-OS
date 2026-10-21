@@ -27,6 +27,11 @@ Repository: https://github.com/volntra/Solace-OS (`main`).
   `target/tmp/fern-comp-render/wm_shell_*.png`.
 - `just check` now includes the Qt unit tests (`just qt-test`).
 
+Verified 2026-10-21 on the image built from this commit's sources, under
+software emulation (no KVM here): `just qemu-test-shell`,
+`just qemu-test-wm` and `just qemu-test-comp` all pass, and so does
+`just check`.
+
 Keys: Super+Space Search; Shift+Super+3 (or Print) a screenshot of the
 display, Shift+Super+4 of a dragged rectangle; volume and brightness
 keys show the HUD; in a menu, arrows move, Left/Right go to the next menu

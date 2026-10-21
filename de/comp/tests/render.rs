@@ -1636,7 +1636,9 @@ fn wm_shell_desktop(h: &mut Harness) -> Result {
         .deserialize::<zbus::zvariant::OwnedValue>()
         .map_err(|e| format!("notifications.dnd: {e}"))
         .and_then(|v| bool::try_from(v).map_err(|e| format!("notifications.dnd: {e}")))?;
-    check(!dnd, || "\"notification\" in Search turned on Do Not Disturb".into())?;
+    check(!dnd, || {
+        "\"notification\" in Search turned on Do Not Disturb".into()
+    })?;
     check(has_layer(h, "fern-popups"), || {
         "\"notification\" in Search opened nothing".into()
     })?;
@@ -1828,8 +1830,8 @@ fn click_at(h: &mut Harness, x: f64, y: f64) -> Result {
 fn key_press(h: &mut Harness, keysym: u32) -> Result {
     // xkb keycodes are evdev + 8. Letters a-z, in alphabetical order.
     const LETTERS: [u32; 26] = [
-        30, 48, 46, 32, 18, 33, 34, 35, 23, 36, 37, 38, 50, 49, 24, 25, 16, 19, 31, 20, 22, 47,
-        17, 45, 21, 44,
+        30, 48, 46, 32, 18, 33, 34, 35, 23, 36, 37, 38, 50, 49, 24, 25, 16, 19, 31, 20, 22, 47, 17,
+        45, 21, 44,
     ];
     let evdev = match keysym {
         0x61..=0x7a => LETTERS[(keysym - 0x61) as usize],
