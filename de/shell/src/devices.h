@@ -46,7 +46,7 @@ public:
 
     // Read everything again (when the control center opens).
     Q_INVOKABLE void refresh();
-    // Volume keys: one step up or down (1/16 of the range, like macOS).
+    // Volume keys: one step up or down (1/16 of the range).
     Q_INVOKABLE void stepVolume(int direction);
     Q_INVOKABLE void stepBrightness(int direction);
 

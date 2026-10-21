@@ -90,8 +90,7 @@ public:
     // An app's dock icon is at `rect` on the dock's `window`.
     Q_INVOKABLE void setIconRect(int uid, QWindow *window, const QRectF &rect);
     // Brings an app forward: all its windows, the last active on top; a
-    // second click on the frontmost app minimizes it (macOS does the same
-    // for a single window).
+    // second click on the frontmost app minimizes it.
     Q_INVOKABLE void activateApp(const QString &appId);
     Q_INVOKABLE void closeApp(const QString &appId);
 

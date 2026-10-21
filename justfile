@@ -175,14 +175,19 @@ shell-build:
 design-test: shell-build
     QT_QPA_PLATFORM=offscreen build/de/design/tst_design
 
-# Models run offscreen, tray and menus on a private bus, then the real
-# shell on the compositor drives the menu bar, dock, Search, menus, the
-# global menu, a status icon, the control center and a banner; screenshots
-# in target/tmp/fern-comp-render/wm_shell_*.png.
-# Shell tests, unit and end to end (the Phase 6 demo, automated)
-shell-test: shell-build fonts
+# Design system and shell models offscreen, tray and menus on a private bus.
+# The Qt unit tests (part of `just check`)
+qt-test: shell-build
+    QT_QPA_PLATFORM=offscreen build/de/design/tst_design
     for t in calculator apps badges nightshift screenshots filesearch; do QT_QPA_PLATFORM=offscreen build/de/shell/tst_$t; done
     dbus-run-session --config-file="$(dirname "$(dirname "$(command -v dbus-daemon)")")/share/dbus-1/session.conf" -- build/de/shell/tst_tray
+
+# The Qt unit tests, then the real shell on the compositor drives the menu
+# bar, dock, Search (apps, files, actions), menus, the global menu, a
+# status icon, the control center, a banner, Night Shift, screenshots and
+# dark mode; screenshots in target/tmp/fern-comp-render/wm_shell_*.png.
+# Shell tests, unit and end to end (the Phase 6 demo, automated)
+shell-test: qt-test fonts
     cargo build -p fern-settingsd -p fern-wm -p fern-indexd
     FERN_SHELL_BIN="$PWD/build/de/shell/fern-shell" cargo test -p fern-comp --test render -- wm_shell
 
@@ -209,7 +214,7 @@ clean-build:
 # --- Verification -----------------------------------------------------------
 
 # Everything CI and every commit must pass
-check: fmt-check clippy test lint
+check: fmt-check clippy test lint qt-test
     @echo "just check: all green"
 
 # Fail if any Rust code is not rustfmt-formatted
